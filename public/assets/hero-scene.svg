@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMax slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3ba1e8"/>
+      <stop offset="0.55" stop-color="#7cc3f2"/>
+      <stop offset="1" stop-color="#c8e9fb"/>
+    </linearGradient>
+    <linearGradient id="meadowFar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8ed06a"/>
+      <stop offset="1" stop-color="#6dbb4f"/>
+    </linearGradient>
+    <linearGradient id="meadowMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fbe50"/>
+      <stop offset="1" stop-color="#54a93e"/>
+    </linearGradient>
+    <linearGradient id="meadowNear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#57ad3f"/>
+      <stop offset="1" stop-color="#3f962f"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff9e0" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#ffefb3" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffefb3" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Himmel -->
+  <rect width="1440" height="810" fill="url(#sky)"/>
+  <circle cx="1150" cy="130" r="230" fill="url(#sun)"/>
+  <circle cx="1150" cy="130" r="58" fill="#fffbe8"/>
+
+  <!-- Wolken (hinten) -->
+  <g fill="#ffffff" opacity="0.85">
+    <g transform="translate(120 120)">
+      <ellipse cx="0" cy="0" rx="95" ry="30"/>
+      <ellipse cx="60" cy="-18" rx="70" ry="26"/>
+      <ellipse cx="120" cy="2" rx="80" ry="24"/>
+    </g>
+    <g transform="translate(760 70)">
+      <ellipse cx="0" cy="0" rx="70" ry="22"/>
+      <ellipse cx="50" cy="-14" rx="55" ry="20"/>
+      <ellipse cx="100" cy="0" rx="60" ry="18"/>
+    </g>
+    <g transform="translate(430 210) scale(0.7)">
+      <ellipse cx="0" cy="0" rx="95" ry="30"/>
+      <ellipse cx="70" cy="-16" rx="70" ry="26"/>
+    </g>
+  </g>
+
+  <!-- Schwebende Insel -->
+  <g transform="translate(1050 240)">
+    <path d="M-90 0 Q-70 -26 -20 -28 Q40 -30 78 -8 Q90 0 84 6 L-84 6 Q-96 4 -90 0Z" fill="#7ec95c"/>
+    <path d="M-84 6 L84 6 Q60 46 30 58 Q10 66 -4 52 Q-16 62 -34 50 Q-66 34 -84 6Z" fill="#8a705b"/>
+    <path d="M-58 6 L-44 6 Q-50 26 -56 30 Q-60 20 -58 6Z" fill="#a5c9e8" opacity="0.9"/>
+    <ellipse cx="-30" cy="-16" rx="14" ry="10" fill="#69b84a"/>
+    <ellipse cx="26" cy="-18" rx="18" ry="12" fill="#69b84a"/>
+  </g>
+  <g transform="translate(280 300) scale(0.45)">
+    <path d="M-90 0 Q-70 -26 -20 -28 Q40 -30 78 -8 Q90 0 84 6 L-84 6 Q-96 4 -90 0Z" fill="#7ec95c"/>
+    <path d="M-84 6 L84 6 Q60 46 30 58 Q10 66 -4 52 Q-16 62 -34 50 Q-66 34 -84 6Z" fill="#8a705b"/>
+  </g>
+
+  <!-- Berge -->
+  <path d="M0 470 L150 330 L260 420 L390 300 L520 450 L640 380 L760 470 L1440 470 L1440 560 L0 560Z" fill="#9dc4e4"/>
+  <path d="M390 300 L418 342 Q404 352 390 344 Q376 352 362 342 Z" fill="#eef7ff"/>
+  <path d="M150 330 L172 363 Q161 371 150 365 Q139 371 128 363 Z" fill="#eef7ff"/>
+
+  <!-- Turm am Horizont (ragt rechts aus den Wolken) -->
+  <g transform="translate(1310 262)" fill="#54809f">
+    <path d="M-10 210 L-6 40 Q0 26 6 40 L10 210Z"/>
+    <path d="M-16 60 L16 60 L12 44 L-12 44Z"/>
+    <circle cx="0" cy="30" r="12" fill="#bfe3f7"/>
+  </g>
+
+  <!-- Hügel -->
+  <path d="M0 560 Q240 470 520 530 Q800 590 1080 520 Q1280 475 1440 520 L1440 810 L0 810Z" fill="url(#meadowFar)"/>
+
+  <!-- Bäume auf dem Hügel -->
+  <g fill="#3e9440">
+    <g transform="translate(1180 520)">
+      <ellipse cx="0" cy="-26" rx="26" ry="30"/>
+      <rect x="-4" y="-4" width="8" height="18" fill="#7a5b44" rx="3"/>
+    </g>
+    <g transform="translate(1250 545) scale(0.75)">
+      <ellipse cx="0" cy="-26" rx="26" ry="30"/>
+      <rect x="-4" y="-4" width="8" height="18" fill="#7a5b44" rx="3"/>
+    </g>
+    <g transform="translate(150 560) scale(0.9)">
+      <ellipse cx="0" cy="-26" rx="26" ry="30"/>
+      <rect x="-4" y="-4" width="8" height="18" fill="#7a5b44" rx="3"/>
+    </g>
+  </g>
+
+  <!-- Weiden-Tierchen (stilisiert) -->
+  <g transform="translate(1160 608)">
+    <ellipse cx="0" cy="0" rx="20" ry="13" fill="#ffffff"/>
+    <circle cx="16" cy="-8" r="8" fill="#ffffff"/>
+    <circle cx="19" cy="-9" r="1.6" fill="#3a5a74"/>
+    <path d="M12 -15 Q13 -21 17 -18Z M21 -16 Q23 -22 26 -17Z" fill="#ffd9a0"/>
+  </g>
+  <g transform="translate(360 640) scale(0.8)">
+    <ellipse cx="0" cy="0" rx="20" ry="13" fill="#ffe1ee"/>
+    <circle cx="-16" cy="-8" r="8" fill="#ffe1ee"/>
+    <circle cx="-19" cy="-9" r="1.6" fill="#3a5a74"/>
+  </g>
+
+  <!-- Mittlerer Hügel -->
+  <path d="M0 640 Q300 570 640 620 Q980 668 1440 600 L1440 810 L0 810Z" fill="url(#meadowMid)"/>
+
+  <!-- Vordergrund-Wiese mit Blumen -->
+  <path d="M0 730 Q360 670 780 710 Q1120 742 1440 700 L1440 810 L0 810Z" fill="url(#meadowNear)"/>
+  <g>
+    <circle cx="180" cy="756" r="5" fill="#ffe066"/>
+    <circle cx="196" cy="770" r="4" fill="#ffffff"/>
+    <circle cx="420" cy="742" r="5" fill="#ff9fbe"/>
+    <circle cx="640" cy="762" r="4" fill="#ffe066"/>
+    <circle cx="660" cy="748" r="4" fill="#ffffff"/>
+    <circle cx="940" cy="756" r="5" fill="#ff9fbe"/>
+    <circle cx="1160" cy="744" r="4" fill="#ffe066"/>
+    <circle cx="1300" cy="764" r="5" fill="#ffffff"/>
+  </g>
+
+  <!-- Wolken (vorne, groß und weich) -->
+  <g fill="#ffffff" opacity="0.95">
+    <g transform="translate(-40 190)">
+      <ellipse cx="0" cy="0" rx="120" ry="36"/>
+      <ellipse cx="80" cy="-22" rx="85" ry="32"/>
+      <ellipse cx="160" cy="0" rx="95" ry="28"/>
+    </g>
+    <g transform="translate(1150 392) scale(0.75)">
+      <ellipse cx="0" cy="0" rx="120" ry="36"/>
+      <ellipse cx="80" cy="-22" rx="85" ry="32"/>
+      <ellipse cx="160" cy="0" rx="95" ry="28"/>
+    </g>
+  </g>
+</svg>

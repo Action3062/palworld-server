@@ -12,10 +12,11 @@
   <meta property="og:type" content="website">
 
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <meta name="theme-color" content="#3ba1e8">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -26,9 +27,11 @@
     <div class="nav__inner container">
       <a href="#top" class="nav__brand">
         <svg class="nav__logo" viewBox="0 0 48 48" aria-hidden="true">
-          <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="3"/>
-          <path d="M4 24 H18 M30 24 H44" stroke="currentColor" stroke-width="3"/>
-          <circle cx="24" cy="24" r="6" fill="currentColor"/>
+          <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <path d="M3.6 24 A20.4 20.4 0 0 1 44.4 24 L3.6 24 Z" fill="#2f9de4"/>
+          <path d="M3.6 24 H44.4" stroke="#16405f" stroke-width="3.4"/>
+          <circle cx="24" cy="24" r="7.6" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <circle cx="24" cy="24" r="3" fill="#ffb454"/>
         </svg>
         <span>Pal<em>Heim</em></span>
       </a>
@@ -51,9 +54,7 @@
 
   <!-- ===================== HERO ===================== -->
   <section class="hero">
-    <div class="hero__glow hero__glow--teal" aria-hidden="true"></div>
-    <div class="hero__glow hero__glow--amber" aria-hidden="true"></div>
-    <div class="hero__grid" aria-hidden="true"></div>
+    <div class="hero__scene" aria-hidden="true"></div>
 
     <div class="container hero__content">
       <span class="hero__badge">
@@ -88,8 +89,8 @@
       </div>
     </div>
 
-    <div class="hero__scroll" aria-hidden="true">
-      <a href="#status">▾</a>
+    <div class="hero__scroll">
+      <a href="#status" aria-label="Zum Server-Status scrollen">▾</a>
     </div>
   </section>
 
@@ -198,7 +199,7 @@
             <table class="leaderboard__table">
               <thead>
                 <tr>
-                  <th scope="col">#</th>
+                  <th scope="col" class="num">#</th>
                   <th scope="col">Spieler</th>
                   <th scope="col" class="num">Level</th>
                   <th scope="col" class="num">Spielzeit</th>

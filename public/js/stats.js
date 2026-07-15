@@ -11,10 +11,6 @@
   const REFRESH_INTERVAL = 5 * 60_000; // Statistiken ändern sich langsam
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
-  // Validierte Chart-Farben (dunkler als die UI-Akzente, siehe style.css)
-  const SERIES_COLOR = '#0d9488';
-  const SURFACE_COLOR = '#0e1424';
-
   const el = {
     peakToday: section.querySelector('[data-stats="peakToday"]'),
     peakTodayHint: section.querySelector('[data-stats="peakTodayHint"]'),
@@ -249,8 +245,10 @@
         xTicks.push(Math.floor(d.getTime() / 1000));
       }
     }
-    // Bei wenig Platz nur jedes zweite Label zeichnen
-    const labelSkip = plotW / Math.max(xTicks.length, 1) < 80 ? 2 : 1;
+    // Nur so viele Labels zeichnen, wie nebeneinander passen
+    // (geschätzte Breite: "HH:MM" ≈ 46px, "Mo., 14.07." ≈ 80px)
+    const estLabelWidth = range === '24h' ? 46 : 80;
+    const labelSkip = Math.max(1, Math.ceil((estLabelWidth * xTicks.length) / Math.max(plotW, 1)));
     xTicks.forEach((t, i) => {
       if (i % labelSkip !== 0) return;
       const label = document.createElementNS(SVG_NS, 'text');
@@ -327,7 +325,17 @@
     const tipTime = document.createElement('span');
     tooltip.append(tipValue, tipTime);
 
-    function showPoint(idx) {
+    // Unsichtbare Live-Region: sagt Screenreadern die Werte bei
+    // Pfeiltasten-Navigation an (der visuelle Tooltip ist aria-hidden)
+    let liveRegion = el.chart.querySelector('.sr-only');
+    if (!liveRegion) {
+      liveRegion = document.createElement('div');
+      liveRegion.className = 'sr-only';
+      liveRegion.setAttribute('aria-live', 'polite');
+      el.chart.appendChild(liveRegion);
+    }
+
+    function showPoint(idx, announce = false) {
       const sample = samples[idx];
       if (!sample) return;
       const [t, c] = sample;
@@ -350,9 +358,17 @@
 
       tooltip.hidden = false;
       const tipW = tooltip.offsetWidth;
+      const tipH = tooltip.offsetHeight;
       const clamped = Math.min(Math.max(px - tipW / 2, 4), width - tipW - 4);
       tooltip.style.left = `${clamped}px`;
-      tooltip.style.top = `${pad.top - 8}px`;
+      // Am Datenpunkt ausrichten, aber innerhalb des Charts bleiben
+      // (der Tooltip darf Titel/Umschalter der Karte nicht überdecken)
+      const anchorY = c != null ? y(c) : pad.top + plotH / 2;
+      tooltip.style.top = `${Math.max(anchorY - 12, tipH + 2)}px`;
+
+      if (announce) {
+        liveRegion.textContent = `${tipValue.textContent}, ${tipTime.textContent}`;
+      }
     }
 
     function hidePoint() {
@@ -387,7 +403,7 @@
         if (focusIndex < 0) focusIndex = samples.length - 1;
         else focusIndex += e.key === 'ArrowRight' ? 1 : -1;
         focusIndex = Math.min(Math.max(focusIndex, 0), samples.length - 1);
-        showPoint(focusIndex);
+        showPoint(focusIndex, true);
       } else if (e.key === 'Escape') {
         hidePoint();
       }
