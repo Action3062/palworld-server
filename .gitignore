@@ -1,0 +1,6 @@
+# Enthält das Admin-Passwort – niemals einchecken!
+config.json
+
+node_modules/
+*.log
+.DS_Store

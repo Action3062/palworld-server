@@ -1,0 +1,38 @@
+# systemd-Service für die Palworld-Webseite
+#
+# Installation auf dem Hetzner-Server:
+#   sudo cp deploy/palworld-web.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now palworld-web
+#
+# Logs ansehen:
+#   journalctl -u palworld-web -f
+
+[Unit]
+Description=Palworld Server Webseite
+After=network.target
+
+[Service]
+Type=simple
+# Benutzer anpassen, unter dem die Webseite laufen soll (nicht root!)
+User=palworld
+Group=palworld
+WorkingDirectory=/opt/palworld-web
+ExecStart=/usr/bin/node /opt/palworld-web/server.js
+Restart=on-failure
+RestartSec=5
+
+# Alternativ zur config.json können die Werte auch hier gesetzt werden:
+# Environment=PORT=3000
+# Environment=PALWORLD_API_URL=http://127.0.0.1:8212
+# Environment=PALWORLD_ADMIN_PASSWORD=geheim
+
+# Härtung
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/palworld-web
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
