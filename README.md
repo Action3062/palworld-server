@@ -130,6 +130,44 @@ sudo certbot --nginx -d deinedomain.de
 #    Zu:     3000/tcp und 8212/tcp von außen NICHT erreichbar machen
 ```
 
+## Palworld auf separatem Server? → WireGuard-Tunnel
+
+Läuft der Palworld-Server auf einer **anderen Maschine** als die Webseite,
+verbindet ein WireGuard-Tunnel beide privat – die REST-API (Port 8212) bleibt
+aus dem Internet unerreichbar:
+
+```
+Web-Server (10.88.0.1) ── WireGuard (UDP 51820) ──> Palworld-Server (10.88.0.2)
+```
+
+Einrichtung in 3 Schritten (jeweils als root):
+
+```bash
+# 1. Auf dem PALWORLD-Server – zeigt dessen Public Key an
+#    (Frage nach dem Peer-Key erstmal mit Enter überspringen)
+bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/wireguard/setup-wg.sh) api
+
+# 2. Auf dem WEB-Server – Public Key aus Schritt 1 eintragen,
+#    zeigt danach den Public Key des Web-Servers an
+bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/wireguard/setup-wg.sh) web <IP-DES-PALWORLD-SERVERS>
+
+# 3. Nochmal auf dem PALWORLD-Server – jetzt den Key aus Schritt 2 eintragen
+bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/wireguard/setup-wg.sh) api
+```
+
+Das Skript stellt auf dem Web-Server automatisch die `config.json` auf
+`http://10.88.0.2:8212` um und startet `palworld-web` neu. Test:
+
+```bash
+# auf dem Web-Server:
+ping -c 3 10.88.0.2
+curl -s -u admin:DEIN-ADMIN-PASSWORT http://10.88.0.2:8212/v1/api/info
+```
+
+Firewall: Auf dem Palworld-Server muss **UDP 51820** eingehend offen sein
+(Hetzner Cloud Firewall bzw. ufw – das Skript richtet ufw automatisch ein).
+Port 8212 dagegen **nicht** öffentlich öffnen.
+
 ### Updates einspielen
 
 ```bash
