@@ -196,11 +196,16 @@ code {
   padding: 72px 0 140px;
 }
 
-/* Gemalte Landschafts-Szene als Hintergrund */
+/* Landschafts-Szene als Hintergrund.
+   Zwei Ebenen: Liegt eine eigene /assets/hero.jpg im Ordner (z. B. das
+   KI-generierte Artwork), zeigt der Browser sie an – fehlt sie, bleibt
+   automatisch die mitgelieferte SVG-Szene darunter sichtbar. */
 .hero__scene {
   position: absolute;
   inset: 0;
-  background: url("/assets/hero-scene.svg") center bottom / cover no-repeat;
+  background:
+    url("/assets/hero.jpg") center / cover no-repeat,
+    url("/assets/hero-scene.svg") center bottom / cover no-repeat;
   pointer-events: none;
 }
 
