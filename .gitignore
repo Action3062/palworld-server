@@ -1,6 +1,9 @@
 # Enthält das Admin-Passwort – niemals einchecken!
 config.json
 
+# Gesammelte Statistiken (Laufzeitdaten)
+data/
+
 node_modules/
 *.log
 .DS_Store

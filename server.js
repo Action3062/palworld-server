@@ -35,7 +35,13 @@ const DEFAULTS = {
   // Wie lange Live-Daten zwischengespeichert werden (Sekunden)
   cacheSeconds: 15,
   // Spielernamen der Online-Spieler öffentlich anzeigen?
-  showPlayerList: true
+  showPlayerList: true,
+  // Statistiken sammeln (Spielerzahl-Verlauf, Peaks, Spielzeiten)?
+  statsEnabled: true,
+  // Wie oft der Palworld-Server für die Statistik abgefragt wird (Sekunden)
+  statsPollSeconds: 60,
+  // Wo die gesammelten Statistiken gespeichert werden
+  statsFile: 'data/stats.json'
 };
 
 function loadConfig() {
@@ -56,6 +62,8 @@ function loadConfig() {
   if (process.env.PALWORLD_ADMIN_PASSWORD) cfg.palworldAdminPassword = process.env.PALWORLD_ADMIN_PASSWORD;
   if (process.env.CACHE_SECONDS) cfg.cacheSeconds = Number(process.env.CACHE_SECONDS);
   if (process.env.SHOW_PLAYER_LIST) cfg.showPlayerList = process.env.SHOW_PLAYER_LIST === 'true';
+  if (process.env.STATS_ENABLED) cfg.statsEnabled = process.env.STATS_ENABLED === 'true';
+  if (process.env.STATS_POLL_SECONDS) cfg.statsPollSeconds = Number(process.env.STATS_POLL_SECONDS);
   return cfg;
 }
 
@@ -139,6 +147,159 @@ async function getStatus() {
 }
 
 // ---------------------------------------------------------------------------
+// Statistiken sammeln
+// ---------------------------------------------------------------------------
+// Die Palworld REST-API liefert nur Momentaufnahmen. Für Verlaufs-Statistiken
+// fragt dieser Server sie regelmäßig ab und speichert die Daten in einer
+// JSON-Datei:
+//  - Spielerzahl-Verlauf in 5-Minuten-Buckets (7 Tage Aufbewahrung)
+//  - Peak (Rekord-Spielerzahl) mit Zeitpunkt
+//  - pro Spieler: Level, Spielzeit, zuerst/zuletzt gesehen (nur Name, keine IDs)
+
+const STATS_BUCKET_SECONDS = 300;
+const STATS_RETENTION_BUCKETS = (7 * 24 * 3600) / STATS_BUCKET_SECONDS;
+
+const statsFile = path.join(__dirname, config.statsFile);
+
+let stats = { samples: [], peak: null, players: {}, inGameDays: null };
+let statsDirty = false;
+let lastStatsSave = 0;
+
+function loadStats() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
+    if (Array.isArray(raw.samples)) stats.samples = raw.samples;
+    if (raw.peak && typeof raw.peak.count === 'number') stats.peak = raw.peak;
+    if (raw.players && typeof raw.players === 'object') stats.players = raw.players;
+    if (typeof raw.inGameDays === 'number') stats.inGameDays = raw.inGameDays;
+    console.log(`[stats] ${stats.samples.length} Messpunkte, ${Object.keys(stats.players).length} Spieler geladen`);
+  } catch {
+    // Noch keine Statistik-Datei vorhanden – wird beim ersten Poll angelegt
+  }
+}
+
+function saveStats(force = false) {
+  if (!statsDirty) return;
+  const now = Date.now();
+  if (!force && now - lastStatsSave < 60_000) return; // höchstens 1×/Minute schreiben
+  try {
+    fs.mkdirSync(path.dirname(statsFile), { recursive: true });
+    const tmp = `${statsFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(stats));
+    fs.renameSync(tmp, statsFile); // atomar ersetzen
+    statsDirty = false;
+    lastStatsSave = now;
+  } catch (err) {
+    console.error(`[stats] Speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
+// count = null bedeutet: Server war nicht erreichbar (Lücke im Chart)
+function recordSample(count) {
+  const t = Math.floor(Date.now() / 1000 / STATS_BUCKET_SECONDS) * STATS_BUCKET_SECONDS;
+  const last = stats.samples[stats.samples.length - 1];
+  if (last && last[0] === t) {
+    if (count != null) last[1] = Math.max(last[1] ?? 0, count);
+  } else {
+    stats.samples.push([t, count]);
+    if (stats.samples.length > STATS_RETENTION_BUCKETS) {
+      stats.samples.splice(0, stats.samples.length - STATS_RETENTION_BUCKETS);
+    }
+  }
+}
+
+async function pollStats() {
+  let count = null;
+  try {
+    const metrics = await palworldGet('/v1/api/metrics');
+    count = metrics.currentplayernum ?? 0;
+    if (typeof metrics.days === 'number') stats.inGameDays = metrics.days;
+
+    if (count > 0 && (!stats.peak || count > stats.peak.count)) {
+      stats.peak = { count, at: new Date().toISOString() };
+    }
+
+    if (count > 0) {
+      const data = await palworldGet('/v1/api/players');
+      const now = new Date().toISOString();
+      for (const p of data.players || []) {
+        if (!p.name) continue;
+        const rec = stats.players[p.name] ?? (stats.players[p.name] = {
+          level: null,
+          firstSeen: now,
+          lastSeen: now,
+          minutes: 0
+        });
+        rec.lastSeen = now;
+        if (p.level != null) rec.level = p.level;
+        rec.minutes += config.statsPollSeconds / 60;
+      }
+    }
+  } catch {
+    count = null;
+  }
+  recordSample(count);
+  statsDirty = true;
+  saveStats();
+}
+
+function buildStatsResponse() {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const weekAgo = nowSec - 7 * 24 * 3600;
+  const samples = stats.samples.filter(([t]) => t >= weekAgo);
+
+  // Peak seit Mitternacht (Serverzeit)
+  const midnight = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+  let peakToday = null;
+  for (const [t, c] of samples) {
+    if (t >= midnight && c != null && (!peakToday || c > peakToday.count)) {
+      peakToday = { count: c, at: new Date(t * 1000).toISOString() };
+    }
+  }
+
+  let totalMinutes = 0;
+  for (const p of Object.values(stats.players)) totalMinutes += p.minutes;
+
+  const topPlayers = config.showPlayerList
+    ? Object.entries(stats.players)
+        .map(([name, p]) => ({
+          name,
+          level: p.level,
+          minutes: Math.round(p.minutes),
+          lastSeen: p.lastSeen
+        }))
+        .sort((a, b) => (b.level ?? 0) - (a.level ?? 0) || b.minutes - a.minutes)
+        .slice(0, 10)
+    : [];
+
+  return {
+    enabled: true,
+    bucketSeconds: STATS_BUCKET_SECONDS,
+    samples,
+    peakToday,
+    peakAllTime: stats.peak,
+    uniquePlayers: Object.keys(stats.players).length,
+    totalPlaytimeMinutes: Math.round(totalMinutes),
+    inGameDays: stats.inGameDays,
+    topPlayers
+  };
+}
+
+if (config.statsEnabled) {
+  loadStats();
+  pollStats();
+  setInterval(pollStats, config.statsPollSeconds * 1000);
+
+  // Beim Beenden ungespeicherte Daten sichern
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      saveStats(true);
+      process.exit(0);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Statische Dateien ausliefern
 // ---------------------------------------------------------------------------
 
@@ -206,6 +367,15 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'no-store'
     });
     res.end(JSON.stringify(status));
+    return;
+  }
+
+  if (pathname === '/api/stats') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    res.end(JSON.stringify(config.statsEnabled ? buildStatsResponse() : { enabled: false }));
     return;
   }
 

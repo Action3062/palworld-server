@@ -32,6 +32,10 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 ReadOnlyPaths=/opt/palworld-web
+# Statistiken dürfen geschrieben werden – Verzeichnis muss vor dem ersten
+# Start existieren:  sudo mkdir -p /opt/palworld-web/data
+#                    sudo chown palworld:palworld /opt/palworld-web/data
+ReadWritePaths=/opt/palworld-web/data
 PrivateTmp=true
 
 [Install]

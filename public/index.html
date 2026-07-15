@@ -35,6 +35,7 @@
 
       <nav class="nav__links" id="navLinks">
         <a href="#status">Status</a>
+        <a href="#statistiken">Statistiken</a>
         <a href="#server">Server-Info</a>
         <a href="#mitspielen">Mitspielen</a>
         <a href="#regeln">Regeln</a>
@@ -138,8 +139,81 @@
       </div>
     </section>
 
+    <!-- ===================== STATISTIKEN ===================== -->
+    <section class="section section--alt" id="statistiken">
+      <div class="container">
+        <span class="section__label">Zahlen &amp; Fakten</span>
+        <h2 class="section__title">Statistiken</h2>
+        <p class="section__intro">
+          Seit dem Start gesammelt – direkt von unserem Server.
+        </p>
+
+        <div class="status-grid reveal">
+          <article class="stat-card">
+            <span class="stat-card__label">Peak heute</span>
+            <span class="stat-card__value" data-stats="peakToday">–</span>
+            <span class="stat-card__hint" data-stats="peakTodayHint">Spieler gleichzeitig</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Rekord</span>
+            <span class="stat-card__value" data-stats="peakAllTime">–</span>
+            <span class="stat-card__hint" data-stats="peakAllTimeHint">Spieler gleichzeitig</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Spieler gesamt</span>
+            <span class="stat-card__value" data-stats="uniquePlayers">–</span>
+            <span class="stat-card__hint">haben hier schon gespielt</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Spielzeit gesamt</span>
+            <span class="stat-card__value" data-stats="playtime">–</span>
+            <span class="stat-card__hint">aller Spieler zusammen</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">In-Game-Tage</span>
+            <span class="stat-card__value" data-stats="inGameDays">–</span>
+            <span class="stat-card__hint">sind in unserer Welt vergangen</span>
+          </article>
+        </div>
+
+        <div class="chart-card reveal">
+          <div class="chart-card__head">
+            <h3 class="chart-card__title">Spieler online</h3>
+            <div class="chart-range" role="group" aria-label="Zeitraum">
+              <button class="chart-range__btn is-active" data-range="24h" aria-pressed="true">24 Stunden</button>
+              <button class="chart-range__btn" data-range="7d" aria-pressed="false">7 Tage</button>
+            </div>
+          </div>
+          <figure class="chart" id="playersChart" tabindex="0"
+                  aria-label="Verlauf der Online-Spielerzahl. Mit den Pfeiltasten durch die Messpunkte bewegen.">
+            <div class="chart__empty" id="chartEmpty" hidden>
+              Noch keine Daten – die Statistik füllt sich, sobald der Server eine Weile läuft.
+            </div>
+          </figure>
+        </div>
+
+        <div class="leaderboard reveal" id="leaderboardWrap" hidden>
+          <h3 class="leaderboard__title">Top-Spieler</h3>
+          <div class="leaderboard__scroll">
+            <table class="leaderboard__table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Spieler</th>
+                  <th scope="col" class="num">Level</th>
+                  <th scope="col" class="num">Spielzeit</th>
+                  <th scope="col">Zuletzt online</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ===================== SERVER-INFO / RATEN ===================== -->
-    <section class="section section--alt" id="server">
+    <section class="section" id="server">
       <div class="container">
         <span class="section__label">Einstellungen</span>
         <h2 class="section__title">Unsere Server-Raten</h2>
@@ -202,7 +276,7 @@
     </section>
 
     <!-- ===================== MITSPIELEN ===================== -->
-    <section class="section" id="mitspielen">
+    <section class="section section--alt" id="mitspielen">
       <div class="container">
         <span class="section__label">Anleitung</span>
         <h2 class="section__title">So trittst du bei</h2>
@@ -245,7 +319,7 @@
     </section>
 
     <!-- ===================== REGELN ===================== -->
-    <section class="section section--alt" id="regeln">
+    <section class="section" id="regeln">
       <div class="container">
         <span class="section__label">Fair Play</span>
         <h2 class="section__title">Server-Regeln</h2>
@@ -265,7 +339,7 @@
     </section>
 
     <!-- ===================== FAQ ===================== -->
-    <section class="section" id="faq">
+    <section class="section section--alt" id="faq">
       <div class="container">
         <span class="section__label">Hilfe</span>
         <h2 class="section__title">Häufige Fragen</h2>
@@ -337,5 +411,6 @@
   </footer>
 
   <script src="/js/main.js"></script>
+  <script src="/js/stats.js"></script>
 </body>
 </html>

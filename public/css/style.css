@@ -23,6 +23,9 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* hidden-Attribut gewinnt immer – auch gegen display:flex etc. */
+[hidden] { display: none !important; }
+
 html { scroll-behavior: smooth; }
 
 body {
@@ -432,6 +435,200 @@ code {
   margin-top: 26px;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+/* ---------------- Statistiken ---------------- */
+
+/* Chart-Farben: dunklere, validierte Stufen der Markenfarben
+   (Kontrast + Farbfehlsichtigkeit geprüft) */
+:root {
+  --chart-series: #0d9488;
+  --chart-grid: rgba(255, 255, 255, 0.07);
+}
+
+/* 5 Kennzahl-Kacheln passen so bei voller Breite in eine Reihe */
+#statistiken .status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.chart-card {
+  margin-top: 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px 14px;
+}
+
+.chart-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.chart-card__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.chart-range {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.chart-range__btn {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.chart-range__btn:hover { color: var(--text); }
+.chart-range__btn.is-active {
+  background: rgba(53, 224, 194, 0.15);
+  color: var(--accent);
+}
+
+.chart {
+  position: relative;
+  margin: 0;
+  min-height: 280px;
+  outline: none;
+}
+.chart:focus-visible { box-shadow: 0 0 0 2px rgba(53, 224, 194, 0.4); border-radius: 8px; }
+.chart svg { display: block; }
+
+.chart-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.chart-tick { fill: var(--text-muted); font-size: 11px; font-family: var(--font-body); }
+.chart-line {
+  fill: none;
+  stroke: var(--chart-series);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart-area { fill: var(--chart-series); opacity: 0.1; }
+.chart-dot {
+  fill: var(--chart-series);
+  stroke: var(--bg-alt);
+  stroke-width: 2;
+}
+.chart-crosshair { stroke: rgba(255, 255, 255, 0.25); stroke-width: 1; }
+
+.chart__tooltip {
+  position: absolute;
+  transform: translateY(-100%);
+  background: #171f33;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  z-index: 5;
+}
+.chart__tooltip strong {
+  font-size: 0.95rem;
+  padding-left: 14px;
+  position: relative;
+}
+/* Linien-Key: kurzer Strich in der Serienfarbe vor dem Wert */
+.chart__tooltip strong::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  background: var(--chart-series);
+}
+.chart__tooltip span { font-size: 0.78rem; color: var(--text-muted); }
+
+.chart__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  text-align: center;
+  padding: 24px;
+}
+
+.leaderboard { margin-top: 34px; }
+
+.leaderboard__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+  color: var(--text-muted);
+}
+
+.leaderboard__scroll { overflow-x: auto; }
+
+.leaderboard__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.95rem;
+  min-width: 520px;
+}
+
+.leaderboard__table th,
+.leaderboard__table td {
+  text-align: left;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard__table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.leaderboard__table tbody tr:last-child td { border-bottom: 0; }
+.leaderboard__table tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
+
+.leaderboard__table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard__name { font-weight: 600; }
+
+.leaderboard__online {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 8px;
 }
 
 /* ---------------- Raten ---------------- */

@@ -11,6 +11,9 @@ Dadurch ist das Deployment auf dem Hetzner-Server in wenigen Minuten erledigt.
 
 - ⚡ **Live-Status**: Online/Offline, Spielerzahl, Version, Uptime – automatisch alle 30 s aktualisiert
 - 👥 **Spielerliste**: zeigt, wer gerade online ist (abschaltbar per Config)
+- 📊 **Statistiken**: Spielerzahl-Verlauf (24 h / 7 Tage) als interaktives Chart,
+  Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit, In-Game-Tage und ein
+  Top-Spieler-Leaderboard – gesammelt vom eigenen Backend, keine externen Dienste
 - 📋 **Server-Adresse mit Kopier-Button**
 - 🎮 **Beitritts-Anleitung** in 3 Schritten
 - ⚙️ **Raten-Übersicht** (EP, Fangrate, Drops, …)
@@ -25,8 +28,14 @@ Dadurch ist das Deployment auf dem Hetzner-Server in wenigen Minuten erledigt.
 ```
 Browser ──HTTPS──> nginx ──> Node.js (server.js, Port 3000)
                                 │  statische Seite aus ./public
-                                └─ /api/status ──> Palworld REST-API (Port 8212, nur lokal)
+                                ├─ /api/status ──> Palworld REST-API (Port 8212, nur lokal)
+                                └─ /api/stats  ──> gesammelte Statistiken (data/stats.json)
 ```
+
+Für die Statistiken fragt das Backend die Palworld REST-API einmal pro Minute ab
+und speichert aggregierte Daten in `data/stats.json` (Spielerzahl in
+5-Minuten-Buckets für 7 Tage, Peak, pro Spieler Name/Level/Spielzeit/zuletzt
+gesehen – bewusst keine IPs oder Account-IDs).
 
 ## Voraussetzungen
 
@@ -76,24 +85,28 @@ sudo nano config.json          # palworldAdminPassword eintragen
 sudo chown palworld:palworld config.json
 sudo chmod 600 config.json
 
-# 4. systemd-Service installieren
+# 4. Statistik-Verzeichnis anlegen (der Service läuft sonst read-only)
+sudo mkdir -p /opt/palworld-web/data
+sudo chown palworld:palworld /opt/palworld-web/data
+
+# 5. systemd-Service installieren
 sudo cp deploy/palworld-web.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now palworld-web
 systemctl status palworld-web  # sollte "active (running)" zeigen
 
-# 5. nginx als Reverse-Proxy
+# 6. nginx als Reverse-Proxy
 sudo apt install -y nginx
 sudo cp deploy/nginx-palworld-web.conf /etc/nginx/sites-available/palworld-web
 sudo nano /etc/nginx/sites-available/palworld-web   # server_name anpassen!
 sudo ln -s /etc/nginx/sites-available/palworld-web /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# 6. HTTPS mit Let's Encrypt
+# 7. HTTPS mit Let's Encrypt
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d deinedomain.de
 
-# 7. Firewall (Hetzner Cloud Firewall oder ufw)
+# 8. Firewall (Hetzner Cloud Firewall oder ufw)
 #    Offen:  80/tcp, 443/tcp (Web), 8211/udp (Palworld), SSH
 #    Zu:     3000/tcp und 8212/tcp von außen NICHT erreichbar machen
 ```
@@ -117,10 +130,14 @@ sudo systemctl restart palworld-web
 | `palworldApiUrl` | `http://127.0.0.1:8212` | Adresse der Palworld REST-API |
 | `palworldAdminPassword` | – | `AdminPassword` aus der PalWorldSettings.ini |
 | `cacheSeconds` | `15` | Cache für Live-Daten (schont die Palworld-API) |
-| `showPlayerList` | `true` | Namen der Online-Spieler anzeigen? |
+| `showPlayerList` | `true` | Namen der Online-Spieler anzeigen (Live-Liste + Leaderboard)? |
+| `statsEnabled` | `true` | Statistiken sammeln und anzeigen? |
+| `statsPollSeconds` | `60` | Abfrage-Intervall für die Statistik |
+| `statsFile` | `data/stats.json` | Speicherort der gesammelten Daten |
 
 Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
-`PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`.
+`PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`, `STATS_ENABLED`,
+`STATS_POLL_SECONDS`.
 
 ## Inhalte anpassen
 
