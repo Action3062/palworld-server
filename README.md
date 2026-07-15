@@ -171,7 +171,7 @@ Alle Texte liegen direkt im HTML – einfach editieren:
 | Regeln | `public/index.html`, Sektion `#regeln` |
 | FAQ | `public/index.html`, Sektion `#faq` |
 | Farben / Design | `public/css/style.css`, CSS-Variablen in `:root` |
-| Hero-Hintergrund | Eigenes Bild als `public/assets/hero.jpg` ablegen (z. B. KI-Artwork, ~1920px breit) – wird automatisch statt der SVG-Szene angezeigt; Datei löschen = zurück zur SVG |
+| Hero-Hintergrund | Standard: `public/assets/hero.webp` (KI-Artwork). Alternative Variante: `hero-alt.webp` (umbenennen zu `hero.webp`). Eigenes Bild als `hero.jpg` ablegen überstimmt alles; ohne Bilddateien greift die SVG-Szene `hero-scene.svg` |
 | Impressum / Datenschutz | `public/impressum.html`, `public/datenschutz.html` (TODOs ausfüllen!) |
 
 ## Sicherheit

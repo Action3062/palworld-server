@@ -196,15 +196,18 @@ code {
   padding: 72px 0 140px;
 }
 
-/* Landschafts-Szene als Hintergrund.
-   Zwei Ebenen: Liegt eine eigene /assets/hero.jpg im Ordner (z. B. das
-   KI-generierte Artwork), zeigt der Browser sie an – fehlt sie, bleibt
-   automatisch die mitgelieferte SVG-Szene darunter sichtbar. */
+/* Landschafts-Artwork als Hintergrund, mit Fallback-Ebenen:
+   1. /assets/hero.jpg   – eigenes Bild (einfach ablegen, gewinnt immer)
+   2. /assets/hero.webp  – das KI-generierte Landschafts-Artwork (Standard)
+   3. hero-scene.svg     – gezeichnete SVG-Szene, falls beide fehlen
+   Fehlende Ebenen überspringt der Browser automatisch.
+   Alternative Variante liegt unter /assets/hero-alt.webp bereit. */
 .hero__scene {
   position: absolute;
   inset: 0;
   background:
     url("/assets/hero.jpg") center / cover no-repeat,
+    url("/assets/hero.webp") center / cover no-repeat,
     url("/assets/hero-scene.svg") center bottom / cover no-repeat;
   pointer-events: none;
 }
