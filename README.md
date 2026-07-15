@@ -69,7 +69,26 @@ node server.js
 Ohne laufenden Palworld-Server zeigt die Seite einfach „Offline“ an – alles
 andere funktioniert trotzdem.
 
-## Deployment auf Hetzner Cloud
+## Schnellinstallation (ein Befehl)
+
+Auf dem Hetzner-Server als root ausführen – installiert alles automatisch
+(Node.js, nginx, Benutzer, systemd-Service) und erkennt einen lokal laufenden
+Palworld-Server samt Admin-Passwort:
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/setup.sh)
+```
+
+Mit Domain (richtet zusätzlich HTTPS via Let's Encrypt ein):
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/setup.sh) deinedomain.de
+```
+
+Das Skript ist idempotent: erneut ausführen aktualisiert die Webseite auf den
+neuesten Stand, ohne die `config.json` zu überschreiben.
+
+## Manuelles Deployment auf Hetzner Cloud
 
 ```bash
 # 1. Code auf den Server holen
