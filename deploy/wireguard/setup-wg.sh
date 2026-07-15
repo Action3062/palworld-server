@@ -6,8 +6,13 @@
 # über einen privaten Tunnel ab – die API bleibt aus dem Internet
 # unerreichbar.
 #
-#   Web-Server (10.88.0.1)  ── WireGuard (UDP 51820) ──>  Palworld-Server (10.88.0.2)
+#   Web-Server (10.88.0.1)  ── WireGuard (UDP 51821) ──>  Palworld-Server (10.88.0.2)
 #   z. B. 65.109.91.114                                   z. B. 178.105.238.174
+#
+# Nutzt ein EIGENES Interface "wg-palweb" (Port 51821) und lässt ein
+# eventuell vorhandenes wg0 (z. B. bestehendes VPN) unangetastet.
+# Bei Bedarf per Umgebungsvariablen anpassbar:
+#   WG_IF=wg-palweb  WG_PORT=51821  WEB_WG_IP=10.88.0.1  API_WG_IP=10.88.0.2
 #
 # Ablauf (als root):
 #   1. Auf dem PALWORLD-Server:  bash setup-wg.sh api
@@ -26,10 +31,10 @@ set -euo pipefail
 ROLE="${1:-}"
 ENDPOINT="${2:-}"
 
-WG_IF="wg0"
-WG_PORT=51820
-WEB_WG_IP="10.88.0.1"
-API_WG_IP="10.88.0.2"
+WG_IF="${WG_IF:-wg-palweb}"
+WG_PORT="${WG_PORT:-51821}"
+WEB_WG_IP="${WEB_WG_IP:-10.88.0.1}"
+API_WG_IP="${API_WG_IP:-10.88.0.2}"
 API_PORT=8212
 
 KEY_FILE="/etc/wireguard/${WG_IF}.key"
@@ -62,6 +67,42 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq wireguard >/dev/null
 echo "wireguard-tools $(wg --version | head -1)"
+
+# ----------------------------------------------------------------------------
+step "Vorprüfungen (bestehende WireGuard-Interfaces bleiben unberührt)"
+# ----------------------------------------------------------------------------
+# Andere WG-Interfaces auflisten (rein informativ)
+OTHER_WG=$(wg show interfaces 2>/dev/null | tr ' ' '\n' | grep -v "^${WG_IF}$" || true)
+if [ -n "$OTHER_WG" ]; then
+  echo "Vorhandene WireGuard-Interfaces (bleiben unangetastet): $OTHER_WG"
+fi
+
+# Port-Kollision mit anderen WG-Interfaces?
+for iface in $OTHER_WG; do
+  port=$(wg show "$iface" listen-port 2>/dev/null || echo "")
+  if [ "$port" = "$WG_PORT" ]; then
+    c_red "Port ${WG_PORT}/udp wird bereits von '${iface}' benutzt."
+    c_red "Mit anderem Port erneut ausführen, z. B.:  WG_PORT=51822 bash setup-wg.sh $ROLE $ENDPOINT"
+    exit 1
+  fi
+done
+
+# Subnetz-Kollision? (unser Netz aus API_WG_IP ableiten, z. B. "10.88.0.")
+SUBNET_PREFIX="${API_WG_IP%.*}."
+if ip -4 -o addr show 2>/dev/null | grep -v " ${WG_IF} " | grep -q "inet ${SUBNET_PREFIX//./\\.}"; then
+  c_red "Das Subnetz ${SUBNET_PREFIX}0/24 wird bereits von einem anderen Interface benutzt."
+  c_red "Mit anderen Adressen erneut ausführen, z. B.:"
+  c_red "  API_WG_IP=10.89.0.2 WEB_WG_IP=10.89.0.1 bash setup-wg.sh $ROLE $ENDPOINT"
+  c_red "(Dann auf BEIDEN Servern dieselben Werte verwenden!)"
+  exit 1
+fi
+
+# Überbleibsel einer alten Version dieses Skripts erkennen (schrieb nach wg0)
+if [ -f /etc/wireguard/wg0.key ] && grep -qs "Address = 10.88.0.[12]/24" /etc/wireguard/wg0.conf; then
+  c_yellow "Hinweis: /etc/wireguard/wg0.conf stammt offenbar von einer früheren Version"
+  c_yellow "dieses Skripts. Falls du dieses wg0 NICHT anderweitig nutzt, aufräumen mit:"
+  c_yellow "  systemctl disable --now wg-quick@wg0 && rm /etc/wireguard/wg0.conf /etc/wireguard/wg0.key /etc/wireguard/wg0.peer"
+fi
 
 # ----------------------------------------------------------------------------
 step "Schlüssel erzeugen bzw. wiederverwenden"

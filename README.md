@@ -137,8 +137,14 @@ verbindet ein WireGuard-Tunnel beide privat – die REST-API (Port 8212) bleibt
 aus dem Internet unerreichbar:
 
 ```
-Web-Server (10.88.0.1) ── WireGuard (UDP 51820) ──> Palworld-Server (10.88.0.2)
+Web-Server (10.88.0.1) ── WireGuard (UDP 51821) ──> Palworld-Server (10.88.0.2)
 ```
+
+Das Skript nutzt ein eigenes Interface **`wg-palweb`** auf **Port 51821** –
+ein bereits vorhandenes `wg0` (z. B. ein bestehendes VPN) bleibt unangetastet.
+Kollidiert Port oder Subnetz mit deinem Setup, bricht das Skript mit einem
+Hinweis ab und lässt sich per Umgebungsvariablen anpassen
+(`WG_PORT=…`, `API_WG_IP=…`, `WEB_WG_IP=…` – auf beiden Servern gleich setzen).
 
 Einrichtung in 3 Schritten (jeweils als root):
 
@@ -164,7 +170,7 @@ ping -c 3 10.88.0.2
 curl -s -u admin:DEIN-ADMIN-PASSWORT http://10.88.0.2:8212/v1/api/info
 ```
 
-Firewall: Auf dem Palworld-Server muss **UDP 51820** eingehend offen sein
+Firewall: Auf dem Palworld-Server muss **UDP 51821** eingehend offen sein
 (Hetzner Cloud Firewall bzw. ufw – das Skript richtet ufw automatisch ein).
 Port 8212 dagegen **nicht** öffentlich öffnen.
 
