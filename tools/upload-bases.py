@@ -61,14 +61,42 @@ def find_sav(pattern: str) -> str:
     return matches[0]
 
 
+# Nur die Abschnitte strukturiert dekodieren, die wir wirklich brauchen
+# (Basislager-Positionen + Gildennamen). Alles andere – insbesondere das
+# riesige MapObjectSaveData – bleibt als Rohdaten liegen. Das ist deutlich
+# schneller und umgeht Parser-Bugs bei neuen Spielfeatures (z. B.
+# "EOF not reached for module type ...GuildSecurity" in Palworld 1.0).
+def needed_properties(keys) -> dict:
+    return {
+        key: PALWORLD_CUSTOM_PROPERTIES[key]
+        for key in PALWORLD_CUSTOM_PROPERTIES
+        if any(marker in key for marker in keys)
+    }
+
+
 def load_world(sav_path: str):
     print(f"Lese {sav_path} …")
     with open(sav_path, "rb") as f:
         data = f.read()
     raw_gvas, _ = decompress_sav_to_gvas(data)
-    print("Parse Spielstand (kann 1–2 Minuten dauern) …")
-    gvas = GvasFile.read(raw_gvas, PALWORLD_TYPE_HINTS, PALWORLD_CUSTOM_PROPERTIES)
-    return gvas.properties["worldSaveData"]["value"]
+
+    attempts = [
+        ("Basislager + Gilden", needed_properties(["BaseCampSaveData", "GroupSaveDataMap"])),
+        ("nur Basislager (Gildennamen entfallen)", needed_properties(["BaseCampSaveData"])),
+        ("minimal (nur Basislager-Kerndaten)", needed_properties(["BaseCampSaveData.Value.RawData"])),
+    ]
+    last_error = None
+    for label, custom in attempts:
+        print(f"Parse Spielstand ({label}) …")
+        try:
+            gvas = GvasFile.read(raw_gvas, PALWORLD_TYPE_HINTS, custom)
+            return gvas.properties["worldSaveData"]["value"]
+        except Exception as err:  # noqa: BLE001 – bewusst breit für Retry
+            print(f"  fehlgeschlagen: {err}")
+            last_error = err
+    sys.exit(f"Spielstand konnte nicht geparst werden: {last_error}\n"
+             "Bitte diese Meldung weitergeben – vermutlich hat sich das "
+             "Save-Format erneut geändert.")
 
 
 def guild_names(world) -> dict:
@@ -84,7 +112,8 @@ def guild_names(world) -> dict:
             name = raw.get("guild_name")
             if name:
                 names[str(entry["key"])] = str(name)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, AttributeError):
+            # AttributeError: RawData blieb undecodiert (Fallback-Parsing)
             continue
     return names
 
