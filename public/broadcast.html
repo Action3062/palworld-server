@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Broadcast – PalHeim</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <meta name="theme-color" content="#3ba1e8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav__inner container">
+      <a href="/" class="nav__brand">
+        <svg class="nav__logo" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <path d="M3.6 24 A20.4 20.4 0 0 1 44.4 24 L3.6 24 Z" fill="#2f9de4"/>
+          <path d="M3.6 24 H44.4" stroke="#16405f" stroke-width="3.4"/>
+          <circle cx="24" cy="24" r="7.6" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <circle cx="24" cy="24" r="3" fill="#ffb454"/>
+        </svg>
+        <span>Pal<em>Heim</em></span>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container container--narrow">
+        <span class="section__label">Admin</span>
+        <h1 class="section__title">Broadcast</h1>
+        <p class="section__intro">
+          Sendet eine Nachricht als <strong>In-Game-Ansage</strong> an alle Spieler,
+          die gerade online sind. Passwort nötig.
+        </p>
+
+        <form class="bc-card" id="bcForm">
+          <label class="vote-form__label" for="bcSecret">Broadcast-Passwort</label>
+          <input class="vote-form__input" id="bcSecret" type="password" autocomplete="current-password"
+                 placeholder="•••••••••••••" required>
+
+          <label class="vote-form__label" for="bcMessage">Nachricht</label>
+          <textarea class="vote-form__input bc-textarea" id="bcMessage" maxlength="200" rows="3"
+                    placeholder="z. B. Serverneustart in 5 Minuten – bitte einloggen abschließen!" required></textarea>
+          <div class="bc-count"><span id="bcCount">0</span>/200</div>
+
+          <button class="btn btn--accent btn--large" type="submit" id="bcSend">Ansage senden</button>
+          <p class="vote-message" id="bcMessageOut" role="status" hidden></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <p>© <span id="year">2026</span> PalHeim · Privater Community-Server</p>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    const form = document.getElementById('bcForm');
+    const secretEl = document.getElementById('bcSecret');
+    const msgEl = document.getElementById('bcMessage');
+    const countEl = document.getElementById('bcCount');
+    const out = document.getElementById('bcMessageOut');
+    const btn = document.getElementById('bcSend');
+
+    msgEl.addEventListener('input', () => { countEl.textContent = msgEl.value.length; });
+
+    function showStatus(text, ok) {
+      out.textContent = text;
+      out.classList.toggle('is-ok', ok);
+      out.classList.toggle('is-error', !ok);
+      out.hidden = false;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const secret = secretEl.value;
+      const message = msgEl.value.trim();
+      if (!message) return;
+
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/admin/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret, message })
+        });
+        const data = await res.json().catch(() => ({}));
+        showStatus(data.message || (res.ok ? 'Ansage gesendet.' : 'Fehler beim Senden.'), res.ok);
+        if (res.ok) { msgEl.value = ''; countEl.textContent = '0'; }
+      } catch {
+        showStatus('Netzwerkfehler – Ansage nicht gesendet.', false);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+  <script src="/js/banner.js"></script>
+</body>
+</html>

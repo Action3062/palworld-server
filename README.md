@@ -11,9 +11,16 @@ Dadurch ist das Deployment auf dem Hetzner-Server in wenigen Minuten erledigt.
 
 - ⚡ **Live-Status**: Online/Offline, Spielerzahl, Version, Uptime – automatisch alle 30 s aktualisiert
 - 👥 **Spielerliste**: zeigt, wer gerade online ist (abschaltbar per Config)
-- 📊 **Statistiken**: Spielerzahl-Verlauf (24 h / 7 Tage) als interaktives Chart,
-  Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit, In-Game-Tage und ein
-  Top-Spieler-Leaderboard – gesammelt vom eigenen Backend, keine externen Dienste
+- 📊 **Statistiken**: Verlauf von Spielerzahl **und Server-FPS** (24 h / 7 Tage)
+  als interaktives Chart, Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit,
+  In-Game-Tage und ein Top-Spieler-Leaderboard – gesammelt vom eigenen Backend
+- 📈 **Verfügbarkeit & Ausfälle**: Uptime der letzten 24 h / 7 Tage plus eine
+  Chronik der letzten Ausfälle – direkt aus den Messpunkten berechnet
+- 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
+  aktive Tage, Erkundung und alle Erfolge – verlinkt aus Leaderboard & Live-Liste
+- 📣 **Broadcast-Seite** (`/broadcast.html`): passwortgeschützt eine In-Game-Ansage
+  an alle Online-Spieler senden
+- 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config)
 - 📋 **Server-Adresse mit Kopier-Button**
 - 🎮 **Beitritts-Anleitung** in 3 Schritten
 - ⚙️ **Raten-Übersicht** (EP, Fangrate, Drops, …)
@@ -225,10 +232,34 @@ sudo systemctl restart palworld-web
 | `statsEnabled` | `true` | Statistiken sammeln und anzeigen? |
 | `statsPollSeconds` | `60` | Abfrage-Intervall für die Statistik |
 | `statsFile` | `data/stats.json` | Speicherort der gesammelten Daten |
+| `banner.enabled` | `false` | Hinweis-Banner oben auf der Seite anzeigen? |
+| `banner.text` | – | Banner-Text (kurz halten; kein HTML) |
+| `banner.level` | `info` | Optik: `info` (blau), `event` (grün), `warn` (orange) |
+| `admin.broadcastSecret` | – | Passwort für die Broadcast-Seite; leer = deaktiviert |
 
 Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 `PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`, `STATS_ENABLED`,
 `STATS_POLL_SECONDS`.
+
+### Wartungs-/Event-Banner
+
+Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") schaltest du in der
+`config.json` frei – Änderungen sind ohne Neustart nach wenigen Sekunden sichtbar:
+
+```json
+"banner": { "enabled": true, "text": "Wartung heute ab 20 Uhr", "level": "warn" }
+```
+
+Besucher können das Banner wegklicken; eine neue/​geänderte Nachricht erscheint
+wieder.
+
+### Broadcast (In-Game-Ansage von der Website)
+
+`https://palheim.de/broadcast.html` sendet – nach Eingabe des
+`admin.broadcastSecret` – eine Nachricht als In-Game-Ansage an alle Online-Spieler
+(über die REST-API, `/v1/api/announce`). Die Seite ist absichtlich **nicht**
+verlinkt und auf `noindex`; ohne gesetztes Secret ist der Endpunkt deaktiviert.
+Setze ein langes Zufalls-Token als `broadcastSecret`.
 
 ## Live-Karte
 

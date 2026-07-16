@@ -187,10 +187,16 @@
 
         <div class="chart-card reveal">
           <div class="chart-card__head">
-            <h3 class="chart-card__title">Spieler online</h3>
-            <div class="chart-range" role="group" aria-label="Zeitraum">
-              <button class="chart-range__btn is-active" data-range="24h" aria-pressed="true">24 Stunden</button>
-              <button class="chart-range__btn" data-range="7d" aria-pressed="false">7 Tage</button>
+            <h3 class="chart-card__title" id="chartTitle">Spieler online</h3>
+            <div class="chart-card__toggles">
+              <div class="chart-metric" role="group" aria-label="Kennzahl">
+                <button class="chart-range__btn is-active" data-metric="players" aria-pressed="true">Spieler</button>
+                <button class="chart-range__btn" data-metric="fps" aria-pressed="false">FPS</button>
+              </div>
+              <div class="chart-range" role="group" aria-label="Zeitraum">
+                <button class="chart-range__btn is-active" data-range="24h" aria-pressed="true">24 Stunden</button>
+                <button class="chart-range__btn" data-range="7d" aria-pressed="false">7 Tage</button>
+              </div>
             </div>
           </div>
           <figure class="chart" id="playersChart" tabindex="0"
@@ -199,6 +205,21 @@
               Noch keine Daten – die Statistik füllt sich, sobald der Server eine Weile läuft.
             </div>
           </figure>
+        </div>
+
+        <div class="uptime reveal" id="uptimeWrap" hidden>
+          <h3 class="leaderboard__title">Verfügbarkeit & Ausfälle</h3>
+          <div class="uptime__cards">
+            <div class="uptime__card">
+              <span class="uptime__value" id="avail24">–</span>
+              <span class="uptime__label">letzte 24 Stunden</span>
+            </div>
+            <div class="uptime__card">
+              <span class="uptime__value" id="avail7">–</span>
+              <span class="uptime__label">letzte 7 Tage</span>
+            </div>
+          </div>
+          <ul class="uptime__list" id="outageList"></ul>
         </div>
 
         <div class="leaderboard reveal" id="leaderboardWrap" hidden>
@@ -474,6 +495,7 @@
     </div>
   </footer>
 
+  <script src="/js/banner.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/stats.js"></script>
   <script src="/js/vote.js"></script>

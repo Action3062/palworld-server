@@ -42,6 +42,19 @@ const DEFAULTS = {
   statsPollSeconds: 60,
   // Wo die gesammelten Statistiken gespeichert werden
   statsFile: 'data/stats.json',
+  // Hinweis-Banner oben auf der Seite (Wartung, Events, Ankündigungen)
+  banner: {
+    enabled: false,
+    // Anzeigetext (kurz halten); HTML wird NICHT interpretiert
+    text: '',
+    // Optik: "info" (blau), "event" (grün), "warn" (orange/rot)
+    level: 'info'
+  },
+  // Broadcast von der Website (schickt eine In-Game-Ansage über die REST-API)
+  admin: {
+    // Langes Zufalls-Token; leer = Broadcast-Seite deaktiviert
+    broadcastSecret: ''
+  },
   // Live-Karte (Spieler-Positionen aus der REST-API, Basen via Uploader)
   map: {
     enabled: true,
@@ -123,6 +136,8 @@ function loadConfig() {
       cfg.votes = deepMerge(DEFAULTS.votes, loaded.votes);
       cfg.achievements = deepMerge(DEFAULTS.achievements, loaded.achievements);
       cfg.map = deepMerge(DEFAULTS.map, loaded.map);
+      cfg.banner = deepMerge(DEFAULTS.banner, loaded.banner);
+      cfg.admin = deepMerge(DEFAULTS.admin, loaded.admin);
     } catch (err) {
       console.error(`[config] config.json konnte nicht gelesen werden: ${err.message}`);
       process.exit(1);
@@ -290,13 +305,17 @@ function saveStats(force = false) {
 }
 
 // count = null bedeutet: Server war nicht erreichbar (Lücke im Chart)
-function recordSample(count) {
+// Ein Messpunkt ist [t, Spielerzahl, Server-FPS]; ältere Punkte ohne FPS
+// (nur [t, count]) bleiben kompatibel – FPS ist dann undefined/null.
+function recordSample(count, fps = null) {
   const t = Math.floor(Date.now() / 1000 / STATS_BUCKET_SECONDS) * STATS_BUCKET_SECONDS;
+  const fpsVal = fps != null ? Math.round(fps) : null;
   const last = stats.samples[stats.samples.length - 1];
   if (last && last[0] === t) {
     if (count != null) last[1] = Math.max(last[1] ?? 0, count);
+    if (fpsVal != null) last[2] = fpsVal; // jüngster FPS-Wert im Bucket
   } else {
-    stats.samples.push([t, count]);
+    stats.samples.push([t, count, fpsVal]);
     if (stats.samples.length > STATS_RETENTION_BUCKETS) {
       stats.samples.splice(0, stats.samples.length - STATS_RETENTION_BUCKETS);
     }
@@ -314,9 +333,11 @@ function localDayKey(d = new Date()) {
 
 async function pollStats() {
   let count = null;
+  let fps = null;
   try {
     const metrics = await palworldGet('/v1/api/metrics');
     count = metrics.currentplayernum ?? 0;
+    fps = typeof metrics.serverfps === 'number' ? metrics.serverfps : null;
     if (typeof metrics.days === 'number') stats.inGameDays = metrics.days;
 
     if (count > 0) {
@@ -381,8 +402,9 @@ async function pollStats() {
     }
   } catch {
     count = null;
+    fps = null;
   }
-  recordSample(count);
+  recordSample(count, fps);
   statsDirty = true;
   saveStats();
 }
@@ -452,6 +474,40 @@ function buildStatsResponse() {
         .slice(0, 10)
     : [];
 
+  // --- Verfügbarkeit & Ausfälle aus den Messpunkten (count == null = offline)
+  const availability = (list) => {
+    if (list.length === 0) return null;
+    const up = list.filter(([, c]) => c != null).length;
+    return Math.round((up / list.length) * 1000) / 10; // eine Nachkommastelle
+  };
+  const daySamples = samples.filter(([t]) => t >= nowSec - 24 * 3600);
+
+  // Aufeinanderfolgende null-Buckets zu Ausfall-Perioden zusammenfassen
+  const outages = [];
+  let runStart = null;
+  let runEnd = null;
+  for (const [t, c] of samples) {
+    if (c == null) {
+      if (runStart == null) runStart = t;
+      runEnd = t;
+    } else if (runStart != null) {
+      outages.push([runStart, runEnd + STATS_BUCKET_SECONDS]);
+      runStart = null;
+    }
+  }
+  if (runStart != null) outages.push([runStart, runEnd + STATS_BUCKET_SECONDS]);
+  const outageList = outages
+    .map(([s, e]) => ({
+      start: new Date(s * 1000).toISOString(),
+      end: new Date(e * 1000).toISOString(),
+      minutes: Math.round((e - s) / 60)
+    }))
+    .slice(-8)
+    .reverse();
+
+  const lastSample = samples[samples.length - 1];
+  const online = lastSample ? lastSample[1] != null : null;
+
   return {
     enabled: true,
     bucketSeconds: STATS_BUCKET_SECONDS,
@@ -461,7 +517,10 @@ function buildStatsResponse() {
     uniquePlayers: Object.keys(stats.players).length,
     totalPlaytimeMinutes: Math.round(totalMinutes),
     inGameDays: stats.inGameDays,
-    topPlayers
+    topPlayers,
+    availability: { day: availability(daySamples), week: availability(samples) },
+    outages: outageList,
+    online
   };
 }
 
@@ -740,8 +799,74 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Broadcast von der Website (POST) ----
+  if (req.method === 'POST' && pathname === '/api/admin/broadcast') {
+    if (!config.admin || !config.admin.broadcastSecret) {
+      sendJson(res, 404, { ok: false, message: 'Broadcast ist nicht aktiviert.' });
+      return;
+    }
+    const ip = req.socket.remoteAddress || 'unknown';
+    if (rateLimited(ip)) {
+      sendJson(res, 429, { ok: false, message: 'Zu viele Anfragen – bitte kurz warten.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const secret = body.secret || req.headers['x-admin-secret'] || '';
+      if (secret !== config.admin.broadcastSecret) {
+        sendJson(res, 403, { ok: false, message: 'Falsches Passwort.' });
+        return;
+      }
+      const message = String(body.message || '').trim().slice(0, 200);
+      if (!message) {
+        sendJson(res, 400, { ok: false, message: 'Die Nachricht ist leer.' });
+        return;
+      }
+      await palworldPost('/v1/api/announce', { message });
+      sendJson(res, 200, { ok: true, message: 'Ansage im Spiel gesendet.' });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Ansage nicht gesendet.' });
+    }
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
+    return;
+  }
+
+  // Seiten-Konfiguration (Banner) – bewusst vom Spielstatus entkoppelt
+  if (pathname === '/api/site') {
+    const b = config.banner;
+    sendJson(res, 200, {
+      banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null
+    });
+    return;
+  }
+
+  // Spieler-Profil (Kennzahlen + Erfolge)
+  if (pathname === '/api/player') {
+    const enabled = config.statsEnabled && config.showPlayerList;
+    const rawName = (searchParams.get('name') || '').trim().slice(0, 32);
+    if (!enabled) { sendJson(res, 200, { enabled: false }); return; }
+    if (!rawName) { sendJson(res, 200, { enabled: true, found: false }); return; }
+    const key = Object.keys(stats.players).find((k) => k.toLowerCase() === rawName.toLowerCase());
+    if (!key) { sendJson(res, 200, { enabled: true, found: false }); return; }
+    const p = stats.players[key];
+    sendJson(res, 200, {
+      enabled: true,
+      found: true,
+      name: key,
+      level: p.level ?? null,
+      minutes: Math.round(p.minutes || 0),
+      firstSeen: p.firstSeen || null,
+      lastSeen: p.lastSeen || null,
+      sessions: p.sessions || 0,
+      daysCount: p.daysCount || 0,
+      distKm: Math.round(p.distKm || 0),
+      areas: (p.cells || []).length,
+      achievements: evaluateAchievements(key, p, achievementContext(key))
+    });
     return;
   }
 
@@ -810,6 +935,20 @@ const server = http.createServer(async (req, res) => {
       found: true,
       player: key,
       achievements: evaluateAchievements(key, stats.players[key], achievementContext(key))
+    });
+    return;
+  }
+
+  // Spieler-Profilseiten: /spieler/<name> liefert dieselbe Seite (Name kommt aus der URL)
+  if (pathname === '/spieler' || pathname.startsWith('/spieler/')) {
+    fs.readFile(path.join(PUBLIC_DIR, 'spieler.html'), (err, page) => {
+      if (err) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('404 – Nicht gefunden');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(page);
     });
     return;
   }

@@ -57,7 +57,11 @@
       el.playerList.innerHTML = '';
       for (const p of list) {
         const li = document.createElement('li');
-        li.textContent = p.name;
+        const nameLink = document.createElement('a');
+        nameLink.className = 'player-list__link';
+        nameLink.href = `/spieler/${encodeURIComponent(p.name)}`;
+        nameLink.textContent = p.name;
+        li.appendChild(nameLink);
         const details = [];
         if (p.level != null) details.push(`Lv. ${p.level}`);
         if (p.ping != null) details.push(`${p.ping} ms`);

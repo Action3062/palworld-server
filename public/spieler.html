@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live-Karte – PalHeim</title>
-  <meta name="description" content="Live-Karte des PalHeim Palworld-Servers: Spieler und Basen in Echtzeit.">
+  <title>Spieler-Profil – PalHeim</title>
+  <meta name="description" content="Spieler-Profil auf dem PalHeim Palworld-Server: Spielzeit, Level, Distanz und Erfolge.">
+  <meta name="robots" content="noindex">
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <meta name="theme-color" content="#3ba1e8">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,7 +30,7 @@
 
       <nav class="nav__links" id="navLinks">
         <a href="/#status">Status</a>
-        <a href="/karte.html" aria-current="page">Karte</a>
+        <a href="/karte.html">Karte</a>
         <a href="/#statistiken">Statistiken</a>
         <a href="/#server">Server-Info</a>
         <a href="/#mitspielen">Mitspielen</a>
@@ -48,31 +49,67 @@
   <main>
     <section class="section">
       <div class="container">
-        <span class="section__label">Live</span>
-        <h2 class="section__title">Live-Karte</h2>
-        <p class="section__intro">
-          Wer ist wo unterwegs? Spieler-Positionen aktualisieren sich alle
-          30&nbsp;Sekunden, Basen kommen aus dem letzten Spielstand.
-          Mausrad zum Zoomen, Ziehen zum Verschieben, Doppelklick setzt die Ansicht zurück.
-        </p>
+        <a href="/#statistiken" class="profile__back">← Zurück zu den Statistiken</a>
 
-        <div class="map-card reveal">
-          <div class="map-card__head">
-            <div class="map-legend">
-              <span class="map-legend__item"><span class="map-legend__dot map-legend__dot--player"></span> Spieler</span>
-              <span class="map-legend__item"><span class="map-legend__dot map-legend__dot--base"></span> Basis</span>
+        <p class="profile__state" id="profileLoading">Lade Profil …</p>
+
+        <div class="profile__state" id="profileNotFound" hidden>
+          <h1 class="section__title">Spieler nicht gefunden</h1>
+          <p class="section__intro" data-msg>
+            Diesen Namen kennen wir noch nicht – warst du schon auf dem Server?
+            Die Statistik füllt sich minütlich, sobald jemand online ist.
+          </p>
+          <a href="/#statistiken" class="btn btn--accent btn--large">Zu den Statistiken</a>
+        </div>
+
+        <div id="profileCard" hidden>
+          <div class="profile__head">
+            <div class="profile__avatar" id="profileAvatar" aria-hidden="true">?</div>
+            <div>
+              <h1 class="profile__name" id="profileName">Spieler</h1>
+              <div class="profile__meta">
+                <span class="profile__badge" id="profileLevel">Level –</span>
+                <span class="profile__online" id="profileOnline" hidden>● jetzt online</span>
+              </div>
             </div>
-            <span class="map-card__status" id="mapStatus">Karte wird geladen …</span>
-            <button class="copy-mini" id="mapReset" hidden>Ansicht zurücksetzen</button>
           </div>
 
-          <div class="map-view" id="mapView">
-            <div class="map-view__empty" id="mapEmpty" hidden>
-              Gerade nichts zu sehen – niemand online und noch keine Basendaten.
-            </div>
+          <div class="status-grid profile__stats">
+            <article class="stat-card">
+              <span class="stat-card__label">Spielzeit</span>
+              <span class="stat-card__value" id="stPlaytime">–</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">Zurückgelegt</span>
+              <span class="stat-card__value" id="stDistance">–</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">Aktive Tage</span>
+              <span class="stat-card__value" id="stDays">–</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">Logins</span>
+              <span class="stat-card__value" id="stSessions">–</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">Gebiete erkundet</span>
+              <span class="stat-card__value" id="stAreas">–</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">Dabei seit</span>
+              <span class="stat-card__value" id="stFirst">–</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">Zuletzt online</span>
+              <span class="stat-card__value" id="stLast">–</span>
+            </article>
           </div>
 
-          <p class="map-footnote" id="mapFootnote"></p>
+          <div class="ach">
+            <h2 class="leaderboard__title">Erfolge</h2>
+            <p class="ach__summary" id="profileAchSummary"></p>
+            <div class="ach__grid" id="profileAch"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -90,15 +127,13 @@
   </footer>
 
   <script>
-    // Mobile Navigation (Karte-Seite hat kein main.js)
+    // Mobile Navigation (Profil-Seite lädt kein main.js)
     const navToggle = document.getElementById('navToggle');
     const navLinks = document.getElementById('navLinks');
     navToggle.addEventListener('click', () => {
       const open = navLinks.classList.toggle('is-open');
       navToggle.setAttribute('aria-expanded', String(open));
     });
-    // "Voten"-Link einblenden, wenn das Backend Voting aktiviert hat
-    // (identisch zur Startseite, damit die Navigation gleich bleibt)
     const voteNav = document.getElementById('navVote');
     if (voteNav) {
       fetch('/api/vote/info', { cache: 'no-store' })
@@ -107,9 +142,8 @@
         .catch(() => {});
     }
     document.getElementById('year').textContent = new Date().getFullYear();
-    document.querySelectorAll('.reveal').forEach((n) => n.classList.add('is-visible'));
   </script>
-  <script src="/js/map.js"></script>
+  <script src="/js/spieler.js"></script>
   <script src="/js/banner.js"></script>
 </body>
 </html>

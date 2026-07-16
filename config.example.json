@@ -6,6 +6,16 @@
   "cacheSeconds": 15,
   "showPlayerList": true,
 
+  "banner": {
+    "enabled": false,
+    "text": "Wartung heute ab 20 Uhr – der Server ist kurz offline.",
+    "level": "warn"
+  },
+
+  "admin": {
+    "broadcastSecret": ""
+  },
+
   "map": {
     "enabled": true,
     "uploadSecret": "LANGES-ZUFALLS-TOKEN-FUER-BASEN-UPLOAD",

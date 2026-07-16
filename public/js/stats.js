@@ -21,13 +21,31 @@
     inGameDays: section.querySelector('[data-stats="inGameDays"]'),
     chart: document.getElementById('playersChart'),
     chartEmpty: document.getElementById('chartEmpty'),
+    chartTitle: document.getElementById('chartTitle'),
     leaderboardWrap: document.getElementById('leaderboardWrap'),
-    leaderboardBody: document.getElementById('leaderboardBody')
+    leaderboardBody: document.getElementById('leaderboardBody'),
+    uptimeWrap: document.getElementById('uptimeWrap'),
+    avail24: document.getElementById('avail24'),
+    avail7: document.getElementById('avail7'),
+    outageList: document.getElementById('outageList')
   };
 
   let statsData = null;
   let range = '24h';
+  let metric = 'players';
   let focusIndex = -1; // Tastatur-Cursor im Chart
+
+  // Umschaltbare Kennzahlen: Spieler (Index 1) oder Server-FPS (Index 2)
+  const METRICS = {
+    players: {
+      idx: 1, title: 'Spieler online', agg: 'max',
+      fmt: (v) => (v === 1 ? '1 Spieler' : `${nf.format(v)} Spieler`)
+    },
+    fps: {
+      idx: 2, title: 'Server-FPS', agg: 'avg',
+      fmt: (v) => `${nf.format(v)} FPS`
+    }
+  };
 
   // ----------------------------------------------------------------
   // Formatierung
@@ -113,7 +131,11 @@
 
       const name = document.createElement('td');
       name.className = 'leaderboard__name';
-      name.textContent = p.name; // textContent: Spielernamen sind Fremddaten
+      const nameLink = document.createElement('a');
+      nameLink.className = 'leaderboard__link';
+      nameLink.href = `/spieler/${encodeURIComponent(p.name)}`;
+      nameLink.textContent = p.name; // textContent: Spielernamen sind Fremddaten
+      name.appendChild(nameLink);
 
       const level = document.createElement('td');
       level.className = 'num';
@@ -139,6 +161,43 @@
     el.leaderboardWrap.hidden = false;
   }
 
+  function renderUptime(data) {
+    const av = data.availability;
+    if (!el.uptimeWrap || !av || (av.day == null && av.week == null)) {
+      if (el.uptimeWrap) el.uptimeWrap.hidden = true;
+      return;
+    }
+    el.avail24.textContent = av.day != null ? `${nf.format(av.day)} %` : '–';
+    el.avail7.textContent = av.week != null ? `${nf.format(av.week)} %` : '–';
+
+    const outages = data.outages || [];
+    el.outageList.textContent = '';
+    if (outages.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'uptime__ok';
+      li.textContent = 'Keine Ausfälle in den letzten 7 Tagen 🎉';
+      el.outageList.appendChild(li);
+    } else {
+      const t = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      for (const o of outages) {
+        const start = new Date(o.start);
+        const end = new Date(o.end);
+        const day = start.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+        const dur = o.minutes >= 60 ? `${nf.format(Math.round(o.minutes / 6) / 10)} h` : `${o.minutes} min`;
+
+        const li = document.createElement('li');
+        const when = document.createElement('span');
+        when.textContent = `${day}, ${t(start)}–${t(end)} Uhr`;
+        const badge = document.createElement('span');
+        badge.className = 'uptime__dur';
+        badge.textContent = dur;
+        li.append(when, badge);
+        el.outageList.appendChild(li);
+      }
+    }
+    el.uptimeWrap.hidden = false;
+  }
+
   // ----------------------------------------------------------------
   // Chart (SVG-Liniendiagramm mit Flächen-Wash)
   // ----------------------------------------------------------------
@@ -146,23 +205,31 @@
   function visibleSamples() {
     const nowSec = Math.floor(Date.now() / 1000);
     const windowSec = range === '24h' ? 24 * 3600 : 7 * 24 * 3600;
-    const samples = statsData.samples.filter(([t]) => t >= nowSec - windowSec);
-    if (range === '24h') return samples;
+    const idx = METRICS[metric].idx;
+    // Rohpunkte auf [Zeit, Wert-der-aktiven-Metrik] reduzieren
+    const pairs = statsData.samples
+      .filter(([t]) => t >= nowSec - windowSec)
+      .map((s) => [s[0], s[idx] == null ? null : s[idx]]);
+    if (range === '24h') return pairs;
 
-    // 7-Tage-Ansicht: auf Stunden-Maxima verdichten, sonst ist die Linie
-    // bei 5-Minuten-Auflösung nur Rauschen. Stunden ohne einen einzigen
-    // erfolgreichen Messwert bleiben eine Lücke (Server offline).
+    // 7-Tage-Ansicht: pro Stunde verdichten (Spieler=Maximum, FPS=Durchschnitt),
+    // sonst ist die Linie bei 5-Minuten-Auflösung nur Rauschen. Stunden ohne
+    // einen einzigen erfolgreichen Messwert bleiben eine Lücke (Server offline).
+    const useAvg = METRICS[metric].agg === 'avg';
     const hours = new Map();
-    for (const [t, c] of samples) {
+    for (const [t, v] of pairs) {
       const h = Math.floor(t / 3600) * 3600;
-      const prev = hours.get(h);
-      if (prev === undefined) {
-        hours.set(h, c);
-      } else if (c != null) {
-        hours.set(h, Math.max(prev ?? 0, c));
+      const e = hours.get(h) || { sum: 0, cnt: 0, max: null };
+      if (v != null) {
+        e.sum += v;
+        e.cnt += 1;
+        e.max = e.max == null ? v : Math.max(e.max, v);
       }
+      hours.set(h, e);
     }
-    return [...hours.entries()].sort((a, b) => a[0] - b[0]);
+    return [...hours.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([h, e]) => [h, e.cnt === 0 ? null : (useAvg ? Math.round(e.sum / e.cnt) : e.max)]);
   }
 
   function niceMax(v) {
@@ -177,6 +244,8 @@
 
   function renderChart() {
     if (!statsData) return;
+
+    if (el.chartTitle) el.chartTitle.textContent = METRICS[metric].title;
 
     // Alte Render-Reste entfernen (Empty-Hinweis bleibt)
     el.chart.querySelectorAll('svg, .chart__tooltip').forEach((n) => n.remove());
@@ -349,7 +418,7 @@
         hoverDot.setAttribute('cx', px);
         hoverDot.setAttribute('cy', y(c));
         hoverDot.setAttribute('visibility', 'visible');
-        tipValue.textContent = c === 1 ? '1 Spieler' : `${nf.format(c)} Spieler`;
+        tipValue.textContent = METRICS[metric].fmt(c);
       } else {
         hoverDot.setAttribute('visibility', 'hidden');
         tipValue.textContent = 'Server offline';
@@ -417,17 +486,26 @@
   // Zeitraum-Umschalter
   // ----------------------------------------------------------------
 
-  section.querySelectorAll('.chart-range__btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      range = btn.dataset.range;
-      section.querySelectorAll('.chart-range__btn').forEach((b) => {
-        const active = b === btn;
-        b.classList.toggle('is-active', active);
-        b.setAttribute('aria-pressed', String(active));
+  function wireToggle(groupSelector, apply) {
+    const group = section.querySelector(groupSelector);
+    if (!group) return;
+    const buttons = group.querySelectorAll('.chart-range__btn');
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        buttons.forEach((b) => {
+          const active = b === btn;
+          b.classList.toggle('is-active', active);
+          b.setAttribute('aria-pressed', String(active));
+        });
+        apply(btn);
+        focusIndex = -1;
+        renderChart();
       });
-      renderChart();
     });
-  });
+  }
+
+  wireToggle('.chart-range', (btn) => { range = btn.dataset.range; });
+  wireToggle('.chart-metric', (btn) => { metric = btn.dataset.metric; });
 
   let resizeTimer;
   window.addEventListener('resize', () => {
@@ -451,6 +529,7 @@
       statsData = data;
       renderTiles(data);
       renderLeaderboard(data);
+      renderUptime(data);
       renderChart();
     } catch {
       /* Sektion behält den letzten Stand bzw. die Platzhalter */
