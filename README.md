@@ -237,20 +237,42 @@ REST-API) und die Basen aller Gilden. Die Ansicht skaliert automatisch auf
 die vorhandenen Punkte (1-km-Raster, Norden oben) – es wird keine
 kalibrierte Weltkarte benötigt. Die Karte respektiert `showPlayerList`.
 
-**Echtes Kartenbild:** Standardmäßig zeigt die Karte ein neutrales km-Raster.
-Legst du ein Bild der Palworld-Weltkarte als `public/assets/map.jpg` (oder
-`.webp`/`.png`) ab, wird es automatisch als Hintergrund verwendet – dann mit
-Zoom (Mausrad) und Verschieben (Ziehen). Als Bild eignet sich ein Screenshot
-der In-Game-Karte (M) in voller Auszoomstufe, **exakt auf die Kartenränder
-zugeschnitten** (das Bild ist dann quadratisch).
+### Echte Palworld-Karte als Hintergrund
 
-Die Standard-Kalibrierung passt zum vollständigen Kartenbild von
-Palworld 1.0 (alle Inseln; Quelle: Spieldaten `DT_WorldMapUIData`):
+Standardmäßig zeigt die Karte ein neutrales km-Raster. Legst du ein Bild der
+Palworld-Weltkarte als `public/assets/map.webp` (oder `.jpg`/`.png`) ab, wird es
+automatisch als Hintergrund verwendet – mit Zoom (Mausrad) und Verschieben
+(Ziehen). Spieler- und Basen-Marker sitzen dann geografisch korrekt darauf.
+
+**1. Kartenbild besorgen.** Ein einzelner In-Game-Screenshot reicht meist nicht
+(die Karte ist zu groß). Bewährte Quellen für ein **quadratisches Vollbild**:
+
+- Ein Community-/Wiki-Kartenexport der Palworld-Weltkarte (nach „Palworld full
+  map image" suchen) – die volle Auflösung herunterladen.
+- Aus den Spieldaten extrahiert (die Kartentextur aus `DT_WorldMapUIData`).
+- Notfalls mehrere In-Game-Screenshots (M) zu einem Bild zusammensetzen.
+
+Das Bild **exakt auf die Kartenränder zuschneiden** (keine UI/Ränder), sodass es
+quadratisch ist, dann als `public/assets/map.webp` ablegen. (Nur für dich
+privat auf dem Server – nicht ins Repo committen.)
+
+**2. Ausrichtung prüfen mit dem eingebauten Werkzeug.** Ruf die Karte mit
+`?align` auf, z. B. `https://palheim.de/karte.html?align`. Es rahmt die volle
+Ausdehnung, zeigt **Fadenkreuze** an den vier Ecken + Mitte (mit In-Game-Koordinaten)
+und ein **Live-Koordinaten-Readout** unter der Maus. Fahr über bekannte Orte
+(z. B. Fast-Travel-Statuen) und vergleiche die angezeigten Karten-Koordinaten
+mit denen aus dem Wiki. Passen sie, ist alles korrekt.
+
+**3. Bei Bedarf justieren.** Stimmt es nicht ganz, verschieb im Panel die vier
+Ränder (`xTop`/`xBottom` = Nord/Süd, `yLeft`/`yRight` = West/Ost), bis die Orte
+auf ihren Fadenkreuzen liegen, und klick **„calibration kopieren"**. Den
+kopierten Block trägst du in der `config.json` unter `map` → `calibration` ein
+und startest den Dienst neu (`systemctl restart palworld-web`).
+
+Die Standard-Kalibrierung passt bereits zum vollständigen Kartenbild von
+Palworld 1.0 (alle Inseln; Quelle: `DT_WorldMapUIData`):
 Welt-Koordinaten X ∈ [−1.099.400, +349.400], Y ∈ [−724.400, +724.400].
-Zeigt dein Bild einen anderen Ausschnitt, passt du `map.calibration` in der
-`config.json` an (Welt-Koordinaten der Bildränder: `xTop`/`xBottom` =
-Nord-/Südrand, `yLeft`/`yRight` = West-/Ostrand). Umrechnung zum Abgleich
-mit den In-Game-Kartenkoordinaten: `karte_x = (welt_y − 158000) / 459`,
+Umrechnung zu den In-Game-Kartenkoordinaten: `karte_x = (welt_y − 158000) / 459`,
 `karte_y = (welt_x + 123888) / 459`.
 
 **Basen-Positionen** stehen nicht in der REST-API, sondern nur im Spielstand.

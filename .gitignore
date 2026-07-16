@@ -4,6 +4,11 @@ config.json
 # Gesammelte Statistiken (Laufzeitdaten)
 data/
 
+# Eigenes Karten-Vollbild (server-privat, siehe README "Live-Karte")
+public/assets/map.jpg
+public/assets/map.webp
+public/assets/map.png
+
 node_modules/
 *.log
 .DS_Store

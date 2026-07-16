@@ -776,6 +776,60 @@ code {
   color: var(--text-muted);
 }
 
+/* Ausricht-Modus (?align) */
+.map-align path { stroke: var(--accent); stroke-width: 2; }
+.map-align circle { stroke: var(--accent); stroke-width: 2; }
+.map-align__label {
+  fill: var(--accent-text);
+  font-size: 11px;
+  font-family: var(--font-body);
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.map-align-panel {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 2px dashed var(--accent-light);
+  border-radius: 16px;
+  background: var(--surface-tint);
+  font-size: 0.9rem;
+}
+.map-align-panel strong { font-family: var(--font-display); font-size: 1rem; }
+.map-align-panel p { margin: 6px 0 12px; color: var(--text-muted); }
+.map-align-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.map-align-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.map-align-panel input {
+  font-family: ui-monospace, monospace;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+.map-align-panel__readout {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--navy);
+  color: #d7ecff;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .map-player__halo { animation: none; opacity: 0; }
 }

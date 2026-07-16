@@ -8,6 +8,11 @@
      Bildränder). Zoomen (Mausrad/Pinch) und Verschieben (Ziehen) möglich.
    - Ohne Bild: Auto-Fit-Raster auf die vorhandenen Punkte.
 
+   Ausricht-Modus (?align in der URL): rahmt die volle Karten-Ausdehnung,
+   zeichnet Fadenkreuze an den Ecken + Mitte mit In-Game-Koordinaten und
+   blendet ein Panel ein, um die Kalibrierung live an ein Kartenbild
+   anzupassen und die fertigen Werte zu kopieren.
+
    Ausrichtung wie im Spiel: Norden oben
    (Unreal: +X = Norden, +Y = Osten → Bildschirm-X = Welt-Y, Bildschirm-Y = -Welt-X). */
 
@@ -25,12 +30,25 @@
   const resetBtn = document.getElementById('mapReset');
   if (!view) return;
 
+  const alignMode = new URLSearchParams(location.search).has('align');
+
   let lastData = null;
-  let mapImage = null;      // { url, bounds: {minX,minY,maxX,maxY} in Screen-Koordinaten }
+  let mapImage = null;      // { url } – Kartenbild, sofern vorhanden
+  let calibration = null;   // Welt-Koordinaten der Bildränder (aus config.json)
   let viewport = null;      // aktueller Ausschnitt (Screen-Koordinaten), null = auto
   let userMoved = false;    // hat der Nutzer gezoomt/verschoben?
+  let alignPanel = null;
+  let readoutEl = null;
 
   const toScreen = (p) => ({ sx: p.y, sy: -p.x });
+
+  // Bildränder (Screen-Koordinaten) aus der Kalibrierung: sx = Welt-Y, sy = -Welt-X
+  const boundsFromCalibration = (cal) => ({
+    minX: cal.yLeft, maxX: cal.yRight, minY: -cal.xTop, maxY: -cal.xBottom
+  });
+
+  // Welt- → In-Game-Kartenkoordinaten (M-Karte), Quelle: DT_WorldMapUIData
+  const worldToIngame = (wx, wy) => ({ x: (wy - 158000) / 459, y: (wx + 123888) / 459 });
 
   // ----------------------------------------------------------------
   // Kartenbild suchen (erstes existierendes gewinnt)
@@ -45,21 +63,10 @@
     });
   }
 
-  async function findMapImage(calibration) {
+  async function findMapImage() {
     for (const url of IMAGE_CANDIDATES) {
       const found = await probeImage(url);
-      if (found && calibration) {
-        // Bildränder in Screen-Koordinaten (sx = Welt-Y, sy = -Welt-X)
-        return {
-          url: found,
-          bounds: {
-            minX: calibration.yLeft,
-            maxX: calibration.yRight,
-            minY: -calibration.xTop,
-            maxY: -calibration.xBottom
-          }
-        };
-      }
+      if (found) return { url: found };
     }
     return null;
   }
@@ -69,7 +76,8 @@
   // ----------------------------------------------------------------
 
   function autoViewport(points) {
-    if (mapImage) return { ...mapImage.bounds };
+    // Mit Bild – oder im Ausricht-Modus – die volle kalibrierte Ausdehnung zeigen
+    if ((mapImage || alignMode) && calibration) return boundsFromCalibration(calibration);
 
     let minX = Math.min(...points.map((p) => p.sx));
     let maxX = Math.max(...points.map((p) => p.sx));
@@ -108,7 +116,7 @@
     const bases = lastData.bases || [];
     const points = [...players.map(toScreen), ...bases.map(toScreen)];
 
-    if (points.length === 0 && !mapImage) {
+    if (points.length === 0 && !mapImage && !alignMode) {
       empty.hidden = false;
       return;
     }
@@ -133,13 +141,14 @@
     svg.style.touchAction = 'none';
 
     // --- Hintergrund: Kartenbild oder km-Raster
-    if (mapImage) {
+    if (mapImage && calibration) {
+      const b = boundsFromCalibration(calibration);
       const img = document.createElementNS(SVG_NS, 'image');
       img.setAttribute('href', mapImage.url);
-      img.setAttribute('x', px(mapImage.bounds.minX));
-      img.setAttribute('y', py(mapImage.bounds.minY));
-      img.setAttribute('width', (mapImage.bounds.maxX - mapImage.bounds.minX) * scale);
-      img.setAttribute('height', (mapImage.bounds.maxY - mapImage.bounds.minY) * scale);
+      img.setAttribute('x', px(b.minX));
+      img.setAttribute('y', py(b.minY));
+      img.setAttribute('width', (b.maxX - b.minX) * scale);
+      img.setAttribute('height', (b.maxY - b.minY) * scale);
       img.setAttribute('preserveAspectRatio', 'none');
       svg.appendChild(img);
     } else {
@@ -164,6 +173,9 @@
       scaleText.textContent = `Raster: ${gridStep / 100000} km · N ↑`;
       svg.appendChild(scaleText);
     }
+
+    // --- Ausricht-Overlay (Fadenkreuze an Ecken + Mitte)
+    if (alignMode && calibration) drawAlign(svg, px, py);
 
     // --- Basen (unter den Spielern)
     for (const b of bases) {
@@ -233,12 +245,22 @@
         maxY: c.sy + (vp.maxY - c.sy) * factor
       };
       // Zoom begrenzen: nicht weiter raus als 3× Basisansicht, nicht näher als ~200 m
-      const base = mapImage ? mapImage.bounds : autoViewport(points);
+      const base = (mapImage || alignMode) && calibration ? boundsFromCalibration(calibration) : autoViewport(points);
       const span = nvp.maxX - nvp.minX;
       if (span > (base.maxX - base.minX) * 3 || span < 20000) return;
       setUserViewport(nvp);
       render();
     }, { passive: false });
+
+    // Live-Koordinaten im Ausricht-Modus
+    if (alignMode && readoutEl) {
+      svg.addEventListener('mousemove', (e) => {
+        const w = screenToWorld(e.clientX, e.clientY); // sx = Welt-Y, sy = -Welt-X
+        const wx = -w.sy, wy = w.sx;
+        const ig = worldToIngame(wx, wy);
+        readoutEl.textContent = `Welt X ${Math.round(wx)}, Y ${Math.round(wy)}  ·  Karte ${Math.round(ig.x)}, ${Math.round(ig.y)}`;
+      });
+    }
 
     let drag = null;
     svg.addEventListener('pointerdown', (e) => {
@@ -266,6 +288,93 @@
     view.appendChild(svg);
   }
 
+  // Fadenkreuze an den vier Ecken + Mitte der kalibrierten Ausdehnung
+  function drawAlign(svg, px, py) {
+    const cal = calibration;
+    const marks = [
+      { x: cal.xTop, y: cal.yLeft, name: 'NW' },
+      { x: cal.xTop, y: cal.yRight, name: 'NO' },
+      { x: cal.xBottom, y: cal.yLeft, name: 'SW' },
+      { x: cal.xBottom, y: cal.yRight, name: 'SO' },
+      { x: (cal.xTop + cal.xBottom) / 2, y: (cal.yLeft + cal.yRight) / 2, name: 'Mitte' }
+    ];
+    for (const m of marks) {
+      const s = toScreen({ x: m.x, y: m.y });
+      const cx = px(s.sx), cy = py(s.sy);
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', 'map-align');
+
+      const cross = document.createElementNS(SVG_NS, 'path');
+      cross.setAttribute('d', `M${cx - 15} ${cy} H${cx + 15} M${cx} ${cy - 15} V${cy + 15}`);
+      g.appendChild(cross);
+
+      const ring = document.createElementNS(SVG_NS, 'circle');
+      ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', 8);
+      ring.setAttribute('fill', 'none');
+      g.appendChild(ring);
+
+      const ig = worldToIngame(m.x, m.y);
+      const label = document.createElementNS(SVG_NS, 'text');
+      label.setAttribute('x', cx + 12); label.setAttribute('y', cy - 10);
+      label.setAttribute('class', 'map-align__label');
+      label.textContent = `${m.name} · Karte ${Math.round(ig.x)},${Math.round(ig.y)}`;
+      g.appendChild(label);
+
+      svg.appendChild(g);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Ausricht-Panel (nur im ?align-Modus)
+  // ----------------------------------------------------------------
+
+  function buildAlignPanel() {
+    const card = view.closest('.map-card') || view.parentElement;
+    const panel = document.createElement('div');
+    panel.className = 'map-align-panel';
+    panel.innerHTML =
+      '<strong>🧭 Ausricht-Modus</strong>' +
+      '<p>Lege dein Karten-Vollbild als <code>/assets/map.webp</code> ab. Verschiebe die Ränder, ' +
+      'bis bekannte Orte (z. B. Fast-Travel-Statuen) genau auf ihren In-Game-Koordinaten liegen, ' +
+      'dann kopiere die Werte in die <code>config.json</code>.</p>' +
+      '<div class="map-align-panel__grid">' +
+      '<label>Nord (xTop)<input type="number" data-k="xTop"></label>' +
+      '<label>Süd (xBottom)<input type="number" data-k="xBottom"></label>' +
+      '<label>West (yLeft)<input type="number" data-k="yLeft"></label>' +
+      '<label>Ost (yRight)<input type="number" data-k="yRight"></label>' +
+      '</div>' +
+      '<div class="map-align-panel__readout" id="mapAlignReadout">Bewege die Maus über die Karte …</div>' +
+      '<button type="button" class="copy-mini" id="mapAlignCopy">calibration kopieren</button>';
+    card.insertBefore(panel, view.nextSibling);
+    readoutEl = panel.querySelector('#mapAlignReadout');
+
+    panel.querySelectorAll('input[data-k]').forEach((inp) => {
+      inp.value = calibration[inp.dataset.k];
+      inp.addEventListener('input', () => {
+        const v = Number(inp.value);
+        if (Number.isFinite(v)) { calibration[inp.dataset.k] = v; render(); }
+      });
+    });
+
+    const copyBtn = panel.querySelector('#mapAlignCopy');
+    copyBtn.addEventListener('click', () => {
+      const c = calibration;
+      const json =
+        '"calibration": {\n' +
+        `  "xTop": ${c.xTop},\n` +
+        `  "xBottom": ${c.xBottom},\n` +
+        `  "yLeft": ${c.yLeft},\n` +
+        `  "yRight": ${c.yRight}\n` +
+        '}';
+      navigator.clipboard.writeText(json).then(() => {
+        copyBtn.textContent = 'kopiert!';
+        setTimeout(() => { copyBtn.textContent = 'calibration kopieren'; }, 1600);
+      }).catch(() => {});
+    });
+
+    alignPanel = panel;
+  }
+
   // ----------------------------------------------------------------
   // Daten laden
   // ----------------------------------------------------------------
@@ -284,10 +393,13 @@
         return;
       }
 
+      if (data.calibration) calibration = { ...data.calibration };
+
       if (!imageProbed) {
         imageProbed = true;
-        mapImage = await findMapImage(data.calibration);
+        mapImage = await findMapImage();
       }
+      if (alignMode && !alignPanel && calibration) buildAlignPanel();
 
       const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       status.textContent = data.online
