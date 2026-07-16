@@ -349,7 +349,7 @@ Alle Texte liegen direkt im HTML – einfach editieren:
 |---|---|
 | Servername „PalHeim“ | `public/index.html` (Titel, Hero, Footer) + `public/impressum.html` / `datenschutz.html` |
 | Server-Adresse `pve.palheim.de:8211` | `public/index.html` (Hero-Chip + Schritt 2) |
-| Discord-Link `discord.gg/DEIN-INVITE` | `public/index.html` (mehrfach – suchen & ersetzen) |
+| Discord-Link `discord.gg/b8WYXN3Q3e` | `public/index.html` + `public/karte.html` (mehrfach – suchen & ersetzen) |
 | Raten & Server-Infos | `public/index.html`, Sektion `#server` |
 | Regeln | `public/index.html`, Sektion `#regeln` |
 | FAQ | `public/index.html`, Sektion `#faq` |
