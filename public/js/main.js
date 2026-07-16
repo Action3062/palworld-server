@@ -179,6 +179,20 @@
   });
 
   // -------------------------------------------------------------
+  // "Nach oben" / Logo: Der #top-Anker sitzt auf dem sticky Header,
+  // den der Browser als bereits sichtbar ansieht und daher nicht
+  // anspringt. Darum hier explizit nach ganz oben scrollen.
+  // -------------------------------------------------------------
+
+  document.querySelectorAll('a[href="#top"]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+    });
+  });
+
+  // -------------------------------------------------------------
   // Scroll-Reveal-Animationen
   // -------------------------------------------------------------
 
