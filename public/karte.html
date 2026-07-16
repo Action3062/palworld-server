@@ -31,7 +31,10 @@
         <a href="/#status">Status</a>
         <a href="/karte.html" aria-current="page">Karte</a>
         <a href="/#statistiken">Statistiken</a>
+        <a href="/#server">Server-Info</a>
         <a href="/#mitspielen">Mitspielen</a>
+        <a href="/#voten" id="navVote" hidden>Voten</a>
+        <a href="/#regeln">Regeln</a>
         <a href="/#faq">FAQ</a>
         <a href="https://discord.gg/b8WYXN3Q3e" target="_blank" rel="noopener" class="btn btn--small btn--accent">Discord</a>
       </nav>
@@ -94,6 +97,15 @@
       const open = navLinks.classList.toggle('is-open');
       navToggle.setAttribute('aria-expanded', String(open));
     });
+    // "Voten"-Link einblenden, wenn das Backend Voting aktiviert hat
+    // (identisch zur Startseite, damit die Navigation gleich bleibt)
+    const voteNav = document.getElementById('navVote');
+    if (voteNav) {
+      fetch('/api/vote/info', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((info) => { if (info && info.enabled) voteNav.hidden = false; })
+        .catch(() => {});
+    }
     document.getElementById('year').textContent = new Date().getFullYear();
     document.querySelectorAll('.reveal').forEach((n) => n.classList.add('is-visible'));
   </script>
