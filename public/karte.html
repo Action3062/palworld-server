@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live-Karte – PalHeim</title>
+  <meta name="description" content="Live-Karte des PalHeim Palworld-Servers: Spieler und Basen in Echtzeit.">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <meta name="theme-color" content="#3ba1e8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav__inner container">
+      <a href="/" class="nav__brand">
+        <svg class="nav__logo" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <path d="M3.6 24 A20.4 20.4 0 0 1 44.4 24 L3.6 24 Z" fill="#2f9de4"/>
+          <path d="M3.6 24 H44.4" stroke="#16405f" stroke-width="3.4"/>
+          <circle cx="24" cy="24" r="7.6" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <circle cx="24" cy="24" r="3" fill="#ffb454"/>
+        </svg>
+        <span>Pal<em>Heim</em></span>
+      </a>
+
+      <nav class="nav__links" id="navLinks">
+        <a href="/#status">Status</a>
+        <a href="/karte.html" aria-current="page">Karte</a>
+        <a href="/#statistiken">Statistiken</a>
+        <a href="/#mitspielen">Mitspielen</a>
+        <a href="/#faq">FAQ</a>
+        <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener" class="btn btn--small btn--accent">Discord</a>
+      </nav>
+
+      <button class="nav__toggle" id="navToggle" aria-label="Menü öffnen" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <span class="section__label">Live</span>
+        <h2 class="section__title">Live-Karte</h2>
+        <p class="section__intro">
+          Wer ist wo unterwegs? Spieler-Positionen aktualisieren sich alle
+          30&nbsp;Sekunden, Basen kommen aus dem letzten Spielstand.
+        </p>
+
+        <div class="map-card reveal">
+          <div class="map-card__head">
+            <div class="map-legend">
+              <span class="map-legend__item"><span class="map-legend__dot map-legend__dot--player"></span> Spieler</span>
+              <span class="map-legend__item"><span class="map-legend__dot map-legend__dot--base"></span> Basis</span>
+            </div>
+            <span class="map-card__status" id="mapStatus">Karte wird geladen …</span>
+          </div>
+
+          <div class="map-view" id="mapView">
+            <div class="map-view__empty" id="mapEmpty" hidden>
+              Gerade nichts zu sehen – niemand online und noch keine Basendaten.
+            </div>
+          </div>
+
+          <p class="map-footnote" id="mapFootnote"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <p>© <span id="year">2026</span> PalHeim · Privater Community-Server</p>
+      <nav class="footer__links">
+        <a href="/">Startseite</a>
+        <a href="/impressum.html">Impressum</a>
+        <a href="/datenschutz.html">Datenschutz</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // Mobile Navigation (Karte-Seite hat kein main.js)
+    const navToggle = document.getElementById('navToggle');
+    const navLinks = document.getElementById('navLinks');
+    navToggle.addEventListener('click', () => {
+      const open = navLinks.classList.toggle('is-open');
+      navToggle.setAttribute('aria-expanded', String(open));
+    });
+    document.getElementById('year').textContent = new Date().getFullYear();
+    document.querySelectorAll('.reveal').forEach((n) => n.classList.add('is-visible'));
+  </script>
+  <script src="/js/map.js"></script>
+</body>
+</html>

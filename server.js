@@ -42,6 +42,14 @@ const DEFAULTS = {
   statsPollSeconds: 60,
   // Wo die gesammelten Statistiken gespeichert werden
   statsFile: 'data/stats.json',
+  // Live-Karte (Spieler-Positionen aus der REST-API, Basen via Uploader)
+  map: {
+    enabled: true,
+    // Geheimnis für den Basen-Upload (tools/upload-bases.py auf dem
+    // Palworld-Server); leer = Upload deaktiviert
+    uploadSecret: '',
+    basesFile: 'data/bases.json'
+  },
   // Erfolge (werden aus den Statistik-Daten berechnet)
   achievements: {
     enabled: true,
@@ -102,6 +110,7 @@ function loadConfig() {
       Object.assign(cfg, loaded);
       cfg.votes = deepMerge(DEFAULTS.votes, loaded.votes);
       cfg.achievements = deepMerge(DEFAULTS.achievements, loaded.achievements);
+      cfg.map = deepMerge(DEFAULTS.map, loaded.map);
     } catch (err) {
       console.error(`[config] config.json konnte nicht gelesen werden: ${err.message}`);
       process.exit(1);
@@ -474,6 +483,57 @@ if (config.votes && config.votes.enabled) {
   console.log('[votes] Vote-Belohnungssystem aktiv');
 }
 
+// ---------------------------------------------------------------------------
+// Live-Karte
+// ---------------------------------------------------------------------------
+// Spieler-Positionen kommen live aus der REST-API. Basen-Positionen stehen
+// nur in der Level.sav – tools/upload-bases.py auf dem Palworld-Server
+// lädt sie regelmäßig hierher hoch (POST /api/map/bases).
+
+const basesFile = path.join(__dirname, (config.map && config.map.basesFile) || 'data/bases.json');
+let basesData = { bases: [], updatedAt: null };
+try {
+  const raw = JSON.parse(fs.readFileSync(basesFile, 'utf8'));
+  if (Array.isArray(raw.bases)) basesData = raw;
+} catch { /* noch keine Basendaten */ }
+
+function saveBases() {
+  try {
+    fs.mkdirSync(path.dirname(basesFile), { recursive: true });
+    const tmp = `${basesFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(basesData));
+    fs.renameSync(tmp, basesFile);
+  } catch (err) {
+    console.error(`[map] Basen speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
+// Positions-Cache (eigener Abruf, /api/status enthält keine Koordinaten)
+let mapPlayersCache = { players: null, at: 0 };
+
+async function getMapPlayers() {
+  const now = Date.now();
+  if (now - mapPlayersCache.at < config.cacheSeconds * 1000) {
+    return mapPlayersCache.players;
+  }
+  let players = null;
+  try {
+    const data = await palworldGet('/v1/api/players');
+    players = (data.players || [])
+      .filter((p) => p.name && Number.isFinite(Number(p.location_x)) && Number.isFinite(Number(p.location_y)))
+      .map((p) => ({
+        name: p.name,
+        level: p.level ?? null,
+        x: Math.round(Number(p.location_x)),
+        y: Math.round(Number(p.location_y))
+      }));
+  } catch {
+    players = null; // Server offline
+  }
+  mapPlayersCache = { players, at: now };
+  return players;
+}
+
 // Einfaches Rate-Limit pro IP (Schutz vor Claim-Spam)
 const rateBuckets = new Map();
 function rateLimited(ip, limit = 10, windowMs = 60_000) {
@@ -578,6 +638,36 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url, 'http://localhost');
 
+  // ---- Basen-Upload für die Live-Karte (POST) ----
+  if (req.method === 'POST' && pathname === '/api/map/bases') {
+    if (!config.map.enabled || !config.map.uploadSecret) {
+      res.writeHead(404).end();
+      return;
+    }
+    const secret = searchParams.get('secret') || req.headers['x-upload-secret'] || '';
+    if (secret !== config.map.uploadSecret) {
+      res.writeHead(403).end();
+      return;
+    }
+    try {
+      const body = await readJsonBody(req, 262144);
+      const bases = (Array.isArray(body.bases) ? body.bases : [])
+        .slice(0, 500)
+        .filter((b) => Number.isFinite(Number(b.x)) && Number.isFinite(Number(b.y)))
+        .map((b) => ({
+          guild: String(b.guild || 'Unbekannte Gilde').slice(0, 48),
+          x: Math.round(Number(b.x)),
+          y: Math.round(Number(b.y))
+        }));
+      basesData = { bases, updatedAt: new Date().toISOString() };
+      saveBases();
+      sendJson(res, 200, { ok: true, count: bases.length });
+    } catch {
+      sendJson(res, 400, { ok: false });
+    }
+    return;
+  }
+
   // ---- Vote-Endpunkte (POST) ----
   if (req.method === 'POST' && pathname.startsWith('/api/vote/')) {
     const ip = req.socket.remoteAddress || 'unknown';
@@ -657,6 +747,23 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'no-store'
     });
     res.end(JSON.stringify(config.statsEnabled ? buildStatsResponse() : { enabled: false }));
+    return;
+  }
+
+  if (pathname === '/api/map') {
+    // Spielernamen/-positionen respektieren dieselbe Privatsphäre-Einstellung
+    if (!config.map.enabled || !config.showPlayerList) {
+      sendJson(res, 200, { enabled: false });
+      return;
+    }
+    const players = await getMapPlayers();
+    sendJson(res, 200, {
+      enabled: true,
+      online: players !== null,
+      players: players || [],
+      bases: basesData.bases,
+      basesUpdatedAt: basesData.updatedAt
+    });
     return;
   }
 

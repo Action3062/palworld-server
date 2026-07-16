@@ -202,6 +202,30 @@ Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 `PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`, `STATS_ENABLED`,
 `STATS_POLL_SECONDS`.
 
+## Live-Karte
+
+`/karte.html` zeigt Spieler-Positionen in Echtzeit (alle 30 s, aus der
+REST-API) und die Basen aller Gilden. Die Ansicht skaliert automatisch auf
+die vorhandenen Punkte (1-km-Raster, Norden oben) – es wird keine
+kalibrierte Weltkarte benötigt. Die Karte respektiert `showPlayerList`.
+
+**Basen-Positionen** stehen nicht in der REST-API, sondern nur im Spielstand.
+Dafür läuft auf dem **Palworld-Server** ein Uploader:
+
+```bash
+pip3 install palworld-save-tools
+# testen (Web-Server über den WireGuard-Tunnel):
+python3 tools/upload-bases.py \
+  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
+  --url http://10.88.0.1:3000/api/map/bases \
+  --secret DEIN-UPLOAD-SECRET --dry-run
+# als Cronjob alle 30 Minuten (crontab -e):
+*/30 * * * * python3 /pfad/zu/upload-bases.py --sav "…" --url "…" --secret "…"
+```
+
+Das `uploadSecret` wird in der `config.json` der Webseite unter `map`
+gesetzt; ohne Secret ist der Upload-Endpunkt deaktiviert.
+
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 
 Spieler voten auf der Serverliste und holen sich auf der Webseite eine

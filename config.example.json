@@ -6,6 +6,11 @@
   "cacheSeconds": 15,
   "showPlayerList": true,
 
+  "map": {
+    "enabled": true,
+    "uploadSecret": "LANGES-ZUFALLS-TOKEN-FUER-BASEN-UPLOAD"
+  },
+
   "votes": {
     "enabled": false,
     "voteUrl": "https://palserver.de/server/palheim-251",
