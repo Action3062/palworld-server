@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seite nicht gefunden – PalHeim</title>
+  <meta name="description" content="Diese Seite gibt es nicht (mehr). Zurück zur PalHeim-Startseite oder in den Discord.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <meta name="theme-color" content="#3ba1e8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav__inner container">
+      <a href="/" class="nav__brand">
+        <svg class="nav__logo" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <path d="M3.6 24 A20.4 20.4 0 0 1 44.4 24 L3.6 24 Z" fill="#2f9de4"/>
+          <path d="M3.6 24 H44.4" stroke="#16405f" stroke-width="3.4"/>
+          <circle cx="24" cy="24" r="7.6" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <circle cx="24" cy="24" r="3" fill="#ffb454"/>
+        </svg>
+        <span>Pal<em>Heim</em></span>
+      </a>
+
+      <nav class="nav__links" id="navLinks">
+        <a href="/#status">Status</a>
+        <a href="/karte.html">Karte</a>
+        <a href="/#statistiken">Statistiken</a>
+        <a href="/#server">Server-Info</a>
+        <a href="/#mitspielen">Mitspielen</a>
+        <a href="/#voten" id="navVote" hidden>Voten</a>
+        <a href="/#regeln">Regeln</a>
+        <a href="/#faq">FAQ</a>
+        <a href="https://discord.gg/b8WYXN3Q3e" target="_blank" rel="noopener" class="btn btn--small btn--accent">Discord</a>
+      </nav>
+
+      <button class="nav__toggle" id="navToggle" aria-label="Menü öffnen" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="notfound">
+      <div class="container notfound__inner">
+        <div class="notfound__scene" role="img" aria-label="Ein kleines Wesen steht ratlos vor einem Wegweiser"></div>
+        <p class="notfound__code">404</p>
+        <h1 class="notfound__title">Diese Seite hat sich verlaufen</h1>
+        <p class="notfound__text">
+          Selbst unser bester Späher findet hier nichts. Vielleicht ein Tippfehler
+          in der Adresse oder ein alter Link – schnapp dir einen der Wege zurück ins Dorf.
+        </p>
+        <div class="notfound__actions">
+          <a href="/" class="btn btn--accent btn--large">Zur Startseite</a>
+          <a href="/karte.html" class="btn btn--ghost btn--large">Live-Karte</a>
+          <a href="https://discord.gg/b8WYXN3Q3e" target="_blank" rel="noopener" class="btn btn--ghost btn--large">Discord</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <p>© <span id="year">2026</span> PalHeim · Privater Community-Server · Gehostet in Deutschland</p>
+      <nav class="footer__links">
+        <a href="/">Startseite</a>
+        <a href="/impressum.html">Impressum</a>
+        <a href="/datenschutz.html">Datenschutz</a>
+      </nav>
+      <p class="footer__disclaimer">
+        PalHeim ist ein inoffizieller Community-Server. Palworld ist eine Marke von Pocketpair, Inc.
+        Diese Seite steht in keiner Verbindung zu Pocketpair.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Mobile Navigation (die 404-Seite lädt kein main.js)
+    const navToggle = document.getElementById('navToggle');
+    const navLinks = document.getElementById('navLinks');
+    navToggle.addEventListener('click', () => {
+      const open = navLinks.classList.toggle('is-open');
+      navToggle.setAttribute('aria-expanded', String(open));
+    });
+    // "Voten"-Link einblenden, wenn das Backend Voting aktiviert hat
+    const voteNav = document.getElementById('navVote');
+    if (voteNav) {
+      fetch('/api/vote/info', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((info) => { if (info && info.enabled) voteNav.hidden = false; })
+        .catch(() => {});
+    }
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

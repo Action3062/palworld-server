@@ -628,8 +628,19 @@ function serveStatic(req, res) {
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('404 – Nicht gefunden');
+      // Freundliche 404-Seite ausliefern (Fallback: Klartext, falls sie fehlt)
+      fs.readFile(path.join(PUBLIC_DIR, '404.html'), (err404, page) => {
+        if (err404) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('404 – Nicht gefunden');
+          return;
+        }
+        res.writeHead(404, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache'
+        });
+        res.end(page);
+      });
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
