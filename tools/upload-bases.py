@@ -5,17 +5,21 @@ Basen-Uploader für die PalHeim-Live-Karte
 Läuft auf dem PALWORLD-Server: liest die Basen-Positionen (Basislager) aus
 der Level.sav und lädt sie zur Webseite hoch.
 
-Einrichtung:
-  1. pip3 install palworld-save-tools
+Einrichtung (auf dem PALWORLD-Server, nicht auf dem Web-Server!):
+  1. Debian 12+/Trixie (pip fehlt, System-Python ist geschützt):
+       apt update && apt install -y python3-venv
+       python3 -m venv /opt/paltools
+       /opt/paltools/bin/pip install palworld-save-tools
+     Skript dann mit  /opt/paltools/bin/python3 upload-bases.py …  starten
   2. In der config.json der WEBSEITE ein Upload-Geheimnis setzen:
        "map": { "enabled": true, "uploadSecret": "LANGES-ZUFALLS-TOKEN" }
   3. Auf dem Palworld-Server testen:
        python3 upload-bases.py \
          --sav ~/palworld/Saved/SaveGames/0/*/Level.sav \
-         --url http://10.88.0.1:3000/api/map/bases \
+         --url http://10.88.0.1/api/map/bases \
          --secret LANGES-ZUFALLS-TOKEN
-     (10.88.0.1 = Web-Server über den WireGuard-Tunnel; alternativ die
-      öffentliche HTTPS-URL der Webseite verwenden)
+     (10.88.0.1 = Web-Server über den WireGuard-Tunnel, Port 80 = nginx;
+      alternativ die öffentliche HTTPS-URL der Webseite verwenden)
   4. Als Cronjob, z. B. alle 30 Minuten (crontab -e):
        */30 * * * * python3 /root/upload-bases.py --sav ... --url ... --secret ... >> /var/log/upload-bases.log 2>&1
 
@@ -34,7 +38,11 @@ try:
     from palworld_save_tools.palsav import decompress_sav_to_gvas
     from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TYPE_HINTS
 except ImportError:
-    sys.exit("palworld-save-tools fehlt. Installieren mit:  pip3 install palworld-save-tools")
+    sys.exit("palworld-save-tools fehlt. Installieren (Debian 12+/Trixie):\n"
+             "  apt install -y python3-venv\n"
+             "  python3 -m venv /opt/paltools\n"
+             "  /opt/paltools/bin/pip install palworld-save-tools\n"
+             "und das Skript mit  /opt/paltools/bin/python3  starten.")
 
 
 def find_sav(pattern: str) -> str:
@@ -112,7 +120,7 @@ def upload(url: str, secret: str, bases: list) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Basen aus Level.sav zur Live-Karte hochladen")
     parser.add_argument("--sav", required=True, help="Pfad/Glob zur Level.sav")
-    parser.add_argument("--url", required=True, help="Upload-URL, z. B. http://10.88.0.1:3000/api/map/bases")
+    parser.add_argument("--url", required=True, help="Upload-URL, z. B. http://10.88.0.1/api/map/bases")
     parser.add_argument("--secret", required=True, help="uploadSecret aus der config.json der Webseite")
     parser.add_argument("--dry-run", action="store_true", help="nur anzeigen, nichts hochladen")
     args = parser.parse_args()

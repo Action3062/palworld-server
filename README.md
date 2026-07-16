@@ -233,7 +233,7 @@ pip3 install palworld-save-tools
 # testen (Web-Server über den WireGuard-Tunnel):
 python3 tools/upload-bases.py \
   --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
-  --url http://10.88.0.1:3000/api/map/bases \
+  --url http://10.88.0.1/api/map/bases \
   --secret DEIN-UPLOAD-SECRET --dry-run
 # als Cronjob alle 30 Minuten (crontab -e):
 */30 * * * * python3 /pfad/zu/upload-bases.py --sav "…" --url "…" --secret "…"
