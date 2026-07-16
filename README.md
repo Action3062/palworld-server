@@ -209,6 +209,22 @@ REST-API) und die Basen aller Gilden. Die Ansicht skaliert automatisch auf
 die vorhandenen Punkte (1-km-Raster, Norden oben) – es wird keine
 kalibrierte Weltkarte benötigt. Die Karte respektiert `showPlayerList`.
 
+**Echtes Kartenbild:** Standardmäßig zeigt die Karte ein neutrales km-Raster.
+Legst du ein Bild der Palworld-Weltkarte als `public/assets/map.jpg` (oder
+`.webp`/`.png`) ab, wird es automatisch als Hintergrund verwendet – dann mit
+Zoom (Mausrad) und Verschieben (Ziehen). Als Bild eignet sich ein Screenshot
+der In-Game-Karte (M) in voller Auszoomstufe, **exakt auf die Kartenränder
+zugeschnitten** (das Bild ist dann quadratisch).
+
+Die Standard-Kalibrierung passt zum vollständigen Kartenbild von
+Palworld 1.0 (alle Inseln; Quelle: Spieldaten `DT_WorldMapUIData`):
+Welt-Koordinaten X ∈ [−1.099.400, +349.400], Y ∈ [−724.400, +724.400].
+Zeigt dein Bild einen anderen Ausschnitt, passt du `map.calibration` in der
+`config.json` an (Welt-Koordinaten der Bildränder: `xTop`/`xBottom` =
+Nord-/Südrand, `yLeft`/`yRight` = West-/Ostrand). Umrechnung zum Abgleich
+mit den In-Game-Kartenkoordinaten: `karte_x = (welt_y − 158000) / 459`,
+`karte_y = (welt_x + 123888) / 459`.
+
 **Basen-Positionen** stehen nicht in der REST-API, sondern nur im Spielstand.
 Dafür läuft auf dem **Palworld-Server** ein Uploader:
 

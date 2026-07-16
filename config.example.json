@@ -8,7 +8,13 @@
 
   "map": {
     "enabled": true,
-    "uploadSecret": "LANGES-ZUFALLS-TOKEN-FUER-BASEN-UPLOAD"
+    "uploadSecret": "LANGES-ZUFALLS-TOKEN-FUER-BASEN-UPLOAD",
+    "calibration": {
+      "xTop": 349400,
+      "xBottom": -1099400,
+      "yLeft": -724400,
+      "yRight": 724400
+    }
   },
 
   "votes": {

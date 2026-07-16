@@ -48,7 +48,19 @@ const DEFAULTS = {
     // Geheimnis für den Basen-Upload (tools/upload-bases.py auf dem
     // Palworld-Server); leer = Upload deaktiviert
     uploadSecret: '',
-    basesFile: 'data/bases.json'
+    basesFile: 'data/bases.json',
+    // Kalibrierung des optionalen Kartenbildes (/assets/map.jpg|webp|png):
+    // Welt-Koordinaten der Bildränder. Norden (oben) = +X, Osten (rechts) = +Y.
+    // Die Standardwerte passen zum vollständigen In-Game-Kartenbild
+    // (siehe README, Abschnitt "Live-Karte").
+    // Quelle: DT_WorldMapUIData (Spieldaten, Palworld 1.0 MainMap) –
+    // das vollständige Kartenbild ist exakt quadratisch.
+    calibration: {
+      xTop: 349400,
+      xBottom: -1099400,
+      yLeft: -724400,
+      yRight: 724400
+    }
   },
   // Erfolge (werden aus den Statistik-Daten berechnet)
   achievements: {
@@ -762,7 +774,8 @@ const server = http.createServer(async (req, res) => {
       online: players !== null,
       players: players || [],
       bases: basesData.bases,
-      basesUpdatedAt: basesData.updatedAt
+      basesUpdatedAt: basesData.updatedAt,
+      calibration: config.map.calibration
     });
     return;
   }
