@@ -8,8 +8,14 @@
 #   systemd-Service, nginx-Reverse-Proxy, optional HTTPS via Let's Encrypt.
 #
 # Aufruf als root:
-#   bash setup.sh                 → Webseite über http://<Server-IP>
-#   bash setup.sh deinedomain.de  → + nginx server_name + HTTPS-Zertifikat
+#   bash setup.sh              → Webseite über http://<Server-IP>
+#   bash setup.sh palheim.de   → + nginx server_name + HTTPS-Zertifikat
+#
+# Optional eine E-Mail für Let's-Encrypt-Ablaufwarnungen:
+#   LE_EMAIL=du@example.de bash setup.sh palheim.de
+#
+# Läuft die Webseite schon und du willst HTTPS nur nachträglich aktivieren,
+# reicht: bash deploy/enable-https.sh
 #
 # Das Skript ist idempotent – erneut ausführen aktualisiert den Code und
 # lässt eine vorhandene config.json unangetastet.
@@ -181,8 +187,28 @@ systemctl reload nginx
 if [ -n "$DOMAIN" ]; then
   step "HTTPS-Zertifikat für $DOMAIN (Let's Encrypt)"
   apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
-  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect \
-    || c_yellow "certbot fehlgeschlagen – zeigt die Domain schon auf diesen Server? Später erneut: certbot --nginx -d $DOMAIN"
+
+  # www.<domain> nur aufnehmen, wenn es per DNS auf dieselbe IP wie die
+  # Apex-Domain zeigt (sonst schlägt certbot für www fehl)
+  CERT_DOMAINS=(-d "$DOMAIN")
+  WWW_IP=$(getent ahostsv4 "www.$DOMAIN" | awk '{print $1; exit}' || true)
+  APEX_IP=$(getent ahostsv4 "$DOMAIN" | awk '{print $1; exit}' || true)
+  if [ -n "$WWW_IP" ] && [ "$WWW_IP" = "$APEX_IP" ]; then
+    CERT_DOMAINS+=(-d "www.$DOMAIN")
+    sed -i "s/server_name $SERVER_NAME;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/palworld-web
+    nginx -t && systemctl reload nginx
+  fi
+
+  # Optional eine E-Mail für Ablauf-/Widerruf-Warnungen (LE_EMAIL=...)
+  if [ -n "${LE_EMAIL:-}" ]; then
+    EMAIL_ARGS=(--email "$LE_EMAIL" --no-eff-email)
+  else
+    EMAIL_ARGS=(--register-unsafely-without-email)
+  fi
+
+  certbot --nginx "${CERT_DOMAINS[@]}" "${EMAIL_ARGS[@]}" \
+    --non-interactive --agree-tos --redirect --keep-until-expiring \
+    || c_yellow "certbot fehlgeschlagen – zeigt die Domain schon auf diesen Server? Später erneut: bash $INSTALL_DIR/deploy/enable-https.sh"
 fi
 
 # ----------------------------------------------------------------------------

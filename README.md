@@ -82,11 +82,36 @@ bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/ref
 Mit Domain (richtet zusätzlich HTTPS via Let's Encrypt ein):
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/setup.sh) deinedomain.de
+bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/setup.sh) palheim.de
 ```
+
+`www.palheim.de` wird automatisch ins Zertifikat aufgenommen, sobald es per DNS
+auf denselben Server zeigt. Für Ablauf-/Widerruf-Warnungen von Let's Encrypt
+optional die eigene E-Mail voranstellen: `LE_EMAIL=du@example.de bash <(…) palheim.de`.
 
 Das Skript ist idempotent: erneut ausführen aktualisiert die Webseite auf den
 neuesten Stand, ohne die `config.json` zu überschreiben.
+
+### HTTPS nachträglich aktivieren
+
+Läuft die Webseite bereits über HTTP (z. B. per `setup.sh` **ohne** Domain
+installiert) und zeigt die Domain jetzt auf den Server, aktiviert dieses Skript
+HTTPS – es setzt `server_name`, holt das Zertifikat (inkl. `www`, falls
+vorhanden), erzwingt die HTTP→HTTPS-Weiterleitung und prüft die
+Auto-Erneuerung. Der Node-Dienst bleibt unberührt:
+
+```bash
+# Standard-Domain palheim.de:
+sudo bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palheim-https-setup-h7x4r6/deploy/enable-https.sh)
+
+# mit E-Mail für Ablauf-Warnungen:
+sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palheim-https-setup-h7x4r6/deploy/enable-https.sh)
+```
+
+Voraussetzung: Der A-Record von `palheim.de` (und optional `www.palheim.de`)
+zeigt auf die Server-IP, und Port **80** und **443** sind in der Firewall offen
+(Hetzner Cloud Firewall bzw. `ufw`). Das Skript ist idempotent – ein erneuter
+Aufruf erneuert nichts, solange das Zertifikat gültig ist.
 
 ## Manuelles Deployment auf Hetzner Cloud
 
@@ -121,9 +146,12 @@ sudo nano /etc/nginx/sites-available/palworld-web   # server_name anpassen!
 sudo ln -s /etc/nginx/sites-available/palworld-web /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# 7. HTTPS mit Let's Encrypt
+# 7. HTTPS mit Let's Encrypt – am einfachsten per Skript (server_name, www und
+#    Auto-Erneuerung inklusive):
+sudo bash deploy/enable-https.sh
+# … oder manuell mit certbot:
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d deinedomain.de
+sudo certbot --nginx -d palheim.de -d www.palheim.de --redirect
 
 # 8. Firewall (Hetzner Cloud Firewall oder ufw)
 #    Offen:  80/tcp, 443/tcp (Web), 8211/udp (Palworld), SSH
