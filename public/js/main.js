@@ -19,6 +19,7 @@
     maxPlayers: document.querySelector('[data-stat="maxPlayers"]'),
     version: document.querySelector('[data-stat="version"]'),
     uptime: document.querySelector('[data-stat="uptime"]'),
+    fps: document.querySelector('[data-stat="fps"]'),
     playerListWrap: document.getElementById('playerListWrap'),
     playerList: document.getElementById('playerList'),
     lastUpdated: document.getElementById('lastUpdated')
@@ -48,6 +49,7 @@
     el.maxPlayers.textContent = data.players.max || '–';
     el.version.textContent = data.version || '–';
     el.uptime.textContent = formatUptime(data.uptimeSeconds);
+    el.fps.textContent = data.serverFps != null ? Math.round(data.serverFps) : '–';
 
     // Spielerliste (nur wenn der Server sie mitliefert)
     const list = data.players.list || [];
@@ -56,10 +58,13 @@
       for (const p of list) {
         const li = document.createElement('li');
         li.textContent = p.name;
-        if (p.level != null) {
-          const lvl = document.createElement('span');
-          lvl.textContent = `Lv. ${p.level}`;
-          li.appendChild(lvl);
+        const details = [];
+        if (p.level != null) details.push(`Lv. ${p.level}`);
+        if (p.ping != null) details.push(`${p.ping} ms`);
+        if (details.length > 0) {
+          const info = document.createElement('span');
+          info.textContent = details.join(' · ');
+          li.appendChild(info);
         }
         el.playerList.appendChild(li);
       }
@@ -82,6 +87,7 @@
     el.players.textContent = '–';
     el.version.textContent = '–';
     el.uptime.textContent = '–';
+    el.fps.textContent = '–';
     el.playerListWrap.hidden = true;
   }
 

@@ -491,7 +491,8 @@ code {
 /* ---------------- Statistiken ---------------- */
 
 /* 5 Kennzahl-Kacheln passen so bei voller Breite in eine Reihe */
-#statistiken .status-grid {
+#statistiken .status-grid,
+#status .status-grid {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
@@ -675,6 +676,78 @@ code {
   border-radius: 50%;
   background: var(--green);
   margin-right: 8px;
+}
+
+/* ---------------- Erfolge ---------------- */
+
+.ach { margin-top: 44px; }
+
+.ach__intro {
+  color: var(--text-muted);
+  font-weight: 600;
+  max-width: 640px;
+  margin-bottom: 16px;
+}
+
+.ach__form { max-width: 520px; margin-bottom: 16px; }
+
+.ach__summary {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+}
+
+.ach__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.ach-card {
+  display: flex;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  padding: 16px 18px;
+}
+.ach-card.is-unlocked { border-color: rgba(46, 125, 53, 0.45); }
+.ach-card.is-locked { opacity: 0.75; }
+.ach-card.is-locked .ach-card__icon { filter: grayscale(1); opacity: 0.6; }
+
+.ach-card__icon { font-size: 1.9rem; line-height: 1.2; flex-shrink: 0; }
+.ach-card__body { flex: 1; min-width: 0; }
+.ach-card__name { font-family: var(--font-display); font-weight: 800; }
+.ach-card__desc { font-size: 0.86rem; font-weight: 600; color: var(--text-muted); }
+
+.ach-card__done {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #256b2c;
+}
+
+.ach-card__track {
+  margin-top: 8px;
+  height: 8px;
+  background: var(--surface-tint);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ach-card__bar {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 999px;
+}
+.ach-card__count {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------------- Raten ---------------- */

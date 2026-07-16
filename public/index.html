@@ -128,6 +128,12 @@
             <span class="stat-card__value" data-stat="uptime">–</span>
             <span class="stat-card__hint">seit letztem Neustart</span>
           </article>
+
+          <article class="stat-card">
+            <span class="stat-card__label">Server-FPS</span>
+            <span class="stat-card__value" data-stat="fps">–</span>
+            <span class="stat-card__hint">je näher an 60, desto besser</span>
+          </article>
         </div>
 
         <div class="player-list reveal" id="playerListWrap" hidden>
@@ -210,6 +216,26 @@
               <tbody id="leaderboardBody"></tbody>
             </table>
           </div>
+        </div>
+
+        <div class="ach reveal" id="achWrap" hidden>
+          <h3 class="leaderboard__title">Erfolge</h3>
+          <p class="ach__intro">
+            Gib deinen In-Game-Namen ein und sieh, welche Erfolge du schon
+            freigeschaltet hast – neue Freischaltungen werden im Spiel angekündigt!
+          </p>
+          <form class="ach__form" id="achForm">
+            <label class="vote-form__label" for="achName">Dein In-Game-Name</label>
+            <div class="vote-form__row">
+              <input class="vote-form__input" id="achName" name="name" type="text"
+                     maxlength="32" minlength="2" required autocomplete="off"
+                     placeholder="z. B. PalMeister">
+              <button class="btn btn--ghost" type="submit">Erfolge anzeigen</button>
+            </div>
+          </form>
+          <p class="vote-message" id="achMessage" role="status" hidden></p>
+          <p class="ach__summary" id="achSummary" hidden></p>
+          <div class="ach__grid" id="achGrid" hidden></div>
         </div>
       </div>
     </section>
@@ -450,5 +476,6 @@
   <script src="/js/main.js"></script>
   <script src="/js/stats.js"></script>
   <script src="/js/vote.js"></script>
+  <script src="/js/achievements.js"></script>
 </body>
 </html>

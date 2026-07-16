@@ -42,6 +42,12 @@ const DEFAULTS = {
   statsPollSeconds: 60,
   // Wo die gesammelten Statistiken gespeichert werden
   statsFile: 'data/stats.json',
+  // Erfolge (werden aus den Statistik-Daten berechnet)
+  achievements: {
+    enabled: true,
+    // Freischaltungen als Broadcast im Spiel ankündigen
+    announceUnlocks: true
+  },
   // Vote-Belohnungssystem (siehe README, Abschnitt "Vote-Belohnung")
   votes: {
     enabled: false,
@@ -95,6 +101,7 @@ function loadConfig() {
       const loaded = JSON.parse(fs.readFileSync(file, 'utf8'));
       Object.assign(cfg, loaded);
       cfg.votes = deepMerge(DEFAULTS.votes, loaded.votes);
+      cfg.achievements = deepMerge(DEFAULTS.achievements, loaded.achievements);
     } catch (err) {
       console.error(`[config] config.json konnte nicht gelesen werden: ${err.message}`);
       process.exit(1);
@@ -171,7 +178,8 @@ async function fetchServerStatus() {
         // Nur unbedenkliche Felder veröffentlichen (keine IPs, keine IDs!)
         players = (data.players || []).map((p) => ({
           name: p.name,
-          level: p.level ?? null
+          level: p.level ?? null,
+          ping: p.ping != null ? Math.round(p.ping) : null
         }));
       } catch {
         players = [];
@@ -274,6 +282,13 @@ function recordSample(count) {
   }
 }
 
+// Wer war beim letzten Poll online? (für Session-Zählung)
+let prevOnline = new Set();
+
+function localDayKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 async function pollStats() {
   let count = null;
   try {
@@ -281,15 +296,26 @@ async function pollStats() {
     count = metrics.currentplayernum ?? 0;
     if (typeof metrics.days === 'number') stats.inGameDays = metrics.days;
 
-    if (count > 0 && (!stats.peak || count > stats.peak.count)) {
-      stats.peak = { count, at: new Date().toISOString() };
-    }
-
     if (count > 0) {
       const data = await palworldGet('/v1/api/players');
       const now = new Date().toISOString();
+      const hour = new Date().getHours();
+      const today = localDayKey();
+      const minutes = config.statsPollSeconds / 60;
+      const nowOnline = new Set();
+
+      // Neuer Spielerrekord? Namen der Beteiligten für den Erfolg "Rekord-Crew" merken
+      if (!stats.peak || count > stats.peak.count) {
+        stats.peak = {
+          count,
+          at: new Date().toISOString(),
+          players: (data.players || []).map((p) => p.name).filter(Boolean)
+        };
+      }
+
       for (const p of data.players || []) {
         if (!p.name) continue;
+        nowOnline.add(p.name);
         const rec = stats.players[p.name] ?? (stats.players[p.name] = {
           level: null,
           firstSeen: now,
@@ -298,8 +324,22 @@ async function pollStats() {
         });
         rec.lastSeen = now;
         if (p.level != null) rec.level = p.level;
-        rec.minutes += config.statsPollSeconds / 60;
+        rec.minutes += minutes;
+
+        // Zusatzdaten für Erfolge
+        if (!prevOnline.has(p.name)) rec.sessions = (rec.sessions || 0) + 1;
+        if (rec.lastDay !== today) {
+          rec.daysCount = (rec.daysCount || 0) + 1;
+          rec.lastDay = today;
+        }
+        if (hour < 5) rec.nightMin = (rec.nightMin || 0) + minutes;
+        else if (hour < 8) rec.morningMin = (rec.morningMin || 0) + minutes;
+
+        checkAchievements(p.name, rec);
       }
+      prevOnline = nowOnline;
+    } else {
+      prevOnline = new Set();
     }
   } catch {
     count = null;
@@ -307,6 +347,42 @@ async function pollStats() {
   recordSample(count);
   statsDirty = true;
   saveStats();
+}
+
+// ---------------------------------------------------------------------------
+// Erfolge
+// ---------------------------------------------------------------------------
+
+const { evaluate: evaluateAchievements } = require('./lib/achievements');
+
+function achievementContext(name) {
+  return {
+    // voteSystem wird weiter unten initialisiert; alle Aufrufe hier passieren
+    // erst nach dem vollständigen Laden des Moduls (async/Intervall)
+    voteCount: voteSystem ? voteSystem.getVoteCount(name) : 0,
+    firstSampleT: stats.samples.length > 0 ? stats.samples[0][0] : null,
+    peakPlayers: (stats.peak && stats.peak.players) || []
+  };
+}
+
+/** Prüft auf neu freigeschaltete Erfolge und kündigt sie im Spiel an. */
+function checkAchievements(name, rec) {
+  if (!config.achievements.enabled) return;
+  const results = evaluateAchievements(name, rec, achievementContext(name));
+  const known = new Set(rec.ach || []);
+  const fresh = results.filter((a) => a.unlocked && !known.has(a.id));
+  if (fresh.length === 0) return;
+
+  rec.ach = [...known, ...fresh.map((a) => a.id)];
+  statsDirty = true;
+
+  if (config.achievements.announceUnlocks) {
+    for (const a of fresh) {
+      palworldPost('/v1/api/announce', {
+        message: `[Erfolg] ${name} hat "${a.name}" freigeschaltet! (${a.desc})`
+      }).catch(() => { /* Ansage ist nice-to-have */ });
+    }
+  }
 }
 
 function buildStatsResponse() {
@@ -564,6 +640,29 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'no-store'
     });
     res.end(JSON.stringify(config.statsEnabled ? buildStatsResponse() : { enabled: false }));
+    return;
+  }
+
+  if (pathname === '/api/achievements') {
+    const enabled = config.statsEnabled && config.achievements.enabled && config.showPlayerList;
+    const rawName = (searchParams.get('player') || '').trim().slice(0, 32);
+    if (!enabled || !rawName) {
+      sendJson(res, 200, { enabled });
+      return;
+    }
+    const key = Object.keys(stats.players).find(
+      (k) => k.toLowerCase() === rawName.toLowerCase()
+    );
+    if (!key) {
+      sendJson(res, 200, { enabled: true, found: false });
+      return;
+    }
+    sendJson(res, 200, {
+      enabled: true,
+      found: true,
+      player: key,
+      achievements: evaluateAchievements(key, stats.players[key], achievementContext(key))
+    });
     return;
   }
 
