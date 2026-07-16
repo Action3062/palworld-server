@@ -33,7 +33,9 @@ ein bis zwei Minuten und braucht etwas RAM.
 """
 
 import argparse
+import contextlib
 import glob
+import io
 import json
 import sys
 import urllib.request
@@ -86,7 +88,62 @@ def patch_missing_map_value_types() -> None:
     reader.prop_value = patched
 
 
+def patch_guild_name_fallback() -> None:
+    """
+    Macht das Auslesen der Gildennamen tolerant gegenüber neuen 1.0-Feldern.
+
+    group.decode_bytes() wirft "EOF not reached", wenn Palworld am Ende der
+    Gilden-Struktur neue Felder angehängt hat (players/trailing_bytes). Der
+    guild_name steht aber DAVOR – schlägt der vollständige Decoder fehl, lesen
+    wir nur die stabilen Felder bis zum Namen und ignorieren den Rest.
+    """
+    try:
+        from palworld_save_tools.rawdata import group as gmod
+    except ImportError:
+        return
+    original = gmod.decode_bytes
+
+    def read_until_guild_name(parent_reader, group_bytes, group_type):
+        r = parent_reader.internal_copy(bytes(group_bytes), debug=False)
+        data = {
+            "group_type": group_type,
+            "group_id": r.guid(),
+            "group_name": r.fstring(),
+            "individual_character_handle_ids": r.tarray(gmod.instance_id_reader),
+        }
+        if group_type in (
+            "EPalGroupType::Guild",
+            "EPalGroupType::IndependentGuild",
+            "EPalGroupType::Organization",
+        ):
+            data["org_type"] = r.byte()
+        if group_type == "EPalGroupType::Guild":
+            r.byte_list(4)              # leading_bytes
+            r.tarray(gmod.uuid_reader)  # base_ids
+            r.i32()                     # unknown_1
+            r.i32()                     # base_camp_level
+            r.tarray(gmod.uuid_reader)  # map_object_instance_ids_base_camp_points
+            data["guild_name"] = r.fstring()
+        elif group_type == "EPalGroupType::IndependentGuild":
+            r.i32()                     # base_camp_level
+            r.tarray(gmod.uuid_reader)  # map_object_instance_ids_base_camp_points
+            data["guild_name"] = r.fstring()
+        return data
+
+    def patched(parent_reader, group_bytes, group_type):
+        try:
+            return original(parent_reader, group_bytes, group_type)
+        except Exception:
+            try:
+                return read_until_guild_name(parent_reader, group_bytes, group_type)
+            except Exception:
+                return {"group_type": group_type}
+
+    gmod.decode_bytes = patched
+
+
 patch_missing_map_value_types()
+patch_guild_name_fallback()
 
 
 def find_sav(pattern: str) -> str:
@@ -126,7 +183,13 @@ def load_world(sav_path: str):
     for label, custom in attempts:
         print(f"Parse Spielstand ({label}) …")
         try:
-            gvas = GvasFile.read(raw_gvas, PALWORLD_TYPE_HINTS, custom)
+            # Die Bibliothek gibt beim Parsen viele harmlose Warnungen aus
+            # ("EOF not reached for …, falling back to raw bytes", "Struct type
+            # … assuming Guid"). Für ein sauberes Cronjob-Log wegfiltern –
+            # echte Fehler kommen weiterhin als Exception.
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                gvas = GvasFile.read(raw_gvas, PALWORLD_TYPE_HINTS, custom)
             return gvas.properties["worldSaveData"]["value"]
         except Exception as err:  # noqa: BLE001 – bewusst breit für Retry
             print(f"  fehlgeschlagen: {err}")
