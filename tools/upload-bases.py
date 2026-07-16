@@ -42,6 +42,7 @@ try:
     from palworld_save_tools.gvas import GvasFile
     from palworld_save_tools.palsav import decompress_sav_to_gvas
     from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TYPE_HINTS
+    import palworld_save_tools.archive as _pst_archive
 except ImportError:
     sys.exit("palworld-save-tools fehlt. Installieren (Debian 12+/Trixie):\n"
              "  apt install -y python3-venv git build-essential python3-dev\n"
@@ -50,6 +51,42 @@ except ImportError:
              "  /opt/paltools/bin/pip install git+https://github.com/MRHRTZ/palworld-save-tools.git\n"
              "und das Skript mit  /opt/paltools/bin/python3  starten.\n"
              "(Der Fork kann das neue PlM/Oodle-Save-Format von Palworld 0.6+.)")
+
+
+def patch_missing_map_value_types() -> None:
+    """
+    Ergänzt fehlende Map-Wert-Typen in der Fork-Version von palworld-save-tools.
+
+    Deren FArchiveReader.prop_value() (liest Werte innerhalb einer MapProperty)
+    kennt nur eine Handvoll Typen und wirft bei allem anderen
+    "Unknown property value type". Palworld 1.0 hat neue Maps mit z. B.
+    Int64Property als Wert (PlayerLastUsedTimes). Die Reader-Klasse bringt die
+    passenden Primitive (i64/u64/float/…) bereits mit – wir müssen sie nur an
+    prop_value durchreichen. Behebt das Problem an der Wurzel für alle Maps.
+    """
+    reader = getattr(_pst_archive, "FArchiveReader", None)
+    if reader is None or not hasattr(reader, "prop_value"):
+        return
+    original = reader.prop_value
+    extra = {
+        "Int64Property": lambda r: r.i64(),
+        "UInt64Property": lambda r: r.u64(),
+        "Int16Property": lambda r: r.i16(),
+        "UInt16Property": lambda r: r.u16(),
+        "FloatProperty": lambda r: r.float(),
+        "DoubleProperty": lambda r: r.double(),
+    }
+
+    def patched(self, type_name, struct_type_name, path):
+        fn = extra.get(type_name)
+        if fn is not None:
+            return fn(self)
+        return original(self, type_name, struct_type_name, path)
+
+    reader.prop_value = patched
+
+
+patch_missing_map_value_types()
 
 
 def find_sav(pattern: str) -> str:
