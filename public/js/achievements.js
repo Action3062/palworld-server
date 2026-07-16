@@ -69,7 +69,7 @@
 
         const count = document.createElement('div');
         count.className = 'ach-card__count';
-        count.textContent = `${a.current} / ${a.targetValue}`;
+        count.textContent = `${a.current} / ${a.targetValue}${a.unit ? ` ${a.unit}` : ''}`;
 
         body.append(track, count);
       }

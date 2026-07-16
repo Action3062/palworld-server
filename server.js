@@ -284,6 +284,8 @@ function recordSample(count) {
 
 // Wer war beim letzten Poll online? (für Session-Zählung)
 let prevOnline = new Set();
+// Letzte bekannte Position pro Spieler (für Distanz-Tracking)
+let prevPos = new Map();
 
 function localDayKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -335,11 +337,26 @@ async function pollStats() {
         if (hour < 5) rec.nightMin = (rec.nightMin || 0) + minutes;
         else if (hour < 8) rec.morningMin = (rec.morningMin || 0) + minutes;
 
+        // Bewegung: Distanz + besuchte Gebiete aus den Positionsdaten
+        const pos = trackMovement(
+          rec,
+          prevPos.get(p.name) || null,
+          Number(p.location_x),
+          Number(p.location_y)
+        );
+        if (pos) prevPos.set(p.name, pos);
+
         checkAchievements(p.name, rec);
       }
       prevOnline = nowOnline;
+      // Positionen von Spielern vergessen, die offline gingen
+      // (verhindert Riesen-Deltas beim nächsten Login)
+      for (const name of prevPos.keys()) {
+        if (!nowOnline.has(name)) prevPos.delete(name);
+      }
     } else {
       prevOnline = new Set();
+      prevPos = new Map();
     }
   } catch {
     count = null;
@@ -353,7 +370,7 @@ async function pollStats() {
 // Erfolge
 // ---------------------------------------------------------------------------
 
-const { evaluate: evaluateAchievements } = require('./lib/achievements');
+const { evaluate: evaluateAchievements, trackMovement } = require('./lib/achievements');
 
 function achievementContext(name) {
   return {
