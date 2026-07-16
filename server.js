@@ -41,15 +41,60 @@ const DEFAULTS = {
   // Wie oft der Palworld-Server für die Statistik abgefragt wird (Sekunden)
   statsPollSeconds: 60,
   // Wo die gesammelten Statistiken gespeichert werden
-  statsFile: 'data/stats.json'
+  statsFile: 'data/stats.json',
+  // Vote-Belohnungssystem (siehe README, Abschnitt "Vote-Belohnung")
+  votes: {
+    enabled: false,
+    // Link zur Vote-Seite der Serverliste (wird den Spielern angezeigt)
+    voteUrl: 'https://palserver.de/server/palheim-251',
+    // Vote-Prüfung: "list" (API der Serverliste abfragen) oder "webhook"
+    check: {
+      mode: 'list',
+      url: '',
+      apiKey: '',
+      nameField: 'username',
+      timeField: '',
+      maxAgeHours: 24
+    },
+    // Geheimnis für den Webhook-Modus (?secret=...)
+    webhookSecret: '',
+    // Belohnung: "rcon" (echte Items, braucht PalDefender/PalGuard-Mod)
+    // oder "announce" (nur Broadcast-Danksagung, funktioniert ohne Mods)
+    reward: {
+      mode: 'announce',
+      rcon: { host: '127.0.0.1', port: 25575, password: '' },
+      commands: [],
+      announce: '{name} hat fuer den Server gevotet - danke!'
+    },
+    // Belohnung nur, wenn der Spieler gerade online ist
+    requireOnline: true,
+    votesFile: 'data/votes.json'
+  }
 };
+
+// Verschachtelte Objekte (z. B. "votes") mit den Defaults zusammenführen,
+// damit eine teilweise Konfiguration keine Default-Werte verliert
+function deepMerge(base, override) {
+  const out = { ...base };
+  for (const [key, value] of Object.entries(override || {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value) &&
+        base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])) {
+      out[key] = deepMerge(base[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
 
 function loadConfig() {
   const cfg = { ...DEFAULTS };
   const file = path.join(__dirname, 'config.json');
   if (fs.existsSync(file)) {
     try {
-      Object.assign(cfg, JSON.parse(fs.readFileSync(file, 'utf8')));
+      const loaded = JSON.parse(fs.readFileSync(file, 'utf8'));
+      Object.assign(cfg, loaded);
+      cfg.votes = deepMerge(DEFAULTS.votes, loaded.votes);
     } catch (err) {
       console.error(`[config] config.json konnte nicht gelesen werden: ${err.message}`);
       process.exit(1);
@@ -86,6 +131,27 @@ async function palworldGet(endpoint) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function palworldPost(endpoint, body) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const auth = Buffer.from(`admin:${config.palworldAdminPassword}`).toString('base64');
+    const res = await fetch(`${config.palworldApiUrl}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
   } finally {
     clearTimeout(timer);
   }
@@ -300,6 +366,70 @@ if (config.statsEnabled) {
 }
 
 // ---------------------------------------------------------------------------
+// Vote-Belohnungssystem
+// ---------------------------------------------------------------------------
+
+const { VoteSystem } = require('./lib/votes');
+
+let voteSystem = null;
+if (config.votes && config.votes.enabled) {
+  voteSystem = new VoteSystem(config.votes, {
+    dataFile: path.join(__dirname, config.votes.votesFile || 'data/votes.json'),
+    palworldGet,
+    palworldPost
+  });
+  console.log('[votes] Vote-Belohnungssystem aktiv');
+}
+
+// Einfaches Rate-Limit pro IP (Schutz vor Claim-Spam)
+const rateBuckets = new Map();
+function rateLimited(ip, limit = 10, windowMs = 60_000) {
+  const now = Date.now();
+  const bucket = rateBuckets.get(ip) || [];
+  const recent = bucket.filter((t) => now - t < windowMs);
+  if (recent.length >= limit) {
+    rateBuckets.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  rateBuckets.set(ip, recent);
+  if (rateBuckets.size > 10_000) rateBuckets.clear(); // Speicher-Backstop
+  return false;
+}
+
+function readJsonBody(req, maxBytes = 4096) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error('Body zu groß'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch {
+        reject(new Error('Ungültiges JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res, status, obj) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  res.end(JSON.stringify(obj));
+}
+
+// ---------------------------------------------------------------------------
 // Statische Dateien ausliefern
 // ---------------------------------------------------------------------------
 
@@ -353,12 +483,70 @@ function serveStatic(req, res) {
 // ---------------------------------------------------------------------------
 
 const server = http.createServer(async (req, res) => {
+  const { pathname, searchParams } = new URL(req.url, 'http://localhost');
+
+  // ---- Vote-Endpunkte (POST) ----
+  if (req.method === 'POST' && pathname.startsWith('/api/vote/')) {
+    const ip = req.socket.remoteAddress || 'unknown';
+
+    if (pathname === '/api/vote/claim') {
+      if (!voteSystem) {
+        sendJson(res, 404, { ok: false, message: 'Vote-System ist nicht aktiviert.' });
+        return;
+      }
+      if (rateLimited(ip)) {
+        sendJson(res, 429, { ok: false, message: 'Zu viele Versuche – bitte kurz warten.' });
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const result = await voteSystem.claim(body.name);
+        sendJson(res, result.ok ? 200 : 400, result);
+      } catch {
+        sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+      }
+      return;
+    }
+
+    if (pathname === '/api/vote/webhook') {
+      if (!voteSystem || !config.votes.webhookSecret) {
+        res.writeHead(404).end();
+        return;
+      }
+      const secret = searchParams.get('secret') || req.headers['x-webhook-secret'] || '';
+      if (secret !== config.votes.webhookSecret) {
+        res.writeHead(403).end();
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const nameField = config.votes.check.nameField || 'username';
+        const name = body[nameField] ?? body.username ?? body.name ?? body.player;
+        voteSystem.registerVote(name);
+        sendJson(res, 200, { ok: true });
+      } catch {
+        sendJson(res, 400, { ok: false });
+      }
+      return;
+    }
+
+    res.writeHead(404).end();
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
     return;
   }
 
-  const { pathname } = new URL(req.url, 'http://localhost');
+  // Frontend-Infos zum Vote-System (Link, aktiv ja/nein)
+  if (pathname === '/api/vote/info') {
+    sendJson(res, 200, {
+      enabled: Boolean(voteSystem),
+      voteUrl: config.votes ? config.votes.voteUrl : ''
+    });
+    return;
+  }
 
   if (pathname === '/api/status') {
     const status = await getStatus();

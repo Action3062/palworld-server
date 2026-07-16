@@ -41,6 +41,7 @@
         <a href="#statistiken">Statistiken</a>
         <a href="#server">Server-Info</a>
         <a href="#mitspielen">Mitspielen</a>
+        <a href="#voten" id="navVote" hidden>Voten</a>
         <a href="#regeln">Regeln</a>
         <a href="#faq">FAQ</a>
         <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener" class="btn btn--small btn--accent">Discord</a>
@@ -319,8 +320,43 @@
       </div>
     </section>
 
+    <!-- ===================== VOTE & BELOHNUNG ===================== -->
+    <section class="section" id="voten" hidden>
+      <div class="container">
+        <span class="section__label">Unterstütze uns</span>
+        <h2 class="section__title">Vote &amp; Belohnung</h2>
+        <p class="section__intro">
+          Vote einmal am Tag für PalHeim auf der Serverliste und hol dir dafür
+          eine Belohnung im Spiel ab – so einfach geht's:
+        </p>
+
+        <div class="vote-card reveal">
+          <ol class="vote-steps">
+            <li><span class="vote-steps__num">1</span><span>Auf der Serverliste für uns voten – dabei deinen <strong>In-Game-Namen</strong> angeben</span></li>
+            <li><span class="vote-steps__num">2</span><span>Auf dem Server <strong>einloggen</strong></span></li>
+            <li><span class="vote-steps__num">3</span><span>Hier deinen Namen eintragen und die Belohnung abholen</span></li>
+          </ol>
+
+          <a id="voteLink" class="btn btn--accent" href="https://palserver.de/server/palheim-251"
+             target="_blank" rel="noopener">Jetzt voten (palserver.de)</a>
+
+          <form class="vote-form" id="voteForm">
+            <label class="vote-form__label" for="voteName">Dein In-Game-Name</label>
+            <div class="vote-form__row">
+              <input class="vote-form__input" id="voteName" name="name" type="text"
+                     maxlength="32" minlength="2" required autocomplete="off"
+                     placeholder="z. B. PalMeister">
+              <button class="btn btn--ghost" id="voteClaim" type="submit">Belohnung abholen</button>
+            </div>
+          </form>
+
+          <p class="vote-message" id="voteMessage" role="status" hidden></p>
+        </div>
+      </div>
+    </section>
+
     <!-- ===================== REGELN ===================== -->
-    <section class="section" id="regeln">
+    <section class="section section--alt" id="regeln">
       <div class="container">
         <span class="section__label">Fair Play</span>
         <h2 class="section__title">Server-Regeln</h2>
@@ -340,7 +376,7 @@
     </section>
 
     <!-- ===================== FAQ ===================== -->
-    <section class="section section--alt" id="faq">
+    <section class="section" id="faq">
       <div class="container">
         <span class="section__label">Hilfe</span>
         <h2 class="section__title">Häufige Fragen</h2>
@@ -413,5 +449,6 @@
 
   <script src="/js/main.js"></script>
   <script src="/js/stats.js"></script>
+  <script src="/js/vote.js"></script>
 </body>
 </html>

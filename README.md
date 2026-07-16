@@ -202,6 +202,73 @@ Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 `PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`, `STATS_ENABLED`,
 `STATS_POLL_SECONDS`.
 
+## Vote-Belohnung (Serverlisten wie palserver.de)
+
+Spieler voten auf der Serverliste und holen sich auf der Webseite eine
+In-Game-Belohnung ab (Sektion „Vote & Belohnung“, erscheint automatisch,
+sobald `votes.enabled: true` gesetzt ist).
+
+**Ablauf:** Spieler votet (mit In-Game-Namen) → loggt sich auf dem Server ein
+→ trägt seinen Namen auf der Webseite ein → Backend prüft Vote + Online-Status
+→ Belohnung wird vergeben. Pro Spieler und Tag nur ein Claim; Claim-Anfragen
+sind pro IP rate-limitiert.
+
+### Vote-Prüfung – zwei Modi
+
+**`"mode": "list"`** – die Serverliste bietet eine API, die die letzten Votes
+als JSON liefert. Die URL findest du im Dashboard deiner Serverliste
+(bei palserver.de im Server-Verwaltungsbereich):
+
+```json
+"check": {
+  "mode": "list",
+  "url": "https://…/api/…/votes?key={apiKey}",
+  "apiKey": "DEIN-API-KEY",
+  "nameField": "username",
+  "timeField": "created_at",
+  "maxAgeHours": 24
+}
+```
+
+`{apiKey}` in der URL wird ersetzt, zusätzlich wird der Key als
+`Authorization: Bearer` mitgeschickt. `nameField`/`timeField` an das
+JSON-Format der Liste anpassen; Antworten in der Form `[...]`,
+`{"votes": [...]}`, `{"data": [...]}` werden automatisch erkannt.
+
+**`"mode": "webhook"`** – die Serverliste ruft bei jedem Vote unseren Endpunkt
+auf. Im Dashboard der Liste als Webhook-URL eintragen:
+
+```
+https://deinedomain.de/api/vote/webhook?secret=DEIN-GEHEIMES-TOKEN
+```
+
+und in der `config.json` dasselbe Token als `"webhookSecret"` setzen.
+
+### Belohnung – zwei Modi
+
+**`"mode": "rcon"`** – echte Item-Belohnungen. Voraussetzung: Auf dem
+Palworld-Server läuft ein Mod wie **PalDefender**/**PalGuard** (Vanilla-Palworld
+hat keinen Give-Befehl!) und RCON ist aktiviert
+(`RCONEnabled=True,RCONPort=25575` in der PalWorldSettings.ini; Port nur über
+den WireGuard-Tunnel erreichbar machen, nie öffentlich!):
+
+```json
+"reward": {
+  "mode": "rcon",
+  "rcon": { "host": "10.88.0.2", "port": 25575, "password": "ADMIN-PASSWORT" },
+  "commands": ["giveitem {steamid} Money 1000"],
+  "announce": "{name} hat fuer den Server gevotet - danke!"
+}
+```
+
+Platzhalter in `commands`: `{steamid}` (empfohlen), `{userid}`, `{name}`.
+Die genaue Befehls-Syntax hängt vom Mod ab (PalDefender: `giveitem`,
+`giveexp`, `give_relic`, …).
+
+**`"mode": "announce"`** – funktioniert ohne Mods: nur eine
+Broadcast-Danksagung über die offizielle REST-API; die eigentliche Belohnung
+verteilt ihr manuell oder sie bleibt symbolisch.
+
 ## Inhalte anpassen
 
 Alle Texte liegen direkt im HTML – einfach editieren:

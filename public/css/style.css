@@ -818,6 +818,91 @@ code {
 }
 .notice strong { color: var(--accent-text); }
 
+/* ---------------- Vote & Belohnung ---------------- */
+
+.vote-card {
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  padding: 30px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.vote-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.vote-steps li { display: flex; align-items: baseline; gap: 10px; }
+.vote-steps li strong { color: var(--text); }
+.vote-steps__num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #ffffff;
+  background: var(--blue-dark);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transform: translateY(3px);
+}
+
+.vote-card .btn--accent { align-self: flex-start; }
+
+.vote-form__label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.vote-form__row { display: flex; gap: 10px; flex-wrap: wrap; }
+.vote-form__input {
+  flex: 1;
+  min-width: 200px;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface-tint);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 11px 20px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.vote-form__input:focus { border-color: var(--blue); }
+.vote-form__input::placeholder { color: var(--text-muted); opacity: 0.6; }
+
+.vote-message {
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 12px 18px;
+}
+.vote-message.is-ok {
+  background: rgba(46, 125, 53, 0.1);
+  border: 1px solid rgba(46, 125, 53, 0.4);
+  color: #256b2c;
+}
+.vote-message.is-error {
+  background: #fff6e8;
+  border: 1px solid rgba(249, 138, 27, 0.4);
+  color: #a85500;
+}
+
 /* ---------------- Regeln ---------------- */
 
 .rules {
