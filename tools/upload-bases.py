@@ -7,10 +7,15 @@ der Level.sav und lädt sie zur Webseite hoch.
 
 Einrichtung (auf dem PALWORLD-Server, nicht auf dem Web-Server!):
   1. Debian 12+/Trixie (pip fehlt, System-Python ist geschützt):
-       apt update && apt install -y python3-venv
+       apt update && apt install -y python3-venv git build-essential python3-dev
        python3 -m venv /opt/paltools
-       /opt/paltools/bin/pip install palworld-save-tools
-     Skript dann mit  /opt/paltools/bin/python3 upload-bases.py …  starten
+       /opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/pyooz.git"
+       /opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/palworld-save-tools.git"
+     Skript dann mit  /opt/paltools/bin/python3 upload-bases.py …  starten.
+     Hintergrund: Seit Palworld 0.6 sind Spielstände Oodle-komprimiert
+     (Magic "PlM"); die PyPI-Version von palworld-save-tools kann nur das
+     alte "PlZ"-Format. Der MRHRTZ-Fork (PR #215 upstream) + pyooz können
+     beide Formate.
   2. In der config.json der WEBSEITE ein Upload-Geheimnis setzen:
        "map": { "enabled": true, "uploadSecret": "LANGES-ZUFALLS-TOKEN" }
   3. Auf dem Palworld-Server testen:
@@ -39,10 +44,12 @@ try:
     from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TYPE_HINTS
 except ImportError:
     sys.exit("palworld-save-tools fehlt. Installieren (Debian 12+/Trixie):\n"
-             "  apt install -y python3-venv\n"
+             "  apt install -y python3-venv git build-essential python3-dev\n"
              "  python3 -m venv /opt/paltools\n"
-             "  /opt/paltools/bin/pip install palworld-save-tools\n"
-             "und das Skript mit  /opt/paltools/bin/python3  starten.")
+             "  /opt/paltools/bin/pip install git+https://github.com/MRHRTZ/pyooz.git\n"
+             "  /opt/paltools/bin/pip install git+https://github.com/MRHRTZ/palworld-save-tools.git\n"
+             "und das Skript mit  /opt/paltools/bin/python3  starten.\n"
+             "(Der Fork kann das neue PlM/Oodle-Save-Format von Palworld 0.6+.)")
 
 
 def find_sav(pattern: str) -> str:

@@ -229,14 +229,18 @@ mit den In-Game-Kartenkoordinaten: `karte_x = (welt_y − 158000) / 459`,
 Dafür läuft auf dem **Palworld-Server** ein Uploader:
 
 ```bash
-pip3 install palworld-save-tools
+# Debian 12+: venv + Fork mit Unterstützung für das neue PlM/Oodle-Save-Format
+apt update && apt install -y python3-venv git build-essential python3-dev
+python3 -m venv /opt/paltools
+/opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/pyooz.git"
+/opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/palworld-save-tools.git"
 # testen (Web-Server über den WireGuard-Tunnel):
-python3 tools/upload-bases.py \
+/opt/paltools/bin/python3 tools/upload-bases.py \
   --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
   --url http://10.88.0.1/api/map/bases \
   --secret DEIN-UPLOAD-SECRET --dry-run
 # als Cronjob alle 30 Minuten (crontab -e):
-*/30 * * * * python3 /pfad/zu/upload-bases.py --sav "…" --url "…" --secret "…"
+*/30 * * * * /opt/paltools/bin/python3 /pfad/zu/upload-bases.py --sav "…" --url "…" --secret "…"
 ```
 
 Das `uploadSecret` wird in der `config.json` der Webseite unter `map`
