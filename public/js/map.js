@@ -123,7 +123,7 @@
     empty.hidden = true;
 
     const width = view.clientWidth || 900;
-    const height = Math.max(view.clientHeight || 0, 520);
+    const height = Math.max(view.clientHeight || 0, 320);
 
     const vp = viewport || autoViewport(points);
 

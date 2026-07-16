@@ -797,7 +797,14 @@ code {
 
 .map-view {
   position: relative;
-  min-height: 520px;
+  /* Die Karte ist quadratisch – ein quadratischer Rahmen füllt sie randlos
+     aus (statt der alten flachen 520 px mit viel Leerraum). Die Breite wird
+     zusätzlich über die Viewport-Höhe gedeckelt, damit der Kasten nie höher
+     als der Bildschirm wird; zentriert im Karten-Panel. */
+  width: min(100%, 80vh, 860px);
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
+  min-height: 340px;
   background:
     radial-gradient(circle at 30% 20%, rgba(47, 157, 228, 0.08), transparent 60%),
     var(--surface-tint);
