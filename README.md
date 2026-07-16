@@ -209,7 +209,7 @@ Alle Texte liegen direkt im HTML – einfach editieren:
 | Was | Wo |
 |---|---|
 | Servername „PalHeim“ | `public/index.html` (Titel, Hero, Footer) + `public/impressum.html` / `datenschutz.html` |
-| Server-Adresse `play.deinedomain.de:8211` | `public/index.html` (Hero-Chip + Schritt 2) |
+| Server-Adresse `65.109.91.114:8211` | `public/index.html` (Hero-Chip + Schritt 2) |
 | Discord-Link `discord.gg/DEIN-INVITE` | `public/index.html` (mehrfach – suchen & ersetzen) |
 | Raten & Server-Infos | `public/index.html`, Sektion `#server` |
 | Regeln | `public/index.html`, Sektion `#regeln` |
