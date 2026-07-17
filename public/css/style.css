@@ -1361,6 +1361,51 @@ code {
   font-weight: 700;
 }
 
+/* "Unterstützen"-Karte (z. B. Buy Me a Coffee) – nur ein Link, kein Widget */
+.support-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  padding: 24px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+}
+.support-card__icon {
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.9rem;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #fff3c8, #ffdd7a);
+  box-shadow: inset 0 0 0 2px rgba(150, 90, 20, 0.15);
+}
+.support-card__body { flex: 1; min-width: 230px; }
+.support-card__body h3 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin-bottom: 4px;
+}
+.support-card__body p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.btn--coffee {
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #ffe64d, #ffdd00);
+  color: #0d0c22;
+  box-shadow: 0 4px 0 #d9b900, 0 10px 24px rgba(255, 221, 0, 0.4);
+}
+.btn--coffee:hover { box-shadow: 0 4px 0 #d9b900, 0 14px 32px rgba(255, 221, 0, 0.55); }
+.btn--coffee:active { transform: translateY(2px); box-shadow: 0 2px 0 #d9b900; }
+
 /* ---------------- 404 – Seite nicht gefunden ---------------- */
 
 .notfound {

@@ -18,6 +18,11 @@
 
   "visitorCounter": true,
 
+  "support": {
+    "enabled": false,
+    "url": "https://buymeacoffee.com/DEIN-NAME"
+  },
+
   "map": {
     "enabled": true,
     "uploadSecret": "LANGES-ZUFALLS-TOKEN-FUER-BASEN-UPLOAD",

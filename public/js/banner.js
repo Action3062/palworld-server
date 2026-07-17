@@ -1,6 +1,7 @@
-/* PalHeim – Hinweis-Banner
-   Blendet oben ein vom Backend konfiguriertes Banner ein (Wartung, Events).
-   Schließbar; die Auswahl merkt sich der Browser pro Nachricht. */
+/* PalHeim – Hinweis-Banner & Support-Karte
+   Blendet oben ein vom Backend konfiguriertes Banner ein (Wartung, Events)
+   und – auf der Startseite – die "Unterstützen"-Karte (z. B. Buy Me a Coffee).
+   Banner ist schließbar; die Auswahl merkt sich der Browser pro Nachricht. */
 
 (() => {
   'use strict';
@@ -10,6 +11,16 @@
   fetch('/api/site', { cache: 'no-store' })
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
+      // --- Support-Karte (nur ein Link, keine externen Skripte)
+      const card = document.getElementById('supportCard');
+      if (card && data && data.support && data.support.url) {
+        document.getElementById('supportLink').href = data.support.url;
+        if (data.support.text) {
+          document.getElementById('supportText').textContent = data.support.text;
+        }
+        card.hidden = false;
+      }
+
       const b = data && data.banner;
       if (!b || !b.text) return;
 

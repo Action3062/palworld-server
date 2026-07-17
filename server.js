@@ -57,6 +57,14 @@ const DEFAULTS = {
   },
   // Besucher-Zähler (Seitenaufrufe + eindeutige Besucher; ohne IP/Cookies)
   visitorCounter: true,
+  // "Unterstützen"-Karte (z. B. Buy Me a Coffee) – nur ein Link, keine
+  // externen Skripte. url leer = Karte bleibt ausgeblendet.
+  support: {
+    enabled: false,
+    url: '',
+    // Optionaler eigener Text auf der Karte
+    text: 'Serverkosten? Deckt zum Glück die Community. Wenn du magst, spendier dem Admin einen Kaffee – freiwillig, ohne Extras.'
+  },
   // Live-Karte (Spieler-Positionen aus der REST-API, Basen via Uploader)
   map: {
     enabled: true,
@@ -140,6 +148,7 @@ function loadConfig() {
       cfg.map = deepMerge(DEFAULTS.map, loaded.map);
       cfg.banner = deepMerge(DEFAULTS.banner, loaded.banner);
       cfg.admin = deepMerge(DEFAULTS.admin, loaded.admin);
+      cfg.support = deepMerge(DEFAULTS.support, loaded.support);
     } catch (err) {
       console.error(`[config] config.json konnte nicht gelesen werden: ${err.message}`);
       process.exit(1);
@@ -888,11 +897,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Seiten-Konfiguration (Banner) – bewusst vom Spielstatus entkoppelt
+  // Seiten-Konfiguration (Banner, Support-Karte) – bewusst vom Spielstatus entkoppelt
   if (pathname === '/api/site') {
     const b = config.banner;
+    const s = config.support;
     sendJson(res, 200, {
-      banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null
+      banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null,
+      support: s && s.enabled && s.url ? { url: s.url, text: s.text || '' } : null
     });
     return;
   }
