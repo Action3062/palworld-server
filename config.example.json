@@ -16,6 +16,8 @@
     "broadcastSecret": ""
   },
 
+  "visitorCounter": true,
+
   "map": {
     "enabled": true,
     "uploadSecret": "LANGES-ZUFALLS-TOKEN-FUER-BASEN-UPLOAD",

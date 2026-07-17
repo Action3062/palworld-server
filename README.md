@@ -21,6 +21,7 @@ Dadurch ist das Deployment auf dem Hetzner-Server in wenigen Minuten erledigt.
 - 📣 **Broadcast-Seite** (`/broadcast.html`): passwortgeschützt eine In-Game-Ansage
   an alle Online-Spieler senden
 - 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config)
+- 👀 **Besucher-Zähler** (Aufrufe + eindeutige Besucher) im Footer – ohne Cookies/IP
 - 📋 **Server-Adresse mit Kopier-Button**
 - 🎮 **Beitritts-Anleitung** in 3 Schritten
 - ⚙️ **Raten-Übersicht** (EP, Fangrate, Drops, …)
@@ -236,6 +237,7 @@ sudo systemctl restart palworld-web
 | `banner.text` | – | Banner-Text (kurz halten; kein HTML) |
 | `banner.level` | `info` | Optik: `info` (blau), `event` (grün), `warn` (orange) |
 | `admin.broadcastSecret` | – | Passwort für die Broadcast-Seite; leer = deaktiviert |
+| `visitorCounter` | `true` | Besucher-Zähler (Aufrufe + eindeutige Besucher) im Footer |
 
 Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 `PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`, `STATS_ENABLED`,

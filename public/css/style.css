@@ -1494,6 +1494,8 @@ code {
 .footer__links a:hover { color: #ffffff; }
 
 .footer__disclaimer { font-size: 0.8rem; opacity: 0.75; max-width: 640px; }
+.footer__visits { font-size: 0.85rem; font-weight: 700; color: #9fbdd8; }
+.footer__visits span { color: #ffffff; }
 
 /* ---------------- Responsive ---------------- */
 

@@ -55,6 +55,8 @@ const DEFAULTS = {
     // Langes Zufalls-Token; leer = Broadcast-Seite deaktiviert
     broadcastSecret: ''
   },
+  // Besucher-Zähler (Seitenaufrufe + eindeutige Besucher; ohne IP/Cookies)
+  visitorCounter: true,
   // Live-Karte (Spieler-Positionen aus der REST-API, Basen via Uploader)
   map: {
     enabled: true,
@@ -528,14 +530,6 @@ if (config.statsEnabled) {
   loadStats();
   pollStats();
   setInterval(pollStats, config.statsPollSeconds * 1000);
-
-  // Beim Beenden ungespeicherte Daten sichern
-  for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.on(signal, () => {
-      saveStats(true);
-      process.exit(0);
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -651,6 +645,41 @@ function sendJson(res, status, obj) {
     'Cache-Control': 'no-store'
   });
   res.end(JSON.stringify(obj));
+}
+
+// ---------------------------------------------------------------------------
+// Besucher-Zähler
+// ---------------------------------------------------------------------------
+// Zählt Seitenaufrufe (total) und eindeutige Besucher (unique). "Eindeutig"
+// wird clientseitig per localStorage-Flag bestimmt – es werden KEINE
+// IP-Adressen, Cookies oder sonstigen personenbezogenen Daten gespeichert,
+// nur zwei Zahlen. Persistiert in data/visits.json.
+
+const visitsFile = path.join(__dirname, 'data/visits.json');
+let visits = { total: 0, unique: 0 };
+let visitsDirty = false;
+let lastVisitsSave = 0;
+
+try {
+  const raw = JSON.parse(fs.readFileSync(visitsFile, 'utf8'));
+  if (typeof raw.total === 'number') visits.total = raw.total;
+  if (typeof raw.unique === 'number') visits.unique = raw.unique;
+} catch { /* noch keine Zähler-Datei */ }
+
+function saveVisits(force = false) {
+  if (!visitsDirty) return;
+  const now = Date.now();
+  if (!force && now - lastVisitsSave < 5000) return; // höchstens alle 5 s schreiben
+  try {
+    fs.mkdirSync(path.dirname(visitsFile), { recursive: true });
+    const tmp = `${visitsFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(visits));
+    fs.renameSync(tmp, visitsFile);
+    visitsDirty = false;
+    lastVisitsSave = now;
+  } catch (err) {
+    console.error(`[visits] Speichern fehlgeschlagen: ${err.message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -830,6 +859,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Besucher-Zähler (POST) ----
+  if (req.method === 'POST' && pathname === '/api/visit') {
+    if (!config.visitorCounter) {
+      sendJson(res, 200, { enabled: false });
+      return;
+    }
+    const ip = req.socket.remoteAddress || 'unknown';
+    // Nur zählen, wenn nicht rate-limitiert (Schutz vor Spam) – sonst nur den
+    // aktuellen Stand zurückgeben, damit die Anzeige trotzdem funktioniert.
+    if (!rateLimited(ip, 30, 60_000)) {
+      let firstVisit = false;
+      try {
+        const body = await readJsonBody(req, 1024);
+        firstVisit = body.firstVisit === true;
+      } catch { /* Body optional */ }
+      visits.total += 1;
+      if (firstVisit) visits.unique += 1;
+      visitsDirty = true;
+      saveVisits();
+    }
+    sendJson(res, 200, { enabled: true, total: visits.total, unique: visits.unique });
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
     return;
@@ -955,6 +1008,15 @@ const server = http.createServer(async (req, res) => {
 
   serveStatic(req, res);
 });
+
+// Beim Beenden ungespeicherte Daten sichern (Statistik + Besucher-Zähler)
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    saveStats(true);
+    saveVisits(true);
+    process.exit(0);
+  });
+}
 
 server.listen(config.port, config.host, () => {
   console.log(`Palworld-Webseite läuft auf http://${config.host}:${config.port}`);
