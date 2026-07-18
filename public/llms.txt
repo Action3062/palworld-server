@@ -1,0 +1,39 @@
+# PalHeim – Deutscher Palworld Community-Server
+
+> PalHeim (palheim.de) ist ein privater, kostenloser, deutschsprachiger
+> Palworld-Server: reines PvE/Koop (PvP aus), faire Raten, keine geplanten
+> Wipes, 32 Slots, 24/7 auf eigener Hardware bei Hetzner in Deutschland.
+> Server-Adresse zum Beitreten: **pve.palheim.de:8211**
+
+## Schnellfakten
+
+- Spiel: Palworld (Dedicated Server, ohne Mods – jeder kann direkt beitreten)
+- Server-Adresse: `pve.palheim.de:8211` (im Palworld-Hauptmenü unter
+  „Multiplayer beitreten“ eintragen)
+- Sprache/Community: Deutsch
+- Spielmodus: PvE / Koop – PvP ist deaktiviert, kein Griefing erlaubt
+- Raten: 3× EP, 2× Fangrate, 2× Drop-Rate, 4 Basen pro Gilde,
+  keine Todesstrafe (beim Tod gehen weder Items noch Pals verloren)
+- Slots: 32 Spieler
+- Wipes: keine regelmäßigen Wipes geplant
+- Backups: automatisch, mehrmals täglich; täglicher Neustart um 03:00 Uhr
+- Standort: Hetzner Cloud, Deutschland
+- Kosten: keine – privater Community-Server
+
+## Regeln (Kurzfassung)
+
+- Respektvoller Umgang, kein Mobbing
+- Kein Griefing: fremde Basen, Pals und Kisten sind tabu
+- Keine Cheats, Exploits oder Duping
+- Wichtige Ressourcen-Spots und Bosse nicht zubauen
+- Inaktive Basen können nach 30 Tagen entfernt werden
+
+## Seiten
+
+- [Startseite mit Live-Status, Statistiken, Beitritts-Anleitung, Regeln und FAQ](https://palheim.de/)
+- [Live-Karte: Spieler-Positionen und Gilden-Basen in Echtzeit](https://palheim.de/karte)
+
+## Hinweise
+
+PalHeim ist ein inoffizieller Community-Server und steht in keiner Verbindung
+zu Pocketpair, Inc. Palworld ist eine Marke von Pocketpair, Inc.

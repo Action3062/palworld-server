@@ -306,6 +306,15 @@ code {
     0 6px 22px rgba(18, 49, 78, 0.45);
 }
 
+.hero__title-tag {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(1.15rem, 2.6vw, 1.7rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .text-gradient {
   text-shadow: none;
   background: linear-gradient(180deg, #ffe378 15%, #ffa63a 85%);
@@ -1233,6 +1242,20 @@ code {
 .bc-card .vote-message { margin-top: 12px; }
 
 /* ---------------- Regeln ---------------- */
+
+/* --- Über PalHeim ------------------------------------------------------- */
+.about {
+  max-width: 780px;
+  margin: 0 auto;
+}
+.about p {
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1.7;
+  margin-bottom: 18px;
+}
+.about p strong { color: var(--text); }
+.about p:last-child { margin-bottom: 0; }
 
 .rules {
   list-style: none;

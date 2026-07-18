@@ -3,13 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PalHeim – Palworld Community Server</title>
-  <meta name="description" content="PalHeim – dein deutscher Palworld Community-Server. Faire Raten, aktive Community, 24/7 online. Jetzt beitreten!">
+  <title>PalHeim – Deutscher Palworld Server (PvE) · 24/7 · ohne Wipes</title>
+  <meta name="description" content="PalHeim ist ein deutscher Palworld PvE-Server: 3× EP, 2× Fangrate, keine Wipes, 32 Slots, 24/7 in Deutschland gehostet. Jetzt verbinden: pve.palheim.de:8211">
+  <link rel="canonical" href="https://palheim.de/">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
 
-  <!-- Open Graph -->
-  <meta property="og:title" content="PalHeim – Palworld Community Server">
-  <meta property="og:description" content="Deutscher Palworld Community-Server. Faire Raten, aktive Community, 24/7 online.">
+  <!-- Open Graph (Discord, WhatsApp, Facebook, …) -->
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PalHeim">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:url" content="https://palheim.de/">
+  <meta property="og:title" content="PalHeim – Deutscher Palworld Server (PvE)">
+  <meta property="og:description" content="Faire Raten (3× EP, 2× Fangrate), keine Wipes, 32 Slots, 24/7 in Deutschland gehostet. Server-Adresse: pve.palheim.de:8211">
+  <meta property="og:image" content="https://palheim.de/assets/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="PalHeim – Deutscher Palworld Community-Server, Server-Adresse pve.palheim.de:8211">
+
+  <!-- Twitter/X Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PalHeim – Deutscher Palworld Server (PvE)">
+  <meta name="twitter:description" content="Faire Raten, keine Wipes, 32 Slots, 24/7 in Deutschland gehostet. Server-Adresse: pve.palheim.de:8211">
+  <meta name="twitter:image" content="https://palheim.de/assets/og-image.jpg">
 
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <meta name="theme-color" content="#3ba1e8">
@@ -18,7 +33,132 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 
+  <link rel="preload" as="image" href="/assets/hero.webp" fetchpriority="high">
   <link rel="stylesheet" href="/css/style.css">
+
+  <!-- Strukturierte Daten für Suchmaschinen & KI-Suchen -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://palheim.de/#website",
+        "url": "https://palheim.de/",
+        "name": "PalHeim",
+        "description": "Deutscher Palworld Community-Server: PvE, faire Raten, keine Wipes, 24/7 in Deutschland gehostet.",
+        "inLanguage": "de"
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://palheim.de/#webpage",
+        "url": "https://palheim.de/",
+        "name": "PalHeim – Deutscher Palworld Server (PvE) · 24/7 · ohne Wipes",
+        "isPartOf": { "@id": "https://palheim.de/#website" },
+        "about": { "@id": "https://palheim.de/#gameserver" },
+        "primaryImageOfPage": "https://palheim.de/assets/og-image.jpg",
+        "inLanguage": "de"
+      },
+      {
+        "@type": "GameServer",
+        "@id": "https://palheim.de/#gameserver",
+        "name": "PalHeim",
+        "url": "https://palheim.de/",
+        "description": "Privater deutscher Palworld-Server (PvE/Koop): 3× EP, 2× Fangrate, 2× Drop-Rate, 4 Basen pro Gilde, keine Todesstrafe, keine geplanten Wipes, 32 Slots, automatische Backups, gehostet in der Hetzner Cloud in Deutschland. Server-Adresse: pve.palheim.de:8211",
+        "image": "https://palheim.de/assets/og-image.jpg",
+        "game": { "@id": "https://palheim.de/#palworld" }
+      },
+      {
+        "@type": "VideoGame",
+        "@id": "https://palheim.de/#palworld",
+        "name": "Palworld",
+        "publisher": { "@type": "Organization", "name": "Pocketpair, Inc." },
+        "sameAs": [
+          "https://de.wikipedia.org/wiki/Palworld",
+          "https://www.pocketpair.jp/palworld"
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://palheim.de/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Wie lautet die Server-Adresse von PalHeim?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Die Server-Adresse ist pve.palheim.de:8211. In Palworld im Hauptmenü auf „Multiplayer beitreten“ klicken, die Adresse unten eintragen und verbinden."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Ich kann mich nicht verbinden – was tun?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Zuerst den Live-Status auf palheim.de prüfen. Ist der Server online, die Adresse pve.palheim.de:8211 (inklusive Port) auf Tippfehler kontrollieren. Nach einem Palworld-Update kann es einige Stunden dauern, bis der Server ebenfalls aktualisiert ist – Infos dazu gibt es im Discord."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist PalHeim ein PvP- oder PvE-Server?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "PalHeim ist ein reiner PvE-/Koop-Server: PvP ist deaktiviert und Griefing verboten. Niemand kann deine Basis zerstören oder deine Pals stehlen."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Welche Raten sind auf PalHeim eingestellt?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "3× EP-Rate, 2× Fangrate, 2× Drop-Rate, 4 Basen pro Gilde und keine Todesstrafe – beim Tod gehen weder Items noch Pals verloren. Bewusst fair: schneller als Vanilla, ohne dass der Fortschritt langweilig wird."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Kostet das Spielen auf PalHeim etwas?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Nein. PalHeim ist ein privater, kostenloser Community-Server – du brauchst nur das Spiel Palworld und die Server-Adresse pve.palheim.de:8211."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Gibt es Wipes?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Geplant sind keine regelmäßigen Wipes. Sollte ein großes Spiel-Update einen Wipe nötig machen, wird das frühzeitig im Discord angekündigt."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Läuft der Server mit Mods?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Aktuell läuft der Server ohne Mods – jeder kann direkt beitreten, ohne etwas zu installieren. Änderungen daran werden vorher mit der Community abgestimmt."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Werden meine Spielstände gesichert?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Ja. Der Server erstellt mehrmals täglich automatische Backups. Im Notfall kann die Welt auf einen früheren Stand zurückgesetzt werden."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Wie erreiche ich das Team?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Am schnellsten über den PalHeim-Discord. Dort gibt es Ankündigungen, Support und die Community."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 
@@ -38,7 +178,7 @@
 
       <nav class="nav__links" id="navLinks">
         <a href="#status">Status</a>
-        <a href="/karte.html">Karte</a>
+        <a href="/karte">Karte</a>
         <a href="#statistiken">Statistiken</a>
         <a href="#server">Server-Info</a>
         <a href="#mitspielen">Mitspielen</a>
@@ -66,11 +206,12 @@
 
       <h1 class="hero__title">
         Willkommen bei <span class="text-gradient">PalHeim</span>
+        <span class="hero__title-tag">deinem deutschen Palworld&nbsp;PvE-Server</span>
       </h1>
 
       <p class="hero__subtitle">
-        Dein deutscher Palworld&nbsp;Community-Server – faire Raten,
-        entspannte Community und ein Server, der einfach läuft. 24/7 auf eigener Hardware.
+        Faire Raten, entspannte Community und ein Server, der einfach läuft –
+        24/7 auf eigener Hardware in Deutschland. Ohne Wipes, ohne Mods, ohne Stress.
       </p>
 
       <div class="hero__actions">
@@ -403,6 +544,38 @@
       </div>
     </section>
 
+    <!-- ===================== ÜBER PALHEIM ===================== -->
+    <section class="section" id="ueber">
+      <div class="container">
+        <span class="section__label">Über uns</span>
+        <h2 class="section__title">Was ist PalHeim?</h2>
+
+        <div class="about reveal">
+          <p>
+            PalHeim ist ein privater, deutschsprachiger <strong>Palworld-Server</strong> für alle,
+            die entspannt zusammen spielen wollen: reines <strong>PvE &amp; Koop</strong> –
+            PvP ist deaktiviert, Griefing verboten. Der Server läuft <strong>rund um die Uhr</strong>
+            auf eigener Hardware in der <strong>Hetzner Cloud in Deutschland</strong>, mit
+            entsprechend niedrigen Pings für Spieler aus Deutschland, Österreich und der Schweiz.
+          </p>
+          <p>
+            Deine Welt bleibt bestehen: <strong>keine regelmäßigen Wipes</strong>, automatische
+            Backups mehrmals täglich und Platz für <strong>32 Spieler</strong>. Faire Raten
+            (3× EP, 2× Fangrate, 2× Drop-Rate) beschleunigen den Fortschritt, ohne das Spiel
+            langweilig zu machen. Auf der <a href="/karte">Live-Karte</a> siehst du jederzeit,
+            wer gerade wo unterwegs ist und wo die Basen der Gilden stehen – und in den
+            <a href="#statistiken">Statistiken</a> Peaks, Spielzeiten und die Top-Spieler.
+          </p>
+          <p>
+            Beitreten ist einfach: Palworld starten, unter „Multiplayer beitreten“ die Adresse
+            <code class="inline-address">pve.palheim.de:8211</code> eingeben – fertig.
+            Fragen beantwortet das <a href="#faq">FAQ</a> oder unsere Community auf
+            <a href="https://discord.gg/b8WYXN3Q3e" target="_blank" rel="noopener">Discord</a>.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- ===================== REGELN ===================== -->
     <section class="section section--alt" id="regeln">
       <div class="container">
@@ -431,10 +604,36 @@
 
         <div class="faq reveal">
           <details class="faq__item">
+            <summary>Wie lautet die Server-Adresse von PalHeim?</summary>
+            <p>Die Server-Adresse ist <code>pve.palheim.de:8211</code>. In Palworld im Hauptmenü auf
+              <strong>„Multiplayer beitreten“</strong> klicken, die Adresse unten eintragen und verbinden –
+              die Schritt-für-Schritt-Anleitung findest du unter <a href="#mitspielen">Mitspielen</a>.</p>
+          </details>
+
+          <details class="faq__item">
             <summary>Ich kann mich nicht verbinden – was tun?</summary>
             <p>Prüfe zuerst oben den <a href="#status">Live-Status</a>. Ist der Server online, kontrolliere die
               Adresse (inklusive Port <code>:8211</code>) auf Tippfehler. Nach einem Palworld-Update kann es
               einige Stunden dauern, bis der Server ebenfalls aktualisiert ist – Infos dazu gibt's im Discord.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Ist PalHeim ein PvP- oder PvE-Server?</summary>
+            <p>PalHeim ist ein reiner <strong>PvE-/Koop-Server</strong>: PvP ist deaktiviert und Griefing
+              verboten. Niemand kann deine Basis zerstören oder deine Pals stehlen.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Welche Raten sind auf PalHeim eingestellt?</summary>
+            <p><strong>3× EP-Rate, 2× Fangrate, 2× Drop-Rate, 4 Basen pro Gilde</strong> und keine
+              Todesstrafe – beim Tod gehen weder Items noch Pals verloren. Alle Details stehen in der
+              <a href="#server">Raten-Übersicht</a>.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Kostet das Spielen auf PalHeim etwas?</summary>
+            <p>Nein. PalHeim ist ein privater, <strong>kostenloser Community-Server</strong> – du brauchst
+              nur das Spiel Palworld und die Server-Adresse.</p>
           </details>
 
           <details class="faq__item">
@@ -498,8 +697,8 @@
       <p>© <span id="year">2026</span> PalHeim · Privater Community-Server · Gehostet in Deutschland</p>
       <p class="footer__visits" data-visits hidden>👀 <span data-visits-unique>–</span> Besucher · <span data-visits-total>–</span> Aufrufe</p>
       <nav class="footer__links">
-        <a href="/impressum.html">Impressum</a>
-        <a href="/datenschutz.html">Datenschutz</a>
+        <a href="/impressum">Impressum</a>
+        <a href="/datenschutz">Datenschutz</a>
         <a href="#top">Nach oben ↑</a>
       </nav>
       <p class="footer__disclaimer">

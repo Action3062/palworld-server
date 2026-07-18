@@ -293,7 +293,7 @@ quadratisch ist, dann als `public/assets/map.webp` ablegen. (Nur für dich
 privat auf dem Server – nicht ins Repo committen.)
 
 **2. Ausrichtung prüfen mit dem eingebauten Werkzeug.** Ruf die Karte mit
-`?align` auf, z. B. `https://palheim.de/karte.html?align`. Es rahmt die volle
+`?align` auf, z. B. `https://palheim.de/karte?align`. Es rahmt die volle
 Ausdehnung, zeigt **Fadenkreuze** an den vier Ecken + Mitte (mit In-Game-Koordinaten)
 und ein **Live-Koordinaten-Readout** unter der Maus. Fahr über bekannte Orte
 (z. B. Fast-Travel-Statuen) und vergleiche die angezeigten Karten-Koordinaten
@@ -414,6 +414,31 @@ Alle Texte liegen direkt im HTML – einfach editieren:
 | Farben / Design | `public/css/style.css`, CSS-Variablen in `:root` |
 | Hero-Hintergrund | Standard: `public/assets/hero.webp` (KI-Artwork). Alternative Variante: `hero-alt.webp` (umbenennen zu `hero.webp`). Eigenes Bild als `hero.jpg` ablegen überstimmt alles; ohne Bilddateien greift die SVG-Szene `hero-scene.svg` |
 | Impressum / Datenschutz | `public/impressum.html`, `public/datenschutz.html` (TODOs ausfüllen!) |
+
+## SEO & KI-Sichtbarkeit
+
+Die Seite bringt die technische Basis mit, um in Suchmaschinen **und**
+KI-Suchen (ChatGPT, Perplexity, Google AI Overviews, …) gefunden und
+empfohlen zu werden:
+
+- `public/robots.txt` – alle Crawler inkl. KI-Bots erlaubt, Sitemap verlinkt
+- `public/sitemap.xml` – bei neuen Seiten erweitern (`lastmod` aktualisieren)
+- `public/llms.txt` – kompakte Server-Fakten für KI-Crawler
+- Strukturierte Daten (JSON-LD: `GameServer`, `FAQPage`, `WebSite`) und
+  vollständige Open-Graph-/Twitter-Tags in `public/index.html`
+- Saubere kanonische URLs: `/karte` statt `/karte.html` – alte `.html`-Pfade
+  leiten per 301 weiter (macht `server.js`)
+- OG-Vorschaubild `public/assets/og-image.jpg` – nach einem Wechsel des
+  Hero-Bildes mit `python3 tools/make-og-image.py` neu erzeugen
+
+⚠️ Inhalte wie Raten, Regeln und FAQ stehen jetzt zusätzlich als JSON-LD und
+in `llms.txt` – **bei Änderungen an diesen Fakten alle drei Stellen anpassen**
+(Sichtbarer Text, JSON-LD im `<head>`, `public/llms.txt`), sonst zeigen
+Google & KIs veraltete Werte an.
+
+Die einmaligen Schritte außerhalb des Codes (Google Search Console, Bing
+Webmaster Tools, Serverlisten, Discord-Discovery) stehen in
+**[docs/seo-checkliste.md](docs/seo-checkliste.md)**.
 
 ## Sicherheit
 

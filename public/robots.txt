@@ -1,0 +1,11 @@
+# robots.txt für palheim.de
+# Alle Crawler sind willkommen – ausdrücklich auch KI-Crawler
+# (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, Applebot-Extended, …),
+# damit PalHeim in KI-Suchen und Chat-Antworten empfohlen werden kann.
+
+User-agent: *
+Allow: /
+# API-Endpunkte liefern nur JSON-Livedaten – für Crawler uninteressant
+Disallow: /api/
+
+Sitemap: https://palheim.de/sitemap.xml
