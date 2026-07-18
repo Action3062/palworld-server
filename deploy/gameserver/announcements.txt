@@ -1,0 +1,17 @@
+# =============================================================================
+# announcements.txt — Ingame-Nachrichten fuer palworld-announce.sh (PalHeim)
+# Eine Nachricht pro Zeile. '#'-Zeilen und Leerzeilen werden ignoriert.
+# Aenderungen greifen sofort beim naechsten Cron-Lauf, kein Neustart noetig.
+#
+# Platzhalter: {PLAYERS} {MAXPLAYERS} {DAYS}
+# Wichtig: Umlaute vermeiden (Ingame-Anzeige) — ae/oe/ue und ss schreiben.
+# =============================================================================
+Willkommen auf PalHeim! Alle News, Events und Support: discord.gg/b8WYXN3Q3e
+Schon gewusst? Auf palheim.de gibt es eine Live-Karte mit allen Spielern und Basen!
+Tag {DAYS} auf PalHeim - gerade {PLAYERS}/{MAXPLAYERS} Zaehmer unterwegs. Viel Spass!
+Nachteule, Weltenbummler, Rekord-Crew: Deine Erfolge und dein Profil findest du auf palheim.de
+Fragen, Probleme oder Wuensche? Der Admin ist im Discord erreichbar: discord.gg/b8WYXN3Q3e
+Wer ist die Nummer 1? Top-Spieler, Rekorde und Statistiken auf palheim.de
+Dein Fortschritt ist sicher: PalHeim macht mehrmals taeglich automatische Backups.
+Freunde einladen? Schick ihnen einfach palheim.de - da steht alles zum Mitspielen.
+Server-Infos, Regeln und FAQ: palheim.de | Community: discord.gg/b8WYXN3Q3e
