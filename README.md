@@ -357,6 +357,31 @@ Alle Texte liegen direkt im HTML – einfach editieren:
 | Hero-Hintergrund | Standard: `public/assets/hero.webp` (KI-Artwork). Alternative Variante: `hero-alt.webp` (umbenennen zu `hero.webp`). Eigenes Bild als `hero.jpg` ablegen überstimmt alles; ohne Bilddateien greift die SVG-Szene `hero-scene.svg` |
 | Impressum / Datenschutz | `public/impressum.html`, `public/datenschutz.html` (TODOs ausfüllen!) |
 
+## SEO & KI-Sichtbarkeit
+
+Die Seite bringt die technische Basis mit, um in Suchmaschinen **und**
+KI-Suchen (ChatGPT, Perplexity, Google AI Overviews, …) gefunden und
+empfohlen zu werden:
+
+- `public/robots.txt` – alle Crawler inkl. KI-Bots erlaubt, Sitemap verlinkt
+- `public/sitemap.xml` – bei neuen Seiten erweitern (`lastmod` aktualisieren)
+- `public/llms.txt` – kompakte Server-Fakten für KI-Crawler
+- Strukturierte Daten (JSON-LD: `GameServer`, `FAQPage`, `WebSite`) und
+  vollständige Open-Graph-/Twitter-Tags in `public/index.html`
+- Saubere kanonische URLs: `/karte` statt `/karte.html` – alte `.html`-Pfade
+  leiten per 301 weiter (macht `server.js`)
+- OG-Vorschaubild `public/assets/og-image.jpg` – nach einem Wechsel des
+  Hero-Bildes mit `python3 tools/make-og-image.py` neu erzeugen
+
+⚠️ Inhalte wie Raten, Regeln und FAQ stehen jetzt zusätzlich als JSON-LD und
+in `llms.txt` – **bei Änderungen an diesen Fakten alle drei Stellen anpassen**
+(Sichtbarer Text, JSON-LD im `<head>`, `public/llms.txt`), sonst zeigen
+Google & KIs veraltete Werte an.
+
+Die einmaligen Schritte außerhalb des Codes (Google Search Console, Bing
+Webmaster Tools, Serverlisten, Discord-Discovery) stehen in
+**[docs/seo-checkliste.md](docs/seo-checkliste.md)**.
+
 ## Sicherheit
 
 - Der `/api/status`-Endpunkt gibt nur unkritische Daten weiter
