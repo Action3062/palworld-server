@@ -605,6 +605,8 @@ const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -617,7 +619,21 @@ const MIME_TYPES = {
 
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+
+  // SEO: eine kanonische URL pro Seite – alte .html-Pfade und Trailing-Slashes
+  // werden dauerhaft (301) auf die saubere URL umgeleitet
+  // (/index.html → /, /karte.html → /karte, /karte/ → /karte)
+  if (urlPath.endsWith('.html') || (urlPath !== '/' && urlPath.endsWith('/'))) {
+    let clean = urlPath.replace(/\.html$/, '').replace(/\/+$/, '');
+    if (clean === '' || clean === '/index') clean = '/';
+    res.writeHead(301, { Location: encodeURI(clean) });
+    res.end();
+    return;
+  }
+
   if (urlPath === '/') urlPath = '/index.html';
+  // Saubere URLs: /karte liefert public/karte.html aus
+  else if (!path.extname(urlPath)) urlPath += '.html';
 
   // Pfad absichern: kein Ausbruch aus dem public-Verzeichnis
   const filePath = path.join(PUBLIC_DIR, urlPath);
