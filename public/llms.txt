@@ -31,6 +31,7 @@
 ## Seiten
 
 - [Startseite mit Live-Status, Statistiken, Beitritts-Anleitung, Regeln und FAQ](https://palheim.de/)
+- [Server beitreten: Schritt-für-Schritt-Anleitung und Problemlösungen](https://palheim.de/beitreten)
 - [Live-Karte: Spieler-Positionen und Gilden-Basen in Echtzeit](https://palheim.de/karte)
 
 ## Hinweise

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Palworld-Server beitreten – Anleitung &amp; Problemlösungen | PalHeim</title>
+  <meta name="description" content="So trittst du dem deutschen Palworld-Server PalHeim bei: Schritt-für-Schritt-Anleitung für Steam, Server-Adresse pve.palheim.de:8211 und Lösungen für die häufigsten Verbindungsprobleme.">
+  <link rel="canonical" href="https://palheim.de/beitreten">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PalHeim">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:url" content="https://palheim.de/beitreten">
+  <meta property="og:title" content="Palworld-Server beitreten – Anleitung für PalHeim">
+  <meta property="og:description" content="In 3 Schritten auf den deutschen Palworld-PvE-Server: pve.palheim.de:8211 – plus Lösungen für die häufigsten Verbindungsprobleme.">
+  <meta property="og:image" content="https://palheim.de/assets/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://palheim.de/assets/og-image.jpg">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <meta name="theme-color" content="#3ba1e8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+
+  <!-- Strukturierte Daten: Anleitung als HowTo -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "PalHeim", "item": "https://palheim.de/" },
+          { "@type": "ListItem", "position": 2, "name": "Server beitreten", "item": "https://palheim.de/beitreten" }
+        ]
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://palheim.de/beitreten#webpage",
+        "url": "https://palheim.de/beitreten",
+        "name": "Palworld-Server beitreten – Anleitung für PalHeim",
+        "isPartOf": { "@id": "https://palheim.de/#website" },
+        "inLanguage": "de"
+      },
+      {
+        "@type": "HowTo",
+        "@id": "https://palheim.de/beitreten#howto",
+        "name": "Palworld-Server beitreten: PalHeim (pve.palheim.de:8211)",
+        "description": "Dem deutschen Palworld-Community-Server PalHeim in unter einer Minute beitreten – über die Direktverbindung mit der Server-Adresse.",
+        "totalTime": "PT2M",
+        "step": [
+          {
+            "@type": "HowToStep",
+            "position": 1,
+            "name": "Palworld starten",
+            "text": "Palworld auf Steam starten und im Hauptmenü „Multiplayer beitreten“ auswählen."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 2,
+            "name": "Server-Adresse eingeben",
+            "text": "Unten im Adressfeld pve.palheim.de:8211 eintragen (inklusive Port 8211)."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 3,
+            "name": "Verbinden und losspielen",
+            "text": "Auf „Verbinden“ klicken und Charakter erstellen. Falls der Server ein Passwort verlangt, steht es im PalHeim-Discord."
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav__inner container">
+      <a href="/" class="nav__brand">
+        <svg class="nav__logo" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <path d="M3.6 24 A20.4 20.4 0 0 1 44.4 24 L3.6 24 Z" fill="#2f9de4"/>
+          <path d="M3.6 24 H44.4" stroke="#16405f" stroke-width="3.4"/>
+          <circle cx="24" cy="24" r="7.6" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <circle cx="24" cy="24" r="3" fill="#ffb454"/>
+        </svg>
+        <span>Pal<em>Heim</em></span>
+      </a>
+
+      <nav class="nav__links" id="navLinks">
+        <a href="/#status">Status</a>
+        <a href="/karte">Karte</a>
+        <a href="/#statistiken">Statistiken</a>
+        <a href="/beitreten" aria-current="page">Mitspielen</a>
+        <a href="/#faq">FAQ</a>
+        <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener" class="btn btn--small btn--accent">Discord</a>
+      </nav>
+
+      <button class="nav__toggle" id="navToggle" aria-label="Menü öffnen" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ===================== ANLEITUNG ===================== -->
+    <section class="section">
+      <div class="container">
+        <span class="section__label">Anleitung</span>
+        <h1 class="section__title">Palworld-Server beitreten – so kommst du auf PalHeim</h1>
+        <p class="section__intro">
+          PalHeim ist ein deutscher Palworld-PvE-Server, dem du ohne Mods und ohne
+          Anmeldung direkt beitreten kannst. Alles, was du brauchst: Palworld und
+          diese Adresse.
+        </p>
+
+        <div class="notice reveal">
+          <strong>Server-Adresse:</strong>
+          <code class="inline-address">pve.palheim.de:8211</code>
+          <button class="copy-mini" data-copy="pve.palheim.de:8211" aria-label="Adresse kopieren">kopieren</button>
+        </div>
+
+        <ol class="steps reveal">
+          <li class="step">
+            <span class="step__num">1</span>
+            <div>
+              <h3>Palworld starten</h3>
+              <p>Starte Palworld auf Steam und wähle im Hauptmenü
+                <strong>„Multiplayer beitreten“</strong>. Du brauchst keine Mods
+                und musst nichts installieren – der Server läuft vanilla.</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step__num">2</span>
+            <div>
+              <h3>Server-Adresse eingeben</h3>
+              <p>Ganz unten im Fenster findest du ein Eingabefeld für die
+                Direktverbindung. Trage dort
+                <code class="inline-address">pve.palheim.de:8211</code>
+                <button class="copy-mini" data-copy="pve.palheim.de:8211" aria-label="Adresse kopieren">kopieren</button>
+                ein – wichtig: inklusive Port <code>:8211</code>.</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step__num">3</span>
+            <div>
+              <h3>Verbinden &amp; losspielen</h3>
+              <p>Auf <strong>„Verbinden“</strong> klicken, Charakter erstellen – willkommen
+                auf PalHeim! Fragt der Server nach einem Passwort, findest du es auf
+                unserem <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener">Discord</a>.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== PROBLEME & LÖSUNGEN ===================== -->
+    <section class="section section--alt" id="probleme">
+      <div class="container">
+        <span class="section__label">Troubleshooting</span>
+        <h2 class="section__title">Verbindung klappt nicht? Die häufigsten Ursachen</h2>
+
+        <div class="faq reveal">
+          <details class="faq__item">
+            <summary>„Verbindung fehlgeschlagen“ oder Timeout</summary>
+            <p>Prüfe zuerst den <a href="/#status">Live-Status</a> auf der Startseite – dort siehst du,
+              ob der Server gerade online ist. Läuft er, kontrolliere die Adresse Zeichen für Zeichen:
+              <code>pve.palheim.de:8211</code>, inklusive Doppelpunkt und Port. Um 03:00 Uhr startet der
+              Server täglich neu – in den paar Minuten danach einfach erneut versuchen.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Nach einem Palworld-Update geht plötzlich nichts mehr</summary>
+            <p>Steam aktualisiert dein Spiel sofort, der Server zieht meist erst einige Stunden später
+              nach – solange passen die Versionen nicht zusammen und der Beitritt schlägt fehl.
+              Vergleiche deine Spielversion mit der <a href="/#status">Server-Version auf der Startseite</a>.
+              Sobald der Server aktualisiert ist, geben wir im Discord Bescheid.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Der Server verlangt ein Passwort</summary>
+            <p>Wenn der Passwortschutz aktiv ist, steht das aktuelle Passwort auf unserem
+              <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener">Discord</a> –
+              kurz reinschauen, kopieren, fertig.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Ich finde PalHeim nicht im Server-Browser</summary>
+            <p>Der zuverlässigste Weg ist immer die <strong>Direktverbindung über die Adresse</strong> –
+              sie funktioniert unabhängig davon, was der In-Game-Server-Browser gerade anzeigt.
+              Einfach die drei Schritte oben befolgen.</p>
+          </details>
+
+          <details class="faq__item">
+            <summary>Brauche ich Mods oder besondere Einstellungen?</summary>
+            <p>Nein. PalHeim läuft ohne Mods – das normale Spiel reicht. Es gibt auch keine
+              Whitelist: verbinden, Charakter erstellen, losspielen.</p>
+          </details>
+        </div>
+
+        <div class="notice reveal">
+          <strong>Immer noch Probleme?</strong> Auf unserem
+          <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener">Discord</a> hilft dir
+          schnell jemand aus der Community weiter.
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== GUT ZU WISSEN ===================== -->
+    <section class="section">
+      <div class="container">
+        <span class="section__label">Erster Tag</span>
+        <h2 class="section__title">Gut zu wissen für deinen Start</h2>
+
+        <ul class="rules reveal">
+          <li><strong>Reines PvE.</strong> PvP ist aus, Griefing verboten – du kannst entspannt bauen, niemand zerstört deine Basis.</li>
+          <li><strong>Keine Todesstrafe.</strong> Beim Tod verlierst du weder Items noch Pals.</li>
+          <li><strong>Faire Raten.</strong> 3× EP, 2× Fangrate, 2× Drop-Rate – zügiger Fortschritt ohne Langeweile.</li>
+          <li><strong>4 Basen pro Gilde.</strong> Genug Platz für große Bauprojekte.</li>
+          <li><strong>Keine Wipes geplant.</strong> Deine Welt bleibt bestehen, Backups laufen mehrmals täglich.</li>
+          <li><strong>Regeln beachten.</strong> Die <a href="/#regeln">Server-Regeln</a> sind kurz – einmal lesen reicht.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== CTA ===================== -->
+    <section class="section section--cta">
+      <div class="container">
+        <div class="cta reveal">
+          <h2>Wir sehen uns auf dem Server!</h2>
+          <p>Fragen, Events und Leute zum Zocken findest du auf unserem Discord.</p>
+          <a href="https://discord.gg/DEIN-INVITE" target="_blank" rel="noopener" class="btn btn--accent btn--large">
+            Discord beitreten
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <p>© <span id="year">2026</span> PalHeim · Privater Community-Server</p>
+      <nav class="footer__links">
+        <a href="/">Startseite</a>
+        <a href="/karte">Karte</a>
+        <a href="/impressum">Impressum</a>
+        <a href="/datenschutz">Datenschutz</a>
+      </nav>
+      <p class="footer__disclaimer">
+        PalHeim ist ein inoffizieller Community-Server. Palworld ist eine Marke von Pocketpair, Inc.
+        Diese Seite steht in keiner Verbindung zu Pocketpair.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Mobile Navigation, Jahr, Reveal, Kopier-Buttons (Seite lädt kein main.js)
+    const navToggle = document.getElementById('navToggle');
+    const navLinks = document.getElementById('navLinks');
+    navToggle.addEventListener('click', () => {
+      const open = navLinks.classList.toggle('is-open');
+      navToggle.setAttribute('aria-expanded', String(open));
+    });
+    document.getElementById('year').textContent = new Date().getFullYear();
+    document.querySelectorAll('.reveal').forEach((n) => n.classList.add('is-visible'));
+    document.querySelectorAll('[data-copy]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(btn.dataset.copy);
+          const old = btn.textContent;
+          btn.textContent = 'kopiert ✓';
+          setTimeout(() => { btn.textContent = old; }, 1500);
+        } catch { /* Clipboard nicht verfügbar (z. B. http) – Button bleibt stumm */ }
+      });
+    });
+  </script>
+</body>
+</html>
