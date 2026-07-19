@@ -20,13 +20,15 @@
 # Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
 # COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
 #
-# Cron-Beispiele (naechtlicher Neustart mit mehreren Versuchen):
+# Cron-Beispiele:
 #   */30 * * * * /root/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+#
+#   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern, einmal/Tag):
+#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --once-daily --reason "Taeglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#
+#   Alternative: mehrere sanfte Versuche nur bei leerem Server:
 #   5 3 * * *    /root/palworld/palworld-autoupdate.sh --force-restart --if-empty --once-daily >> /var/log/palworld-update.log 2>&1
 #   5 4 * * *    /root/palworld/palworld-autoupdate.sh --force-restart --if-empty --once-daily >> /var/log/palworld-update.log 2>&1
-#   5 5 * * *    /root/palworld/palworld-autoupdate.sh --force-restart --once-daily --reason "Taeglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
-#   (letzte Zeile ohne --if-empty = notfalls mit Ingame-Vorwarnung trotz Spielern;
-#    wer das nicht will, nimmt auch dort --if-empty dazu)
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
