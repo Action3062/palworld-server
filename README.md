@@ -285,6 +285,11 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
   `banner`-Block der `config.json`
 - **In-Game-Ansage**: Nachricht an alle Online-Spieler senden
 - **Spielstand sichern**: Welt sofort speichern (vor Wartungen/Neustarts)
+- **Server neustarten**: mit wählbarer Vorwarnzeit (10–600 s) und doppelter
+  Bestätigung. Warnt die Spieler im Spiel, speichert die Welt und fährt den
+  Server per REST-API herunter – die Docker-Restart-Policy startet ihn
+  automatisch wieder (derselbe Mechanismus wie beim nächtlichen
+  Wartungs-Neustart, Downtime ca. 1–2 Minuten)
 - **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
   und „zuletzt gesehen" – Online-Spieler zuerst
 - **Kick & Bann**: bei Online-Spielern direkt aus der Liste (mit Grund, der

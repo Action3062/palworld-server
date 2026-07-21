@@ -278,6 +278,41 @@
     }
   });
 
+  // ---- Server neustarten (mit doppelter Absicherung) ----
+  $('admRestartBtn').addEventListener('click', async () => {
+    const input = window.prompt('Vorwarnzeit in Sekunden (10–600):', '60');
+    if (input === null) return;
+    const wait = Math.round(Number(input));
+    if (!Number.isFinite(wait) || wait < 10 || wait > 600) {
+      setMsg($('admRestartMsg'), 'Bitte eine Zahl zwischen 10 und 600 angeben.', false);
+      return;
+    }
+    const sure = window.confirm(
+      `Spielserver WIRKLICH neu starten?\n\n` +
+      `• Alle Spieler werden im Spiel gewarnt\n` +
+      `• Die Welt wird gespeichert\n` +
+      `• Shutdown in ${wait} Sekunden, danach startet Docker den Server neu\n` +
+      `• Downtime ca. 1–2 Minuten`
+    );
+    if (!sure) return;
+    const btn = $('admRestartBtn');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ waitSeconds: wait })
+      });
+      const data = await res.json().catch(() => ({}));
+      setMsg($('admRestartMsg'), data.message || (res.ok ? 'Neustart eingeleitet.' : 'Fehler.'), res.ok);
+      if (res.status === 401) { show(loginView); stopRefresh(); }
+    } catch {
+      setMsg($('admRestartMsg'), 'Netzwerkfehler – Neustart nicht ausgelöst.', false);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // Start: Session prüfen (vorhandenes Cookie → direkt Dashboard)
   loadOverview().then(() => {
     if (!dashView.hidden) startRefresh();

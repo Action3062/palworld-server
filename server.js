@@ -1066,6 +1066,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Admin: Spielserver neu starten (POST, nur mit Login) ----
+  // Gleicher Mechanismus wie der nächtliche Wartungs-Neustart: Welt speichern,
+  // dann /v1/api/shutdown mit Vorwarnzeit + Ansage – die Docker-Restart-Policy
+  // startet den Container anschließend automatisch wieder.
+  if (req.method === 'POST' && pathname === '/api/admin/restart') {
+    if (!adminEnabled() || !adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      let wait = Math.round(Number(body.waitSeconds));
+      if (!Number.isFinite(wait)) wait = 60;
+      wait = Math.min(600, Math.max(10, wait));
+      // In-Game-Ansagen bewusst ohne Umlaute (Anzeige-Sicherheit)
+      const message = String(body.message || '').trim().slice(0, 150) ||
+        `Server-Neustart in ${wait} Sekunden! Bitte Fortschritt sichern.`;
+      try {
+        await palworldPost('/v1/api/save', {});
+      } catch { /* Shutdown speichert normalerweise ebenfalls */ }
+      await palworldPost('/v1/api/shutdown', { waittime: wait, message });
+      sendJson(res, 200, {
+        ok: true,
+        message: `Neustart eingeleitet: Shutdown in ${wait} s, danach startet ` +
+          'Docker den Server automatisch neu (Downtime ca. 1–2 Minuten).'
+      });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Neustart nicht ausgelöst.' });
+    }
+    return;
+  }
+
   // ---- Admin: Spieler kicken / bannen (POST, nur mit Login) ----
   if (req.method === 'POST' && (pathname === '/api/admin/kick' || pathname === '/api/admin/ban')) {
     if (!adminEnabled() || !adminSessionFromReq(req)) {
