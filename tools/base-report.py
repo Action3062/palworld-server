@@ -15,6 +15,13 @@ Hintergrund
   zuletzt online war, im .NET-Ticks-Format). Der jüngste dieser Werte ist
   die „letzte Aktivität" der Gilde – und damit aller ihrer Basen.
 
+  Weil Palworld 1.0 die Gilden-Struktur laufend um neue Felder erweitert
+  (der volle Decoder scheitert dann mit „EOF not reached"), liest dieses
+  Skript die Zeitstempel NICHT über feste Byte-Offsets, sondern erkennt die
+  Spieler-Einträge an ihrer Signatur: ein plausibler .NET-Ticks-Wert, direkt
+  gefolgt von einem gültigen Spielernamen-String. Das ist unabhängig davon,
+  wo im Datensatz die Felder genau liegen.
+
 Einrichtung – identisch zum Basen-Uploader (gleiche venv nutzen):
   apt update && apt install -y python3-venv git build-essential python3-dev
   python3 -m venv /opt/paltools
@@ -28,15 +35,18 @@ Aufruf (auf dem Palworld-Server):
 
   --threshold N   Basen, deren Gilde seit > N Tagen nicht online war, gelten
                   als „inaktiv" (Standard: 14).
+  --top N         nur die N inaktivsten Gilden auflisten (Standard: alle).
   --csv datei     zusätzlich eine CSV mit allen Basen schreiben (für Excel).
   --json datei    zusätzlich Roh-Daten als JSON schreiben.
-  --top N         nur die N inaktivsten Gilden auflisten (Standard: alle).
+  --debug         Diagnose ausgeben (welcher Parse-Weg, wie viele Gilden mit
+                  Aktivität, Beispiel-Zeitstempel) – bei Problemen bitte die
+                  Ausgabe weitergeben.
 
 Alternative ohne Skript (Server räumt selbst auf):
-  In der PalWorldSettings.ini / Config kann der Server inaktive Gilden
-  automatisch entfernen:
+  In der PalWorldSettings.ini kann der Server inaktive Gilden automatisch
+  entfernen:
       bAutoResetGuildNoOnlinePlayers=True
-      AutoResetGuildTimeNoOnlinePlayers=72.0     # Stunden
+      AutoResetGuildTimeNoOnlinePlayers=168.0    # Stunden (=7 Tage)
   Damit werden Gilden gelöscht, deren Mitglieder seit X Stunden nicht mehr
   online waren – inklusive ihrer Basen. Dieses Skript ist die „read only"-
   Variante: es zeigt nur an, löscht nichts.
@@ -56,6 +66,7 @@ try:
     from palworld_save_tools.palsav import decompress_sav_to_gvas
     from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TYPE_HINTS
     import palworld_save_tools.archive as _pst_archive
+    from palworld_save_tools.rawdata import group as _gmod
 except ImportError:
     sys.exit("palworld-save-tools fehlt. Installieren (Debian 12+/Trixie):\n"
              "  apt install -y python3-venv git build-essential python3-dev\n"
@@ -66,44 +77,132 @@ except ImportError:
              "(Der Fork kann das neue PlM/Oodle-Save-Format von Palworld 0.6+.)")
 
 
-# .NET-Ticks: 100-ns-Intervalle seit 0001-01-01. Sekunden-Differenz zu Unix-Epoche.
+# --- Zeit ----------------------------------------------------------------
+# .NET-Ticks: 100-ns-Intervalle seit 0001-01-01. Umrechnung auf Unix-Zeit.
 DOTNET_EPOCH_OFFSET = 62135596800          # Sekunden zwischen 0001-01-01 und 1970-01-01
 FILETIME_EPOCH_OFFSET = 11644473600        # Sekunden zwischen 1601-01-01 und 1970-01-01
 # Plausibilitätsfenster für einen echten „zuletzt online"-Zeitstempel.
-PLAUSIBLE_MIN = 1704067200                 # 2024-01-01 (Palworld-Release war 2024)
-PLAUSIBLE_SLACK = 172800                   # 2 Tage Toleranz in die Zukunft (Zeitzonen/Uhr)
+PLAUSIBLE_MIN = 1704067200                 # 2024-01-01 (Palworld-Release war 01/2024)
+PLAUSIBLE_SLACK = 172800                   # 2 Tage Toleranz in die Zukunft (Zeitzonen)
+_NOW = time.time()                         # einmal fixiert, für Scan-Plausibilität
+
+GUILD = "EPalGroupType::Guild"
+INDEPENDENT = "EPalGroupType::IndependentGuild"
+ORGANIZATION = "EPalGroupType::Organization"
+_ORG_LIKE = (GUILD, INDEPENDENT, ORGANIZATION)
+
+DIAG = {"attempt": None, "has_groupmap": False, "guilds_total": 0,
+        "with_activity": 0, "via_scan": 0, "raw_bytes_path": 0, "samples": []}
 
 
-def to_unix(raw_value: int, now: float):
-    """
-    Wandelt einen rohen last_online_real_time-Wert in eine Unix-Zeit um.
-
-    Palworld nutzt .NET-Ticks. Falls sich das Format doch ändern sollte,
-    probieren wir mehrere gängige Deutungen durch und nehmen die, die in ein
-    plausibles Fenster (nach Palworld-Release, nicht in der Zukunft) fällt.
-    So liefert der Bericht keine Unsinns-Tage, wenn ein Feld verrutscht.
-    """
+def to_unix(raw_value, now):
+    """Rohen last_online_real_time-Wert (mehrere Deutungen) → Unix-Zeit oder None."""
     if not raw_value:
         return None
     upper = now + PLAUSIBLE_SLACK
-    candidates = (
+    for unix in (
         raw_value / 1e7 - DOTNET_EPOCH_OFFSET,    # .NET DateTime.Ticks (erwartet)
         raw_value / 1e7 - FILETIME_EPOCH_OFFSET,  # Windows FILETIME
         raw_value / 1000.0,                       # Unix-Millisekunden
         float(raw_value),                         # Unix-Sekunden
-    )
-    for unix in candidates:
+    ):
         if PLAUSIBLE_MIN <= unix <= upper:
             return unix
     return None
 
 
-def patch_missing_map_value_types() -> None:
+# --- Byte-Scan: Spieler-Einträge an ihrer Signatur erkennen --------------
+def _read_fstring_at(data, off):
     """
-    Ergänzt fehlende Map-Wert-Typen in der Fork-Version von palworld-save-tools
-    (identisch zum Basen-Uploader). Palworld 1.0 hat Maps mit Int64Property als
-    Wert (z. B. PlayerLastUsedTimes), die der Reader sonst nicht kennt.
+    Versucht, an Position off eine gültige UE-FString zu lesen (wie die
+    Bibliothek: i32-Länge; >0 = ASCII inkl. Nullterminator, <0 = UTF-16-LE).
+    Gibt den String zurück oder None, wenn es keine plausible Zeichenkette ist.
     """
+    n = len(data)
+    if off + 4 > n:
+        return None
+    size = int.from_bytes(data[off:off + 4], "little", signed=True)
+    if size > 0:
+        if not (2 <= size <= 64):            # inkl. Nullterminator → echte Namen
+            return None
+        end = off + 4 + size
+        if end > n or data[end - 1] != 0:
+            return None
+        try:
+            s = data[off + 4:end - 1].decode("utf-8")
+        except Exception:
+            return None
+    elif size < 0:
+        m = -size
+        if not (2 <= m <= 64):
+            return None
+        end = off + 4 + m * 2
+        if end > n or data[end - 2:end] != b"\x00\x00":
+            return None
+        try:
+            s = data[off + 4:end - 2].decode("utf-16-le")
+        except Exception:
+            return None
+    else:
+        return None
+    if not s or any(ord(c) < 0x20 for c in s):   # keine Steuerzeichen
+        return None
+    return s
+
+
+def scan_player_infos(data):
+    """
+    Durchsucht die Gilden-Rohbytes nach Spieler-Einträgen. Ein player_info ist
+    guid(16) + last_online_real_time(i64) + player_name(fstring). Wir erkennen
+    ihn an: plausibler .NET-Ticks-i64, unmittelbar gefolgt von einem gültigen
+    Namen-String. Rückgabe: Liste von (unix_zeit, name).
+    """
+    hits = []
+    n = len(data)
+    lo, hi = PLAUSIBLE_MIN, _NOW + PLAUSIBLE_SLACK
+    i = 0
+    limit = n - 8
+    while i <= limit:
+        ticks = int.from_bytes(data[i:i + 8], "little", signed=True)
+        if ticks > 0:
+            unix = ticks / 1e7 - DOTNET_EPOCH_OFFSET
+            if lo <= unix <= hi:
+                name = _read_fstring_at(data, i + 8)
+                if name is not None:
+                    hits.append((unix, name))
+                    i += 8            # hinter diesen i64 springen
+                    continue
+        i += 1
+    return hits
+
+
+def _read_name_prefix(reader_bytes, group_type):
+    """Liest den stabilen Anfang der Gilden-Struktur bis zum guild_name."""
+    r = _pst_archive.FArchiveReader(bytes(reader_bytes))
+    r.guid()                              # group_id
+    r.fstring()                           # group_name (interner Name)
+    r.tarray(_gmod.instance_id_reader)    # individual_character_handle_ids
+    if group_type in _ORG_LIKE:
+        r.byte()                          # org_type
+    if group_type == ORGANIZATION:
+        r.byte_list(12)
+        return None
+    if group_type == GUILD:
+        r.byte_list(4)                    # leading_bytes
+        r.tarray(_gmod.uuid_reader)       # base_ids
+        r.i32()                           # unknown_1
+        r.i32()                           # base_camp_level
+        r.tarray(_gmod.uuid_reader)       # map_object_instance_ids_base_camp_points
+        return r.fstring()                # guild_name
+    if group_type == INDEPENDENT:
+        r.i32()                           # base_camp_level
+        r.tarray(_gmod.uuid_reader)       # map_object_instance_ids_base_camp_points
+        return r.fstring()                # guild_name
+    return None
+
+
+def patch_missing_map_value_types():
+    """Ergänzt fehlende Map-Wert-Typen (Int64 u. a.) – wie im Basen-Uploader."""
     reader = getattr(_pst_archive, "FArchiveReader", None)
     if reader is None or not hasattr(reader, "prop_value"):
         return
@@ -126,90 +225,41 @@ def patch_missing_map_value_types() -> None:
     reader.prop_value = patched
 
 
-def patch_guild_activity() -> None:
+def patch_guild_activity():
     """
-    Liest pro Gilde Name UND Mitglieder-Aktivität (last_online_real_time) aus –
-    auch dann, wenn der volle Decoder an neuen 1.0-Feldern mit „EOF not reached"
-    scheitert.
-
-    group.decode_bytes() dekodiert die komplette Gilden-Struktur inkl.
-    players[].player_info.last_online_real_time. Wirft es am Ende eine
-    Exception (neue Felder angehängt), lesen wir die stabilen Felder bis
-    einschließlich der players-Liste selbst nach. Jeder gelesene Zeitstempel
-    wird später über to_unix() auf Plausibilität geprüft – verrutscht ein Feld,
-    fällt der Wert einfach raus, statt den Bericht zu verfälschen.
+    Robuste Gilden-Dekodierung: volle Struktur versuchen, sonst nur den Namen
+    lesen. Zusätzlich immer die Spieler-Zeitstempel per Signatur-Scan aus den
+    Rohbytes ziehen, falls der reguläre players-Block nicht (sauber) vorliegt.
     """
-    try:
-        from palworld_save_tools.rawdata import group as gmod
-    except ImportError:
-        return
-    original = gmod.decode_bytes
-
-    def player_info_reader(r):
-        # Reihenfolge laut Fork (group.py): player_uid, dann player_info-Struct
-        # mit last_online_real_time (i64) und player_name (fstring).
-        uid = r.guid()
-        last_online = r.i64()
-        name = r.fstring()
-        return {
-            "player_uid": uid,
-            "player_info": {
-                "last_online_real_time": last_online,
-                "player_name": name,
-            },
-        }
-
-    def read_guild_fields(parent_reader, group_bytes, group_type):
-        r = parent_reader.internal_copy(bytes(group_bytes), debug=False)
-        data = {
-            "group_type": group_type,
-            "group_id": r.guid(),
-            "group_name": r.fstring(),
-            "individual_character_handle_ids": r.tarray(gmod.instance_id_reader),
-        }
-        if group_type in (
-            "EPalGroupType::Guild",
-            "EPalGroupType::IndependentGuild",
-            "EPalGroupType::Organization",
-        ):
-            data["org_type"] = r.byte()
-        if group_type == "EPalGroupType::Guild":
-            r.byte_list(4)              # leading_bytes
-            r.tarray(gmod.uuid_reader)  # base_ids
-            r.i32()                     # unknown_1
-            r.i32()                     # base_camp_level
-            r.tarray(gmod.uuid_reader)  # map_object_instance_ids_base_camp_points
-            data["guild_name"] = r.fstring()
-            # ab hier optional – nur für die Aktivität, in try/except:
-            try:
-                r.guid()                # last_guild_name_modifier_player_uid
-                r.byte_list(20)         # unknown_2
-                data["players"] = r.tarray(player_info_reader)
-            except Exception:
-                pass
-        elif group_type == "EPalGroupType::IndependentGuild":
-            r.i32()                     # base_camp_level
-            r.tarray(gmod.uuid_reader)  # map_object_instance_ids_base_camp_points
-            data["guild_name"] = r.fstring()
-        return data
+    original = _gmod.decode_bytes
 
     def patched(parent_reader, group_bytes, group_type):
+        data_bytes = bytes(group_bytes)
         try:
-            return original(parent_reader, group_bytes, group_type)
+            result = original(parent_reader, group_bytes, group_type)
         except Exception:
             try:
-                return read_guild_fields(parent_reader, group_bytes, group_type)
+                r = parent_reader.internal_copy(data_bytes, debug=False)
+                result = {"group_type": group_type, "group_id": r.guid()}
+                try:
+                    result["guild_name"] = _read_name_prefix(data_bytes, group_type)
+                except Exception:
+                    pass
             except Exception:
-                return {"group_type": group_type}
+                result = {"group_type": group_type}
+        has_players = bool(result.get("players")) or isinstance(result.get("player_info"), dict)
+        if not has_players:
+            result["_scanned_players"] = scan_player_infos(data_bytes)
+        return result
 
-    gmod.decode_bytes = patched
+    _gmod.decode_bytes = patched
 
 
 patch_missing_map_value_types()
 patch_guild_activity()
 
 
-def find_sav(pattern: str) -> str:
+def find_sav(pattern):
     matches = sorted(glob.glob(pattern))
     if not matches:
         sys.exit(f"Keine Level.sav unter '{pattern}' gefunden.")
@@ -218,7 +268,7 @@ def find_sav(pattern: str) -> str:
     return matches[0]
 
 
-def needed_properties(keys) -> dict:
+def needed_properties(keys):
     return {
         key: PALWORLD_CUSTOM_PROPERTIES[key]
         for key in PALWORLD_CUSTOM_PROPERTIES
@@ -226,7 +276,7 @@ def needed_properties(keys) -> dict:
     }
 
 
-def load_world(sav_path: str):
+def load_world(sav_path):
     print(f"Lese {sav_path} …")
     with open(sav_path, "rb") as f:
         data = f.read()
@@ -244,6 +294,7 @@ def load_world(sav_path: str):
             with contextlib.redirect_stdout(io.StringIO()), \
                     contextlib.redirect_stderr(io.StringIO()):
                 gvas = GvasFile.read(raw_gvas, PALWORLD_TYPE_HINTS, custom)
+            DIAG["attempt"] = label
             return gvas.properties["worldSaveData"]["value"]
         except Exception as err:  # noqa: BLE001 – bewusst breit für Retry
             print(f"  fehlgeschlagen: {err}")
@@ -253,36 +304,92 @@ def load_world(sav_path: str):
              "Save-Format erneut geändert.")
 
 
-def guild_activity(world, now: float) -> dict:
-    """
-    group_id → {name, last_online (unix|None), members [(name, unix)], player_count}
-    """
-    result = {}
+def _group_type_of(entry):
     try:
-        groups = world["GroupSaveDataMap"]["value"]
-    except KeyError:
+        return entry["value"]["GroupType"]["value"]["value"]
+    except (KeyError, TypeError):
+        return None
+
+
+def guild_activity(world, now):
+    """group_id → {name, last_online (unix|None), members, player_count}"""
+    result = {}
+    gm = world.get("GroupSaveDataMap")
+    if not gm:
         return result
+    DIAG["has_groupmap"] = True
+    try:
+        groups = gm["value"]
+    except (KeyError, TypeError):
+        return result
+
     for entry in groups:
         try:
             raw = entry["value"]["RawData"]["value"]
         except (KeyError, TypeError):
             continue
-        if not isinstance(raw, dict):
-            continue
-        gid = str(entry["key"])
-        name = raw.get("guild_name") or raw.get("group_name")
-        members = []
-        latest = None
-        for p in raw.get("players", []) or []:
+        gid = str(entry.get("key", ""))
+        DIAG["guilds_total"] += 1
+
+        name, latest, members, via_scan = None, None, [], False
+
+        # Fall A: RawData wurde (ggf. teilweise) dekodiert → dict mit Feldern.
+        decoded = isinstance(raw, dict) and (
+            "guild_name" in raw or "group_name" in raw
+            or "players" in raw or "player_info" in raw
+            or "_scanned_players" in raw)
+        if decoded:
+            name = raw.get("guild_name") or raw.get("group_name")
+            for p in raw.get("players", []) or []:
+                try:
+                    info = p["player_info"]
+                    u = to_unix(int(info.get("last_online_real_time") or 0), now)
+                    pn = str(info.get("player_name") or "?")
+                except (KeyError, TypeError, ValueError):
+                    continue
+                members.append((pn, u))
+                if u is not None and (latest is None or u > latest):
+                    latest = u
+            info = raw.get("player_info")   # IndependentGuild: einzelner Spieler
+            if isinstance(info, dict):
+                try:
+                    u = to_unix(int(info.get("last_online_real_time") or 0), now)
+                    members.append((str(info.get("player_name") or "?"), u))
+                    if u is not None and (latest is None or u > latest):
+                        latest = u
+                except (KeyError, TypeError, ValueError):
+                    pass
+            if latest is None:
+                for (u, pn) in raw.get("_scanned_players", []) or []:
+                    members.append((pn, u))
+                    via_scan = True
+                    if latest is None or u > latest:
+                        latest = u
+
+        # Fall B: RawData blieb roh ({"values": [...]}) – Decoder lief nicht.
+        elif isinstance(raw, dict) and "values" in raw:
+            DIAG["raw_bytes_path"] += 1
+            data_bytes = bytes(raw["values"])
+            gtype = _group_type_of(entry)
             try:
-                info = p["player_info"]
-                pname = str(info.get("player_name") or "?")
-                unix = to_unix(int(info.get("last_online_real_time") or 0), now)
-            except (KeyError, TypeError, ValueError):
-                continue
-            members.append((pname, unix))
-            if unix is not None and (latest is None or unix > latest):
-                latest = unix
+                name = _read_name_prefix(data_bytes, gtype)
+            except Exception:
+                name = None
+            for (u, pn) in scan_player_infos(data_bytes):
+                members.append((pn, u))
+                via_scan = True
+                if latest is None or u > latest:
+                    latest = u
+
+        if latest is not None:
+            DIAG["with_activity"] += 1
+            if via_scan:
+                DIAG["via_scan"] += 1
+            if len(DIAG["samples"]) < 5:
+                DIAG["samples"].append(
+                    (name or gid[:8], time.strftime("%Y-%m-%d", time.localtime(latest)),
+                     "scan" if via_scan else "decode"))
+
         result[gid] = {
             "name": str(name) if name else None,
             "last_online": latest,
@@ -292,7 +399,7 @@ def guild_activity(world, now: float) -> dict:
     return result
 
 
-def base_camps(world, guilds: dict) -> list:
+def base_camps(world, guilds):
     bases = []
     try:
         camps = world["BaseCampSaveData"]["value"]
@@ -320,41 +427,29 @@ def base_camps(world, guilds: dict) -> list:
     return bases
 
 
-def days_since(unix, now: float):
+def days_since(unix, now):
     if unix is None:
         return None
     return max(0.0, (now - unix) / 86400.0)
 
 
 def fmt_date(unix):
-    if unix is None:
-        return "unbekannt"
-    return time.strftime("%Y-%m-%d", time.localtime(unix))
+    return "unbekannt" if unix is None else time.strftime("%Y-%m-%d", time.localtime(unix))
 
 
-def report(bases: list, guilds: dict, threshold_days: int, top: int, now: float) -> None:
-    # Nach Gilde gruppieren (die eigentliche Aufräum-Einheit).
+def report(bases, guilds, threshold_days, top, now):
     per_guild = {}
     for b in bases:
-        gid = b["group_id"]
-        grp = per_guild.setdefault(gid, {
-            "name": b["guild"],
-            "last_online": b["last_online"],
-            "player_count": b["player_count"],
-            "bases": [],
-        })
+        grp = per_guild.setdefault(b["group_id"], {
+            "name": b["guild"], "last_online": b["last_online"],
+            "player_count": b["player_count"], "bases": []})
         grp["bases"].append(b)
 
-    total_bases = len(bases)
-    total_guilds = len(per_guild)
-
+    total_bases, total_guilds = len(bases), len(per_guild)
     active_guilds = inactive_guilds = unknown_guilds = 0
     active_bases = inactive_bases = unknown_bases = 0
     inactive_over_30 = inactive_over_60 = 0
-
-    inactive_list = []
-    active_list = []
-    unknown_list = []
+    inactive_list, unknown_list = [], []
 
     for gid, grp in per_guild.items():
         d = days_since(grp["last_online"], now)
@@ -369,22 +464,17 @@ def report(bases: list, guilds: dict, threshold_days: int, top: int, now: float)
         elif d > threshold_days:
             inactive_guilds += 1
             inactive_bases += nbases
-            if d > 30:
-                inactive_over_30 += nbases
-            if d > 60:
-                inactive_over_60 += nbases
+            inactive_over_30 += nbases if d > 30 else 0
+            inactive_over_60 += nbases if d > 60 else 0
             inactive_list.append(row)
         else:
             active_guilds += 1
             active_bases += nbases
-            active_list.append(row)
 
     inactive_list.sort(key=lambda r: r["days"], reverse=True)
-    active_list.sort(key=lambda r: r["days"], reverse=True)
 
     line = "=" * 62
-    print()
-    print(line)
+    print("\n" + line)
     print("  PalHeim – Basen-Aktivitätsbericht")
     print(f"  Stand: {time.strftime('%Y-%m-%d %H:%M', time.localtime(now))}")
     print(f"  Schwellwert für „inaktiv\": > {threshold_days} Tage ohne Login")
@@ -400,18 +490,15 @@ def report(bases: list, guilds: dict, threshold_days: int, top: int, now: float)
 
     if inactive_list:
         shown = inactive_list if top <= 0 else inactive_list[:top]
-        print(f"\n  Inaktive Gilden – älteste zuerst"
-              + (f" (Top {top} von {len(inactive_list)})" if top > 0 and len(inactive_list) > top else "")
-              + ":\n")
-        print(f"  {'Tage':>5} | {'Basen':>5} | {'zuletzt':<10} | Gilde / Spieler")
+        extra = f" (Top {top} von {len(inactive_list)})" if 0 < top < len(inactive_list) else ""
+        print(f"\n  Inaktive Gilden – älteste zuerst{extra}:\n")
+        print(f"  {'Tage':>5} | {'Basen':>5} | {'zuletzt':<10} | Gilde  (Spieler)")
         print("  " + "-" * 58)
         for r in shown:
             names = ", ".join(n for n, _ in r["members"]) or "—"
-            if len(names) > 26:
-                names = names[:25] + "…"
-            gname = (r["name"] or "Unbekannt")
-            if len(gname) > 22:
-                gname = gname[:21] + "…"
+            names = names[:25] + "…" if len(names) > 26 else names
+            gname = r["name"] or "Unbekannt"
+            gname = gname[:21] + "…" if len(gname) > 22 else gname
             print(f"  {int(round(r['days'])):>5} | {r['nbases']:>5} | "
                   f"{fmt_date(r['last_online']):<10} | {gname}  ({names})")
         reclaim = sum(r["nbases"] for r in inactive_list)
@@ -421,56 +508,54 @@ def report(bases: list, guilds: dict, threshold_days: int, top: int, now: float)
     if unknown_list:
         print(f"\n  Gilden ohne ermittelbaren Zeitstempel "
               f"({len(unknown_list)} Gilden, {unknown_bases} Basen):")
-        for r in unknown_list:
+        for r in unknown_list[:40]:
             print(f"    - {r['name'] or 'Unbekannt'}  ({r['nbases']} Basen)")
-        print("    (Für diese Gilden ließ sich last_online_real_time nicht "
-              "sicher lesen – ggf. leere/aufgelöste Gilde.)")
-
+        if len(unknown_list) > 40:
+            print(f"    … und {len(unknown_list) - 40} weitere")
     print()
 
 
-def write_csv(path: str, bases: list, now: float) -> None:
-    rows = sorted(
-        bases,
-        key=lambda b: (days_since(b["last_online"], now) is not None,
-                       days_since(b["last_online"], now) or 0),
-        reverse=True,
-    )
+def print_diag():
+    print("  [Diagnose]")
+    print(f"    Parse-Weg:          {DIAG['attempt']}")
+    print(f"    GroupSaveDataMap:   {'vorhanden' if DIAG['has_groupmap'] else 'FEHLT'}")
+    print(f"    Gilden gesamt:      {DIAG['guilds_total']}")
+    print(f"    davon roh (Scan):   {DIAG['raw_bytes_path']}")
+    print(f"    mit Aktivität:      {DIAG['with_activity']}  (per Scan: {DIAG['via_scan']})")
+    for name, date, how in DIAG["samples"]:
+        print(f"      Beispiel: {name:<20} zuletzt {date}  [{how}]")
+    print()
+
+
+def write_csv(path, bases, now):
+    rows = sorted(bases, key=lambda b: (b["last_online"] is not None,
+                                        days_since(b["last_online"], now) or 0), reverse=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["Gilde", "Basis-ID", "Tage_inaktiv", "zuletzt_online",
                     "Mitglieder", "x", "y"])
         for b in rows:
             d = days_since(b["last_online"], now)
-            w.writerow([
-                b["guild"], b["base_id"],
-                "" if d is None else int(round(d)),
-                fmt_date(b["last_online"]),
-                b["player_count"], b["x"], b["y"],
-            ])
+            w.writerow([b["guild"], b["base_id"], "" if d is None else int(round(d)),
+                        fmt_date(b["last_online"]), b["player_count"], b["x"], b["y"]])
     print(f"CSV geschrieben: {path}")
 
 
-def write_json(path: str, bases: list, now: float) -> None:
+def write_json(path, bases, now):
     out = []
     for b in bases:
         d = days_since(b["last_online"], now)
-        out.append({
-            "guild": b["guild"],
-            "base_id": b["base_id"],
-            "days_inactive": None if d is None else round(d, 1),
-            "last_online": fmt_date(b["last_online"]),
-            "last_online_unix": None if b["last_online"] is None else int(b["last_online"]),
-            "player_count": b["player_count"],
-            "x": b["x"], "y": b["y"],
-        })
+        out.append({"guild": b["guild"], "base_id": b["base_id"],
+                    "days_inactive": None if d is None else round(d, 1),
+                    "last_online": fmt_date(b["last_online"]),
+                    "last_online_unix": None if b["last_online"] is None else int(b["last_online"]),
+                    "player_count": b["player_count"], "x": b["x"], "y": b["y"]})
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"generated": int(now), "bases": out}, f,
-                  ensure_ascii=False, indent=2)
+        json.dump({"generated": int(now), "bases": out}, f, ensure_ascii=False, indent=2)
     print(f"JSON geschrieben: {path}")
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(
         description="Zeigt aktive/inaktive Basen aus der Level.sav (Tage ohne Login).")
     parser.add_argument("--sav", required=True, help="Pfad/Glob zur Level.sav")
@@ -480,6 +565,7 @@ def main() -> None:
                         help="nur die N inaktivsten Gilden auflisten (Standard: alle)")
     parser.add_argument("--csv", metavar="DATEI", help="zusätzlich CSV aller Basen schreiben")
     parser.add_argument("--json", metavar="DATEI", help="zusätzlich JSON aller Basen schreiben")
+    parser.add_argument("--debug", action="store_true", help="Diagnose ausgeben")
     args = parser.parse_args()
 
     now = time.time()
@@ -492,6 +578,11 @@ def main() -> None:
         return
 
     report(bases, guilds, args.threshold, args.top, now)
+    if args.debug:
+        print_diag()
+    elif DIAG["with_activity"] == 0:
+        print("  Hinweis: Für keine Gilde ließ sich ein Zeitstempel ermitteln.")
+        print("  Bitte einmal mit  --debug  starten und die Ausgabe weitergeben.\n")
 
     if args.csv:
         write_csv(args.csv, bases, now)
