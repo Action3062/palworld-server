@@ -19,6 +19,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // Konfiguration laden
@@ -50,10 +51,13 @@ const DEFAULTS = {
     // Optik: "info" (blau), "event" (grün), "warn" (orange/rot)
     level: 'info'
   },
-  // Broadcast von der Website (schickt eine In-Game-Ansage über die REST-API)
+  // Admin-Funktionen der Website
   admin: {
-    // Langes Zufalls-Token; leer = Broadcast-Seite deaktiviert
-    broadcastSecret: ''
+    // Langes Zufalls-Token; leer = Broadcast-Seite (/broadcast) deaktiviert
+    broadcastSecret: '',
+    // Passwort für die Admin-Seite (/admin); leer = Seite deaktiviert.
+    // Nicht das Palworld-AdminPassword wiederverwenden!
+    password: ''
   },
   // Besucher-Zähler (Seitenaufrufe + eindeutige Besucher; ohne IP/Cookies)
   visitorCounter: true,
@@ -657,6 +661,53 @@ function sendJson(res, status, obj) {
 }
 
 // ---------------------------------------------------------------------------
+// Admin-Seite (/admin)
+// ---------------------------------------------------------------------------
+// Login mit Passwort aus config.json (admin.password); solange es leer ist,
+// ist die Seite komplett deaktiviert. Sessions leben nur im Speicher – ein
+// Neustart des Servers meldet alle Admins ab (bewusst einfach gehalten).
+
+const ADMIN_SESSION_HOURS = 12;
+const adminSessions = new Map(); // Token → Ablaufzeit (ms)
+
+function adminEnabled() {
+  return Boolean(config.admin && config.admin.password);
+}
+
+// Konstantzeit-Vergleich (über Hashes, damit die Längen immer gleich sind)
+function passwordMatches(given, expected) {
+  const ha = crypto.createHash('sha256').update(String(given)).digest();
+  const hb = crypto.createHash('sha256').update(String(expected)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function adminSessionFromReq(req) {
+  const m = (req.headers.cookie || '').match(/(?:^|;\s*)padm=([a-f0-9]{48})/);
+  if (!m) return null;
+  const expires = adminSessions.get(m[1]);
+  if (!expires || expires < Date.now()) {
+    adminSessions.delete(m[1]);
+    return null;
+  }
+  return m[1];
+}
+
+function newAdminSession() {
+  for (const [token, expires] of adminSessions) {
+    if (expires < Date.now()) adminSessions.delete(token);
+  }
+  const token = crypto.randomBytes(24).toString('hex');
+  adminSessions.set(token, Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000);
+  return token;
+}
+
+function adminCookie(req, token, maxAgeSeconds) {
+  // hinter nginx/HTTPS das Secure-Flag setzen
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  return `padm=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure}`;
+}
+
+// ---------------------------------------------------------------------------
 // Besucher-Zähler
 // ---------------------------------------------------------------------------
 // Zählt Seitenaufrufe (total) und eindeutige Besucher (unique). "Eindeutig"
@@ -885,6 +936,78 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Admin-Login (POST) ----
+  if (req.method === 'POST' && pathname === '/api/admin/login') {
+    if (!adminEnabled()) {
+      sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
+      return;
+    }
+    const ip = req.socket.remoteAddress || 'unknown';
+    // strenges Limit gegen Passwort-Raten: 5 Versuche pro 10 Minuten
+    if (rateLimited('admin:' + ip, 5, 10 * 60_000)) {
+      sendJson(res, 429, { ok: false, message: 'Zu viele Versuche – bitte 10 Minuten warten.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      if (!passwordMatches(body.password || '', config.admin.password)) {
+        sendJson(res, 403, { ok: false, message: 'Falsches Passwort.' });
+        return;
+      }
+      const token = newAdminSession();
+      res.setHeader('Set-Cookie', adminCookie(req, token, ADMIN_SESSION_HOURS * 3600));
+      sendJson(res, 200, { ok: true });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+    }
+    return;
+  }
+
+  // ---- Admin-Logout (POST) ----
+  if (req.method === 'POST' && pathname === '/api/admin/logout') {
+    const token = adminSessionFromReq(req);
+    if (token) adminSessions.delete(token);
+    res.setHeader('Set-Cookie', adminCookie(req, 'abgemeldet', 0));
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // ---- Admin: In-Game-Ansage (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/announce') {
+    if (!adminEnabled() || !adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const message = String(body.message || '').trim().slice(0, 200);
+      if (!message) {
+        sendJson(res, 400, { ok: false, message: 'Die Nachricht ist leer.' });
+        return;
+      }
+      await palworldPost('/v1/api/announce', { message });
+      sendJson(res, 200, { ok: true, message: 'Ansage im Spiel gesendet.' });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Ansage nicht gesendet.' });
+    }
+    return;
+  }
+
+  // ---- Admin: Spielstand sichern (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/save') {
+    if (!adminEnabled() || !adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      await palworldPost('/v1/api/save', {});
+      sendJson(res, 200, { ok: true, message: 'Spielstand wird gespeichert.' });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
+    }
+    return;
+  }
+
   // ---- Besucher-Zähler (POST) ----
   if (req.method === 'POST' && pathname === '/api/visit') {
     if (!config.visitorCounter) {
@@ -911,6 +1034,42 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
+    return;
+  }
+
+  // Admin-Übersicht (nur mit Login): Live-Status + alle bekannten Spieler
+  if (pathname === '/api/admin/overview') {
+    if (!adminEnabled()) {
+      sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
+      return;
+    }
+    if (!adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    const status = await getStatus();
+    const onlineNames = new Set(
+      status.online ? (status.players.list || []).map((p) => p.name) : []
+    );
+    const players = Object.entries(stats.players)
+      .map(([name, p]) => ({
+        name,
+        level: p.level ?? null,
+        minutes: Math.round(p.minutes || 0),
+        sessions: p.sessions || 0,
+        firstSeen: p.firstSeen || null,
+        lastSeen: p.lastSeen || null,
+        online: onlineNames.has(name)
+      }))
+      .sort((a, b) => Number(b.online) - Number(a.online) ||
+        String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
+    sendJson(res, 200, {
+      ok: true,
+      status,
+      players,
+      bases: { count: basesData.bases.length, updatedAt: basesData.updatedAt },
+      visits: config.visitorCounter ? visits : null
+    });
     return;
   }
 

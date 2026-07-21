@@ -237,6 +237,7 @@ sudo systemctl restart palworld-web
 | `banner.text` | – | Banner-Text (kurz halten; kein HTML) |
 | `banner.level` | `info` | Optik: `info` (blau), `event` (grün), `warn` (orange) |
 | `admin.broadcastSecret` | – | Passwort für die Broadcast-Seite; leer = deaktiviert |
+| `admin.password` | – | Passwort für die Admin-Seite `/admin`; leer = deaktiviert |
 | `visitorCounter` | `true` | Besucher-Zähler (Aufrufe + eindeutige Besucher) im Footer |
 | `support.enabled` | `false` | „Unterstützen"-Karte (z. B. Buy Me a Coffee) anzeigen? |
 | `support.url` | – | Link zur Spenden-Seite (nur ein Link, keine externen Skripte) |
@@ -257,6 +258,28 @@ Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") schaltest du in der
 
 Besucher können das Banner wegklicken; eine neue/​geänderte Nachricht erscheint
 wieder.
+
+### Admin-Seite (`/admin`)
+
+`https://palheim.de/admin` ist das Cockpit fürs Server-Team – absichtlich
+nirgends verlinkt, auf `noindex` und per `robots.txt` ausgeschlossen.
+Aktiviert wird sie über ein eigenes Passwort in der `config.json`:
+
+```json
+"admin": { "password": "LANGES-EIGENES-PASSWORT" }
+```
+
+Ohne gesetztes Passwort ist die Seite (und alle `/api/admin/*`-Endpunkte
+außer dem Broadcast) komplett deaktiviert. Nicht das Palworld-`AdminPassword`
+wiederverwenden! Nach dem Login (Session-Cookie, 12 h gültig, Neustart des
+Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
+
+- **Live-Status**: online/offline, Spielerzahl, Server-FPS, Version
+- **Basen & Besucher**: Stand der Live-Karte und des Besucher-Zählers
+- **In-Game-Ansage**: Nachricht an alle Online-Spieler senden
+- **Spielstand sichern**: Welt sofort speichern (vor Wartungen/Neustarts)
+- **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
+  und „zuletzt gesehen" – Online-Spieler zuerst
 
 ### Broadcast (In-Game-Ansage von der Website)
 

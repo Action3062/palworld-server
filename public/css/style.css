@@ -1608,3 +1608,41 @@ code {
   .reveal { opacity: 1; transform: none; transition: none; }
   .pulse-dot.is-online, .hero__scroll a { animation: none; }
 }
+
+/* --------------------------------------------------------------------------
+   Admin-Seite (/admin)
+   -------------------------------------------------------------------------- */
+.adm-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 22px;
+  margin-top: 26px;
+  align-items: start;
+}
+.adm-cols .bc-card {
+  margin-top: 0;
+  background: var(--surface, #ffffff);
+  border: 1px solid rgba(22, 64, 95, 0.14);
+  border-radius: 16px;
+  box-shadow: 0 5px 16px rgba(22, 64, 95, 0.08);
+  padding: 20px 22px 22px;
+}
+.adm-card-title {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: 1.25rem;
+  margin-bottom: 2px;
+}
+.adm-section-title {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: 1.45rem;
+  margin-top: 40px;
+}
+.adm-hint {
+  color: var(--text-muted, #4a6e8d);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 6px 0 12px;
+}
+.adm-table-wrap { overflow-x: auto; }

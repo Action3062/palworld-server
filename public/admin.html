@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin – PalHeim</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <meta name="theme-color" content="#3ba1e8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav__inner container">
+      <a href="/" class="nav__brand">
+        <svg class="nav__logo" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <path d="M3.6 24 A20.4 20.4 0 0 1 44.4 24 L3.6 24 Z" fill="#2f9de4"/>
+          <path d="M3.6 24 H44.4" stroke="#16405f" stroke-width="3.4"/>
+          <circle cx="24" cy="24" r="7.6" fill="#ffffff" stroke="#16405f" stroke-width="3"/>
+          <circle cx="24" cy="24" r="3" fill="#ffb454"/>
+        </svg>
+        <span>Pal<em>Heim</em></span>
+      </a>
+      <button class="btn btn--small" id="admLogout" hidden>Abmelden</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Login -->
+    <section class="section" id="admLoginView" hidden>
+      <div class="container container--narrow">
+        <span class="section__label">Admin</span>
+        <h1 class="section__title">Anmelden</h1>
+        <p class="section__intro">
+          Dieser Bereich ist nur für das Server-Team.
+        </p>
+
+        <form class="bc-card" id="admLoginForm">
+          <label class="vote-form__label" for="admPassword">Admin-Passwort</label>
+          <input class="vote-form__input" id="admPassword" type="password"
+                 autocomplete="current-password" placeholder="•••••••••••••" required>
+          <button class="btn btn--accent btn--large" type="submit" id="admLoginBtn">Anmelden</button>
+          <p class="vote-message" id="admLoginMsg" role="status" hidden></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Deaktiviert-Hinweis -->
+    <section class="section" id="admDisabledView" hidden>
+      <div class="container container--narrow">
+        <span class="section__label">Admin</span>
+        <h1 class="section__title">Nicht aktiviert</h1>
+        <p class="section__intro">
+          Die Admin-Seite ist deaktiviert. Setze in der <code>config.json</code>
+          ein Passwort unter <code>admin.password</code> und starte den
+          Web-Dienst neu.
+        </p>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section class="section" id="admDashView" hidden>
+      <div class="container">
+        <span class="section__label">Admin</span>
+        <h1 class="section__title">Server-Übersicht</h1>
+        <p class="section__intro" id="admUpdated">Daten werden geladen …</p>
+
+        <div class="status-grid">
+          <article class="stat-card">
+            <span class="stat-card__label">Status</span>
+            <span class="stat-card__value" id="admStatus">–</span>
+            <span class="stat-card__hint" id="admVersion"></span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Spieler online</span>
+            <span class="stat-card__value" id="admPlayers">–</span>
+            <span class="stat-card__hint" id="admPlayersMax"></span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Server-FPS</span>
+            <span class="stat-card__value" id="admFps">–</span>
+            <span class="stat-card__hint">unter 30 wird es ruckelig</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Basen</span>
+            <span class="stat-card__value" id="admBases">–</span>
+            <span class="stat-card__hint" id="admBasesHint">von der Live-Karte</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-card__label">Besucher</span>
+            <span class="stat-card__value" id="admVisits">–</span>
+            <span class="stat-card__hint" id="admVisitsHint"></span>
+          </article>
+        </div>
+
+        <div class="adm-cols">
+          <!-- Ansage -->
+          <form class="bc-card" id="admAnnounceForm">
+            <h2 class="adm-card-title">📢 In-Game-Ansage</h2>
+            <label class="vote-form__label" for="admMessage">Nachricht an alle Online-Spieler</label>
+            <textarea class="vote-form__input bc-textarea" id="admMessage" maxlength="200" rows="3"
+                      placeholder="z. B. Serverneustart in 5 Minuten – bitte Bauen abschließen!" required></textarea>
+            <div class="bc-count"><span id="admCount">0</span>/200</div>
+            <button class="btn btn--accent" type="submit" id="admAnnounceBtn">Ansage senden</button>
+            <p class="vote-message" id="admAnnounceMsg" role="status" hidden></p>
+          </form>
+
+          <!-- Aktionen -->
+          <div class="bc-card">
+            <h2 class="adm-card-title">🛠️ Aktionen</h2>
+            <p class="adm-hint">
+              Speichert den aktuellen Weltstand sofort auf der Festplatte –
+              sinnvoll direkt vor Wartungen oder Neustarts.
+            </p>
+            <button class="btn" id="admSaveBtn">Spielstand jetzt sichern</button>
+            <p class="vote-message" id="admSaveMsg" role="status" hidden></p>
+          </div>
+        </div>
+
+        <h2 class="adm-section-title">Alle bekannten Spieler</h2>
+        <p class="adm-hint">
+          Aus der Website-Statistik – sortiert nach zuletzt gesehen, Online-Spieler zuerst.
+        </p>
+        <div class="adm-table-wrap">
+          <table class="leaderboard__table">
+            <thead>
+              <tr>
+                <th>Spieler</th>
+                <th class="num">Level</th>
+                <th class="num">Spielzeit</th>
+                <th class="num">Sessions</th>
+                <th>Zuletzt gesehen</th>
+              </tr>
+            </thead>
+            <tbody id="admPlayerRows">
+              <tr><td colspan="5">Wird geladen …</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <p>© <span id="year">2026</span> PalHeim · Privater Community-Server</p>
+    </div>
+  </footer>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>
