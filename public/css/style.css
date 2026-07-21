@@ -1646,3 +1646,15 @@ code {
   margin: 6px 0 12px;
 }
 .adm-table-wrap { overflow-x: auto; }
+.adm-actions { white-space: nowrap; }
+.btn--tiny {
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  border-radius: 999px;
+}
+.btn--danger {
+  background: var(--danger, #d64545);
+  border-color: var(--danger, #d64545);
+  color: #ffffff;
+}
+.btn--danger:hover { filter: brightness(0.92); }

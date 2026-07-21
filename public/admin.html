@@ -125,6 +125,8 @@
         <h2 class="adm-section-title">Alle bekannten Spieler</h2>
         <p class="adm-hint">
           Aus der Website-Statistik – sortiert nach zuletzt gesehen, Online-Spieler zuerst.
+          Kick und Bann funktionieren nur bei Spielern, die gerade online sind
+          (nur dann kennt der Server ihre ID).
         </p>
         <div class="adm-table-wrap">
           <table class="leaderboard__table">
@@ -135,12 +137,34 @@
                 <th class="num">Spielzeit</th>
                 <th class="num">Sessions</th>
                 <th>Zuletzt gesehen</th>
+                <th>Aktionen</th>
               </tr>
             </thead>
             <tbody id="admPlayerRows">
-              <tr><td colspan="5">Wird geladen …</td></tr>
+              <tr><td colspan="6">Wird geladen …</td></tr>
             </tbody>
           </table>
+        </div>
+        <p class="vote-message" id="admActionMsg" role="status" hidden></p>
+
+        <div id="admBansBlock" hidden>
+          <h2 class="adm-section-title">Gebannte Spieler</h2>
+          <p class="adm-hint">
+            Über die Website ausgesprochene Banns – hier lassen sie sich wieder aufheben.
+          </p>
+          <div class="adm-table-wrap">
+            <table class="leaderboard__table">
+              <thead>
+                <tr>
+                  <th>Spieler</th>
+                  <th>Grund</th>
+                  <th>Gebannt am</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody id="admBanRows"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

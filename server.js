@@ -707,6 +707,39 @@ function adminCookie(req, token, maxAgeSeconds) {
   return `padm=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure}`;
 }
 
+// Kick/Bann brauchen die User-ID – die liefert die REST-API nur für Spieler,
+// die GERADE online sind (die Website-Statistik speichert bewusst keine IDs).
+// Deshalb hier immer frisch abfragen, ohne Cache.
+async function findOnlinePlayer(name) {
+  const data = await palworldGet('/v1/api/players');
+  const wanted = String(name || '').trim().toLowerCase();
+  if (!wanted) return null;
+  return (data.players || []).find(
+    (p) => String(p.name || '').toLowerCase() === wanted
+  ) || null;
+}
+
+// Lokale Bann-Liste: Palworld bietet keine "Banns auflisten"-API. Damit man
+// Banns später von der Website aus zurücknehmen kann, merken wir uns hier,
+// wen wir gebannt haben (Name, User-ID, Grund, Zeitpunkt).
+const bansFile = path.join(__dirname, 'data/bans.json');
+let bansData = { bans: [] };
+try {
+  const raw = JSON.parse(fs.readFileSync(bansFile, 'utf8'));
+  if (Array.isArray(raw.bans)) bansData = raw;
+} catch { /* noch keine Bann-Liste */ }
+
+function saveBans() {
+  try {
+    fs.mkdirSync(path.dirname(bansFile), { recursive: true });
+    const tmp = `${bansFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(bansData));
+    fs.renameSync(tmp, bansFile);
+  } catch (err) {
+    console.error(`[admin] Bann-Liste speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Besucher-Zähler
 // ---------------------------------------------------------------------------
@@ -1008,6 +1041,83 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Admin: Spieler kicken / bannen (POST, nur mit Login) ----
+  if (req.method === 'POST' && (pathname === '/api/admin/kick' || pathname === '/api/admin/ban')) {
+    if (!adminEnabled() || !adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    const isBan = pathname === '/api/admin/ban';
+    try {
+      const body = await readJsonBody(req);
+      const name = String(body.name || '').trim().slice(0, 32);
+      const reason = String(body.message || '').trim().slice(0, 200) ||
+        (isBan ? 'Du wurdest vom Server gebannt.' : 'Du wurdest vom Server gekickt.');
+      if (!name) {
+        sendJson(res, 400, { ok: false, message: 'Kein Spielername angegeben.' });
+        return;
+      }
+      let player;
+      try {
+        player = await findOnlinePlayer(name);
+      } catch {
+        sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
+        return;
+      }
+      const userid = player && (player.userId || player.userid);
+      if (!userid) {
+        sendJson(res, 404, {
+          ok: false,
+          message: `„${name}" ist gerade nicht online – Kick/Bann geht nur bei Online-Spielern.`
+        });
+        return;
+      }
+      await palworldPost(isBan ? '/v1/api/ban' : '/v1/api/kick', { userid, message: reason });
+      if (isBan) {
+        // für späteres Entbannen von der Website merken
+        bansData.bans = bansData.bans.filter((b) => b.userid !== userid);
+        bansData.bans.push({
+          name: player.name, userid, reason, at: new Date().toISOString()
+        });
+        saveBans();
+      }
+      sendJson(res, 200, {
+        ok: true,
+        message: isBan ? `„${player.name}" wurde gebannt.` : `„${player.name}" wurde gekickt.`
+      });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Aktion fehlgeschlagen – Spielserver nicht erreichbar?' });
+    }
+    return;
+  }
+
+  // ---- Admin: Spieler entbannen (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/unban') {
+    if (!adminEnabled() || !adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const userid = String(body.userid || '').trim().slice(0, 64);
+      if (!/^[A-Za-z0-9_.-]+$/.test(userid)) {
+        sendJson(res, 400, { ok: false, message: 'Ungültige User-ID.' });
+        return;
+      }
+      await palworldPost('/v1/api/unban', { userid });
+      const entry = bansData.bans.find((b) => b.userid === userid);
+      bansData.bans = bansData.bans.filter((b) => b.userid !== userid);
+      saveBans();
+      sendJson(res, 200, {
+        ok: true,
+        message: `„${(entry && entry.name) || userid}" wurde entbannt.`
+      });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Entbannen fehlgeschlagen – Spielserver nicht erreichbar?' });
+    }
+    return;
+  }
+
   // ---- Besucher-Zähler (POST) ----
   if (req.method === 'POST' && pathname === '/api/visit') {
     if (!config.visitorCounter) {
@@ -1067,6 +1177,7 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       status,
       players,
+      bans: bansData.bans,
       bases: { count: basesData.bases.length, updatedAt: basesData.updatedAt },
       visits: config.visitorCounter ? visits : null
     });

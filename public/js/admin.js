@@ -45,7 +45,12 @@
     return d.innerHTML;
   }
 
+  let lastPlayers = [];   // für die Kick/Bann-Buttons (Name über Index statt HTML)
+  let lastBans = [];
+
   function renderOverview(data) {
+    lastPlayers = data.players || [];
+    lastBans = data.bans || [];
     const st = data.status || {};
     const online = st.online === true;
     const statusEl = $('admStatus');
@@ -64,17 +69,77 @@
     $('admUpdated').textContent =
       `Aktualisiert ${new Date().toLocaleTimeString('de-DE')} Uhr · lädt alle 30 Sekunden neu.`;
 
-    const rows = (data.players || []).map((p) => `
+    const rows = lastPlayers.map((p, i) => `
       <tr>
         <td>${p.online ? '🟢 ' : ''}${esc(p.name)}</td>
         <td class="num">${p.level ?? '–'}</td>
         <td class="num">${fmtMinutes(p.minutes)}</td>
         <td class="num">${p.sessions}</td>
         <td>${p.online ? 'jetzt online' : fmtAgo(p.lastSeen)}</td>
+        <td class="adm-actions">${p.online
+          ? `<button class="btn btn--tiny" data-kick="${i}">Kick</button>
+             <button class="btn btn--tiny btn--danger" data-ban="${i}">Bann</button>`
+          : ''}</td>
       </tr>`).join('');
     $('admPlayerRows').innerHTML =
-      rows || '<tr><td colspan="5">Noch keine Spieler-Daten.</td></tr>';
+      rows || '<tr><td colspan="6">Noch keine Spieler-Daten.</td></tr>';
+
+    const banRows = lastBans.map((b, i) => `
+      <tr>
+        <td>${esc(b.name || b.userid)}</td>
+        <td>${esc(b.reason || '–')}</td>
+        <td>${b.at ? new Date(b.at).toLocaleDateString('de-DE') : '–'}</td>
+        <td class="adm-actions"><button class="btn btn--tiny" data-unban="${i}">Entbannen</button></td>
+      </tr>`).join('');
+    $('admBanRows').innerHTML = banRows;
+    $('admBansBlock').hidden = lastBans.length === 0;
   }
+
+  // ---- Kick / Bann / Entbannen (Buttons über Event-Delegation) ----
+  async function playerAction(url, payload, confirmText) {
+    if (!window.confirm(confirmText)) return;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      setMsg($('admActionMsg'), data.message || (res.ok ? 'Erledigt.' : 'Fehler.'), res.ok);
+      if (res.status === 401) { show(loginView); stopRefresh(); return; }
+      if (res.ok) loadOverview();
+    } catch {
+      setMsg($('admActionMsg'), 'Netzwerkfehler – Aktion nicht ausgeführt.', false);
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    const kick = e.target.closest('[data-kick]');
+    const ban = e.target.closest('[data-ban]');
+    const unban = e.target.closest('[data-unban]');
+    if (kick) {
+      const p = lastPlayers[Number(kick.dataset.kick)];
+      if (!p) return;
+      const reason = window.prompt(`Grund für den Kick von „${p.name}" (wird dem Spieler angezeigt):`,
+        'Bitte beachte die Serverregeln.');
+      if (reason === null) return;
+      playerAction('/api/admin/kick', { name: p.name, message: reason },
+        `„${p.name}" wirklich vom Server kicken?`);
+    } else if (ban) {
+      const p = lastPlayers[Number(ban.dataset.ban)];
+      if (!p) return;
+      const reason = window.prompt(`Grund für den BANN von „${p.name}" (wird dem Spieler angezeigt):`,
+        'Verstoß gegen die Serverregeln.');
+      if (reason === null) return;
+      playerAction('/api/admin/ban', { name: p.name, message: reason },
+        `„${p.name}" wirklich DAUERHAFT bannen?\n\nEntbannen geht später über die Liste unten.`);
+    } else if (unban) {
+      const b = lastBans[Number(unban.dataset.unban)];
+      if (!b) return;
+      playerAction('/api/admin/unban', { userid: b.userid },
+        `Bann von „${b.name || b.userid}" wirklich aufheben?`);
+    }
+  });
 
   async function loadOverview() {
     let res;

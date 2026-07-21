@@ -280,6 +280,12 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
 - **Spielstand sichern**: Welt sofort speichern (vor Wartungen/Neustarts)
 - **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
   und „zuletzt gesehen" – Online-Spieler zuerst
+- **Kick & Bann**: bei Online-Spielern direkt aus der Liste (mit Grund, der
+  dem Spieler angezeigt wird). Beides geht nur bei Spielern, die gerade
+  online sind – nur dann liefert die REST-API ihre User-ID (die Website
+  speichert bewusst keine IDs). Über die Website ausgesprochene Banns
+  landen in `data/bans.json` und lassen sich auf der Seite wieder aufheben
+  („Entbannen")
 
 ### Broadcast (In-Game-Ansage von der Website)
 
