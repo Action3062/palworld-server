@@ -98,7 +98,7 @@ INDEPENDENT = "EPalGroupType::IndependentGuild"
 ORGANIZATION = "EPalGroupType::Organization"
 
 DIAG = {
-    "attempt": None, "ref_ticks": None, "has_groupmap": False,
+    "attempt": None, "ref_ticks": None, "ref_mode": None, "has_groupmap": False,
     "groups_total": 0, "with_activity": 0,
     "unknown_bases": 0, "total_bases": 0,
     "paths": {},                 # Decode-Weg → Anzahl (v2-1.0, v1-0.6, bibliothek, indep, scan, none)
@@ -546,12 +546,50 @@ def load_world(sav_path):
 
 
 def real_now_ticks(world, now):
-    """RealDateTimeTicks aus dem Save – die verlässlichste 'Jetzt'-Referenz."""
+    """
+    RealDateTimeTicks aus dem Save – die verlässlichste 'Jetzt'-Referenz.
+
+    Wichtig: Der Tick-Raum ist je nach Server/Version ABSOLUT (.NET-Ticks seit
+    dem Jahr 1 = Kalenderzeit) oder RELATIV (verstrichene Welt-Laufzeit; so
+    z. B. nach dem 1.0-Update). Für die Tage-Rechnung ist das egal – gezählt
+    wird die DIFFERENZ zwischen Referenz und letztem Login im selben Raum.
+    Deshalb wird der Wert hier roh akzeptiert und nur der Modus erkannt.
+    """
     try:
         t = int(world["GameTimeSaveData"]["value"]["RealDateTimeTicks"]["value"])
     except (KeyError, TypeError, ValueError):
         return None
-    return t if ticks_to_unix(t, now) is not None else None
+    if t <= 0:
+        return None
+    DIAG["ref_mode"] = ("absolut (Kalenderzeit)" if ticks_to_unix(t, now) is not None
+                        else "relativ (Welt-Laufzeit)")
+    return t
+
+
+def fallback_ref_from_members(world):
+    """
+    Kein RealDateTimeTicks im Save? Dann dient der jüngste Login-Tick über
+    alle Gilden als Referenz („vor X Tagen relativ zum letzten Login").
+    """
+    best = 0
+    try:
+        groups = world["GroupSaveDataMap"]["value"]
+    except (KeyError, TypeError):
+        return None
+    for entry in groups:
+        try:
+            raw = entry["value"]["RawData"]["value"]
+        except (KeyError, TypeError):
+            continue
+        if isinstance(raw, dict):
+            for m in raw.get("_members", []) or []:
+                t = m.get("ticks") or 0
+                if t > best:
+                    best = t
+    if best > 0:
+        DIAG["ref_mode"] = "relativ (jüngster Login als Referenz)"
+        return best
+    return None
 
 
 def _group_type_of(entry):
@@ -589,6 +627,9 @@ def guild_activity(world, ref_ticks, now):
         elif isinstance(raw, dict) and "values" in raw:
             gtype = _group_type_of(entry) or GUILD   # generisch geparst (Versuch 2/3)
             decoded = decode_group_full(raw["values"], gtype, ref_ticks=ref_ticks)
+            # zurückschreiben: cacht das Ergebnis für Folge-Durchläufe
+            # (z. B. Neuberechnung mit Fallback-Referenz)
+            entry["value"]["RawData"]["value"] = decoded
         else:
             _tally("unbekannte-form")
             continue
@@ -724,6 +765,12 @@ def report(bases, guilds, threshold_days, top, now):
     print(f"             └─ > 60 Tage: {over_60} Basen")
     if unknown_b:
         print(f"  Ohne Zeitstempel: {unknown_b} Basen ({unknown_g} Gilden)")
+    ref, mode = DIAG["ref_ticks"], DIAG["ref_mode"] or ""
+    if ref and "relativ" in mode:
+        span = ref / TICKS_PER_DAY
+        print(f"  Zeitbasis: Welt-Laufzeit des Servers – erfasst max. die letzten "
+              f"{span:.1f} Tage;\n  wer davor zuletzt online war, steht unter "
+              f"„ohne Zeitstempel\".")
     print(line)
 
     if inactive_list:
@@ -758,15 +805,18 @@ def print_diag(now):
     print(f"    Parse-Weg:          {DIAG['attempt']}")
     print(f"    GroupSaveDataMap:   {'vorhanden' if DIAG['has_groupmap'] else 'FEHLT'}"
           f" ({DIAG['groups_total']} Gruppen)")
-    ref = DIAG["ref_ticks"]
-    if ref:
+    ref, mode = DIAG["ref_ticks"], DIAG["ref_mode"] or "?"
+    if ref and "absolut" in mode:
         raw_unix = ref / 1e7 - DOTNET_EPOCH_OFFSET
         print(f"    Referenzzeit (Save): {time.strftime('%Y-%m-%d %H:%M', time.localtime(raw_unix))}"
-              f"  [RealDateTimeTicks]")
+              f"  [{mode}]")
         drift = (now - raw_unix) / 86400.0
         if abs(drift) > 3:
             print(f"    ACHTUNG: Systemuhr weicht {drift:+.1f} Tage von der "
                   f"Save-Zeit ab (Datumsangaben entsprechend einordnen)")
+    elif ref:
+        print(f"    Referenzzeit (Save): Welt-Laufzeit {ref / TICKS_PER_DAY:.2f} Tage"
+              f"  [{mode}]")
     else:
         print("    Referenzzeit (Save): nicht gefunden – nutze Systemuhr")
     paths = ", ".join(f"{k}={v}" for k, v in sorted(DIAG["paths"].items())) or "—"
@@ -832,6 +882,16 @@ def main():
     world = load_world(find_sav(args.sav))
     DIAG["ref_ticks"] = real_now_ticks(world, now)
     guilds = guild_activity(world, DIAG["ref_ticks"], now)
+    if DIAG["ref_ticks"] is None:
+        # Save ohne GameTimeSaveData: jüngsten Login-Tick als Referenz nehmen
+        # und einmal neu rechnen (dank Cache ohne erneutes Dekodieren).
+        fb = fallback_ref_from_members(world)
+        if fb:
+            DIAG["ref_ticks"] = fb
+            diag_reset_parse_state()
+            DIAG["groups_total"] = 0
+            DIAG["with_activity"] = 0
+            guilds = guild_activity(world, fb, now)
     bases = base_camps(world, guilds)
 
     if not bases:
