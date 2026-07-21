@@ -249,8 +249,11 @@ Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 
 ### Wartungs-/Event-Banner
 
-Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") schaltest du in der
-`config.json` frei – Änderungen sind ohne Neustart nach wenigen Sekunden sichtbar:
+Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") pflegst du am bequemsten
+über die Admin-Seite (`/admin`, Karte „Seiten-Banner") – sofort wirksam,
+ohne Neustart. Alternativ statisch in der `config.json` (gilt nur, solange
+über die Admin-Seite noch nie ein Banner gespeichert wurde; danach hat
+`data/banner.json` Vorrang):
 
 ```json
 "banner": { "enabled": true, "text": "Wartung heute ab 20 Uhr", "level": "warn" }
@@ -276,6 +279,10 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
 
 - **Live-Status**: online/offline, Spielerzahl, Server-FPS, Version
 - **Basen & Besucher**: Stand der Live-Karte und des Besucher-Zählers
+- **Seiten-Banner**: das Hinweis-Banner der Webseite (Wartung/Event/Info)
+  direkt ein-/ausschalten und den Text ändern – wirkt sofort, ohne Neustart.
+  Der Zustand liegt in `data/banner.json` und hat Vorrang vor dem
+  `banner`-Block der `config.json`
 - **In-Game-Ansage**: Nachricht an alle Online-Spieler senden
 - **Spielstand sichern**: Welt sofort speichern (vor Wartungen/Neustarts)
 - **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions

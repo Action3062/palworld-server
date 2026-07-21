@@ -99,6 +99,29 @@
         </div>
 
         <div class="adm-cols">
+          <!-- Seiten-Banner -->
+          <form class="bc-card" id="admBannerForm">
+            <h2 class="adm-card-title">🪧 Seiten-Banner</h2>
+            <p class="adm-hint">
+              Hinweis oben auf der Webseite – z. B. „Wartung heute 20 Uhr".
+              Wirkt sofort für alle Besucher.
+            </p>
+            <label class="adm-check">
+              <input type="checkbox" id="admBannerOn"> Banner anzeigen
+            </label>
+            <label class="vote-form__label" for="admBannerText">Text</label>
+            <input class="vote-form__input" id="admBannerText" maxlength="160"
+                   placeholder="z. B. Wartung heute ab 20 Uhr – kurze Downtime">
+            <label class="vote-form__label" for="admBannerLevel">Optik</label>
+            <select class="vote-form__input" id="admBannerLevel">
+              <option value="info">Blau – Info</option>
+              <option value="event">Grün – Event</option>
+              <option value="warn">Orange – Warnung</option>
+            </select>
+            <button class="btn btn--accent" type="submit" id="admBannerBtn">Banner speichern</button>
+            <p class="vote-message" id="admBannerMsg" role="status" hidden></p>
+          </form>
+
           <!-- Ansage -->
           <form class="bc-card" id="admAnnounceForm">
             <h2 class="adm-card-title">📢 In-Game-Ansage</h2>

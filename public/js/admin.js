@@ -47,6 +47,7 @@
 
   let lastPlayers = [];   // für die Kick/Bann-Buttons (Name über Index statt HTML)
   let lastBans = [];
+  let bannerFormTouched = false;   // Auto-Refresh soll Eingaben nicht überschreiben
 
   function renderOverview(data) {
     lastPlayers = data.players || [];
@@ -93,6 +94,14 @@
       </tr>`).join('');
     $('admBanRows').innerHTML = banRows;
     $('admBansBlock').hidden = lastBans.length === 0;
+
+    // Banner-Formular nur beim ersten Laden vorbefüllen – nicht bei jedem
+    // Auto-Refresh, sonst überschreibt er, was der Admin gerade tippt
+    if (!bannerFormTouched && data.banner) {
+      $('admBannerOn').checked = data.banner.enabled;
+      $('admBannerText').value = data.banner.text || '';
+      $('admBannerLevel').value = data.banner.level || 'info';
+    }
   }
 
   // ---- Kick / Bann / Entbannen (Buttons über Event-Delegation) ----
@@ -198,6 +207,35 @@
     try { await fetch('/api/admin/logout', { method: 'POST' }); } catch { /* egal */ }
     stopRefresh();
     show(loginView);
+  });
+
+  // ---- Seiten-Banner ----
+  for (const id of ['admBannerOn', 'admBannerText', 'admBannerLevel']) {
+    $(id).addEventListener('input', () => { bannerFormTouched = true; });
+  }
+  $('admBannerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('admBannerBtn');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/banner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: $('admBannerOn').checked,
+          text: $('admBannerText').value.trim(),
+          level: $('admBannerLevel').value
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      setMsg($('admBannerMsg'), data.message || (res.ok ? 'Gespeichert.' : 'Fehler.'), res.ok);
+      if (res.status === 401) { show(loginView); stopRefresh(); return; }
+      if (res.ok) bannerFormTouched = false;
+    } catch {
+      setMsg($('admBannerMsg'), 'Netzwerkfehler – nicht gespeichert.', false);
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // ---- Ansage ----

@@ -740,6 +740,31 @@ function saveBans() {
   }
 }
 
+// Seiten-Banner, von der Admin-Seite gepflegt. Liegt in data/banner.json und
+// gewinnt gegenüber dem banner-Block der config.json (die nur beim Start
+// gelesen wird) – so wirken Änderungen sofort, ohne Neustart.
+const bannerFile = path.join(__dirname, 'data/banner.json');
+let bannerOverride = null; // null = kein Override, config.json gilt
+try {
+  const raw = JSON.parse(fs.readFileSync(bannerFile, 'utf8'));
+  if (raw && typeof raw === 'object' && 'enabled' in raw) bannerOverride = raw;
+} catch { /* kein Override gesetzt */ }
+
+function saveBannerOverride() {
+  try {
+    fs.mkdirSync(path.dirname(bannerFile), { recursive: true });
+    const tmp = `${bannerFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(bannerOverride));
+    fs.renameSync(tmp, bannerFile);
+  } catch (err) {
+    console.error(`[admin] Banner speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
+function effectiveBanner() {
+  return bannerOverride || config.banner || {};
+}
+
 // ---------------------------------------------------------------------------
 // Besucher-Zähler
 // ---------------------------------------------------------------------------
@@ -1091,6 +1116,33 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Admin: Seiten-Banner setzen (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/banner') {
+    if (!adminEnabled() || !adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const enabled = body.enabled === true;
+      const text = String(body.text || '').trim().slice(0, 160);
+      const level = ['info', 'event', 'warn'].includes(body.level) ? body.level : 'info';
+      if (enabled && !text) {
+        sendJson(res, 400, { ok: false, message: 'Der Banner-Text ist leer.' });
+        return;
+      }
+      bannerOverride = { enabled, text, level, updatedAt: new Date().toISOString() };
+      saveBannerOverride();
+      sendJson(res, 200, {
+        ok: true,
+        message: enabled ? 'Banner ist jetzt sichtbar.' : 'Banner ist ausgeblendet.'
+      });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+    }
+    return;
+  }
+
   // ---- Admin: Spieler entbannen (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/unban') {
     if (!adminEnabled() || !adminSessionFromReq(req)) {
@@ -1173,11 +1225,17 @@ const server = http.createServer(async (req, res) => {
       }))
       .sort((a, b) => Number(b.online) - Number(a.online) ||
         String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
+    const eb = effectiveBanner();
     sendJson(res, 200, {
       ok: true,
       status,
       players,
       bans: bansData.bans,
+      banner: {
+        enabled: Boolean(eb.enabled && eb.text),
+        text: eb.text || '',
+        level: eb.level || 'info'
+      },
       bases: { count: basesData.bases.length, updatedAt: basesData.updatedAt },
       visits: config.visitorCounter ? visits : null
     });
@@ -1186,7 +1244,7 @@ const server = http.createServer(async (req, res) => {
 
   // Seiten-Konfiguration (Banner, Support-Karte) – bewusst vom Spielstatus entkoppelt
   if (pathname === '/api/site') {
-    const b = config.banner;
+    const b = effectiveBanner();
     const s = config.support;
     sendJson(res, 200, {
       banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null,
