@@ -1676,3 +1676,18 @@ code {
   border-top: 1px solid rgba(22, 64, 95, 0.14);
   margin: 16px 0 4px;
 }
+.adm-details {
+  margin-top: 40px;
+  background: var(--surface, #ffffff);
+  border: 1px solid rgba(22, 64, 95, 0.14);
+  border-radius: 16px;
+  box-shadow: 0 5px 16px rgba(22, 64, 95, 0.08);
+  padding: 16px 22px;
+}
+.adm-details summary {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+.adm-details[open] summary { margin-bottom: 8px; }

@@ -765,6 +765,32 @@ function effectiveBanner() {
   return bannerOverride || config.banner || {};
 }
 
+// Aktions-Protokoll: was wurde über die Website ausgeführt (Kick, Bann,
+// Neustart, Ansagen, Banner …). Bewusst ohne IP-Adressen – nur Zeitpunkt,
+// Aktion und Details. Maximal 200 Einträge, die ältesten fallen raus.
+const ADMIN_LOG_MAX = 200;
+const adminLogFile = path.join(__dirname, 'data/admin-log.json');
+let adminLogData = [];
+try {
+  const raw = JSON.parse(fs.readFileSync(adminLogFile, 'utf8'));
+  if (Array.isArray(raw)) adminLogData = raw.slice(-ADMIN_LOG_MAX);
+} catch { /* noch kein Protokoll */ }
+
+function adminLog(action, detail) {
+  adminLogData.push({ at: new Date().toISOString(), action, detail: String(detail || '') });
+  if (adminLogData.length > ADMIN_LOG_MAX) {
+    adminLogData = adminLogData.slice(-ADMIN_LOG_MAX);
+  }
+  try {
+    fs.mkdirSync(path.dirname(adminLogFile), { recursive: true });
+    const tmp = `${adminLogFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(adminLogData));
+    fs.renameSync(tmp, adminLogFile);
+  } catch (err) {
+    console.error(`[admin] Protokoll speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Besucher-Zähler
 // ---------------------------------------------------------------------------
@@ -1009,11 +1035,13 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req);
       if (!passwordMatches(body.password || '', config.admin.password)) {
+        adminLog('Login', 'Fehlgeschlagener Anmeldeversuch');
         sendJson(res, 403, { ok: false, message: 'Falsches Passwort.' });
         return;
       }
       const token = newAdminSession();
       res.setHeader('Set-Cookie', adminCookie(req, token, ADMIN_SESSION_HOURS * 3600));
+      adminLog('Login', 'Am Admin-Bereich angemeldet');
       sendJson(res, 200, { ok: true });
     } catch {
       sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
@@ -1044,6 +1072,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       await palworldPost('/v1/api/announce', { message });
+      adminLog('Ansage', `„${message.slice(0, 80)}"`);
       sendJson(res, 200, { ok: true, message: 'Ansage im Spiel gesendet.' });
     } catch {
       sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Ansage nicht gesendet.' });
@@ -1059,6 +1088,7 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       await palworldPost('/v1/api/save', {});
+      adminLog('Spielstand', 'Manuell gesichert');
       sendJson(res, 200, { ok: true, message: 'Spielstand wird gespeichert.' });
     } catch {
       sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
@@ -1087,6 +1117,7 @@ const server = http.createServer(async (req, res) => {
         await palworldPost('/v1/api/save', {});
       } catch { /* Shutdown speichert normalerweise ebenfalls */ }
       await palworldPost('/v1/api/shutdown', { waittime: wait, message });
+      adminLog('Neustart', `Mit ${wait} s Vorwarnung ausgelöst`);
       sendJson(res, 200, {
         ok: true,
         message: `Neustart eingeleitet: Shutdown in ${wait} s, danach startet ` +
@@ -1138,6 +1169,7 @@ const server = http.createServer(async (req, res) => {
         });
         saveBans();
       }
+      adminLog(isBan ? 'Bann' : 'Kick', `„${player.name}" – Grund: ${reason.slice(0, 80)}`);
       sendJson(res, 200, {
         ok: true,
         message: isBan ? `„${player.name}" wurde gebannt.` : `„${player.name}" wurde gekickt.`
@@ -1165,6 +1197,9 @@ const server = http.createServer(async (req, res) => {
       }
       bannerOverride = { enabled, text, level, updatedAt: new Date().toISOString() };
       saveBannerOverride();
+      adminLog('Banner', enabled
+        ? `Aktiviert (${level}): „${text.slice(0, 80)}"`
+        : 'Ausgeblendet');
       sendJson(res, 200, {
         ok: true,
         message: enabled ? 'Banner ist jetzt sichtbar.' : 'Banner ist ausgeblendet.'
@@ -1192,6 +1227,7 @@ const server = http.createServer(async (req, res) => {
       const entry = bansData.bans.find((b) => b.userid === userid);
       bansData.bans = bansData.bans.filter((b) => b.userid !== userid);
       saveBans();
+      adminLog('Entbannt', `„${(entry && entry.name) || userid}"`);
       sendJson(res, 200, {
         ok: true,
         message: `„${(entry && entry.name) || userid}" wurde entbannt.`
@@ -1242,8 +1278,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const status = await getStatus();
-    const onlineNames = new Set(
-      status.online ? (status.players.list || []).map((p) => p.name) : []
+    const onlinePings = new Map(
+      status.online
+        ? (status.players.list || []).map((p) => [p.name, p.ping ?? null])
+        : []
     );
     const players = Object.entries(stats.players)
       .map(([name, p]) => ({
@@ -1253,7 +1291,8 @@ const server = http.createServer(async (req, res) => {
         sessions: p.sessions || 0,
         firstSeen: p.firstSeen || null,
         lastSeen: p.lastSeen || null,
-        online: onlineNames.has(name)
+        online: onlinePings.has(name),
+        ping: onlinePings.get(name) ?? null
       }))
       .sort((a, b) => Number(b.online) - Number(a.online) ||
         String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
@@ -1263,6 +1302,7 @@ const server = http.createServer(async (req, res) => {
       status,
       players,
       bans: bansData.bans,
+      log: adminLogData.slice(-30).reverse(),
       banner: {
         enabled: Boolean(eb.enabled && eb.text),
         text: eb.text || '',
@@ -1271,6 +1311,25 @@ const server = http.createServer(async (req, res) => {
       bases: { count: basesData.bases.length, updatedAt: basesData.updatedAt },
       visits: config.visitorCounter ? visits : null
     });
+    return;
+  }
+
+  // Admin: aktuelle Server-Einstellungen (read-only, nur mit Login)
+  if (pathname === '/api/admin/settings') {
+    if (!adminEnabled()) {
+      sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
+      return;
+    }
+    if (!adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const settings = await palworldGet('/v1/api/settings');
+      sendJson(res, 200, { ok: true, settings });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
+    }
     return;
   }
 

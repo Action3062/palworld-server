@@ -298,6 +298,13 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
   speichert bewusst keine IDs). Über die Website ausgesprochene Banns
   landen in `data/bans.json` und lassen sich auf der Seite wieder aufheben
   („Entbannen")
+- **Ping-Spalte**: Live-Ping der Online-Spieler (wer laggt gerade?)
+- **Aktions-Protokoll**: was wurde über die Website ausgeführt (Kicks,
+  Banns, Neustarts, Ansagen, Banner, An-/Fehlanmeldungen) – neueste zuerst,
+  bewusst ohne IP-Adressen, max. 200 Einträge in `data/admin-log.json`
+- **Server-Einstellungen (read-only)**: aufklappbare Live-Ansicht von
+  `/v1/api/settings` – Raten, Schwierigkeit, Limits, wie der Server
+  gerade wirklich läuft
 
 ### Broadcast (In-Game-Ansage von der Website)
 

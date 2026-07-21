@@ -76,6 +76,7 @@
         <td class="num">${p.level ?? '–'}</td>
         <td class="num">${fmtMinutes(p.minutes)}</td>
         <td class="num">${p.sessions}</td>
+        <td class="num">${p.online && p.ping != null ? `${Math.round(p.ping)} ms` : '–'}</td>
         <td>${p.online ? 'jetzt online' : fmtAgo(p.lastSeen)}</td>
         <td class="adm-actions">${p.online
           ? `<button class="btn btn--tiny" data-kick="${i}">Kick</button>
@@ -83,7 +84,17 @@
           : ''}</td>
       </tr>`).join('');
     $('admPlayerRows').innerHTML =
-      rows || '<tr><td colspan="6">Noch keine Spieler-Daten.</td></tr>';
+      rows || '<tr><td colspan="7">Noch keine Spieler-Daten.</td></tr>';
+
+    const logRows = (data.log || []).map((e) => `
+      <tr>
+        <td>${e.at ? new Date(e.at).toLocaleString('de-DE',
+          { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}</td>
+        <td>${esc(e.action || '–')}</td>
+        <td>${esc(e.detail || '')}</td>
+      </tr>`).join('');
+    $('admLogRows').innerHTML =
+      logRows || '<tr><td colspan="3">Noch keine Einträge.</td></tr>';
 
     const banRows = lastBans.map((b, i) => `
       <tr>
@@ -310,6 +321,34 @@
       setMsg($('admRestartMsg'), 'Netzwerkfehler – Neustart nicht ausgelöst.', false);
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  // ---- Server-Einstellungen (lazy: erst beim Aufklappen laden) ----
+  let settingsLoaded = false;
+  $('admSettingsBox').addEventListener('toggle', async (e) => {
+    if (!e.target.open || settingsLoaded) return;
+    settingsLoaded = true;
+    try {
+      const res = await fetch('/api/admin/settings', { cache: 'no-store' });
+      if (res.status === 401) { show(loginView); stopRefresh(); return; }
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.settings) {
+        settingsLoaded = false; // beim nächsten Aufklappen erneut versuchen
+        $('admSettingsRows').innerHTML =
+          `<tr><td colspan="2">${(data && data.message) || 'Einstellungen nicht abrufbar.'}</td></tr>`;
+        return;
+      }
+      const rows = Object.entries(data.settings)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${esc(String(v))}</td></tr>`)
+        .join('');
+      $('admSettingsRows').innerHTML =
+        rows || '<tr><td colspan="2">Keine Einstellungen erhalten.</td></tr>';
+    } catch {
+      settingsLoaded = false;
+      $('admSettingsRows').innerHTML =
+        '<tr><td colspan="2">Netzwerkfehler – bitte erneut aufklappen.</td></tr>';
     }
   });
 

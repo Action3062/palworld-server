@@ -168,12 +168,13 @@
                 <th class="num">Level</th>
                 <th class="num">Spielzeit</th>
                 <th class="num">Sessions</th>
+                <th class="num">Ping</th>
                 <th>Zuletzt gesehen</th>
                 <th>Aktionen</th>
               </tr>
             </thead>
             <tbody id="admPlayerRows">
-              <tr><td colspan="6">Wird geladen …</td></tr>
+              <tr><td colspan="7">Wird geladen …</td></tr>
             </tbody>
           </table>
         </div>
@@ -198,6 +199,41 @@
             </table>
           </div>
         </div>
+
+        <h2 class="adm-section-title">Letzte Admin-Aktionen</h2>
+        <p class="adm-hint">
+          Protokoll der über die Website ausgeführten Aktionen (neueste zuerst,
+          ohne IP-Adressen).
+        </p>
+        <div class="adm-table-wrap">
+          <table class="leaderboard__table">
+            <thead>
+              <tr>
+                <th>Zeitpunkt</th>
+                <th>Aktion</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="admLogRows">
+              <tr><td colspan="3">Noch keine Einträge.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <details class="adm-details" id="admSettingsBox">
+          <summary>⚙️ Server-Einstellungen anzeigen (read-only)</summary>
+          <p class="adm-hint">
+            Live aus der REST-API – so läuft der Server gerade wirklich
+            (Raten, Schwierigkeit, Limits …).
+          </p>
+          <div class="adm-table-wrap">
+            <table class="leaderboard__table">
+              <tbody id="admSettingsRows">
+                <tr><td colspan="2">Wird geladen …</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     </section>
   </main>
