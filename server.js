@@ -55,9 +55,15 @@ const DEFAULTS = {
   admin: {
     // Langes Zufalls-Token; leer = Broadcast-Seite (/broadcast) deaktiviert
     broadcastSecret: '',
-    // Passwort für die Admin-Seite (/admin); leer = Seite deaktiviert.
-    // Nicht das Palworld-AdminPassword wiederverwenden!
-    password: ''
+    // Passwort des HAUPTADMINS für die Admin-Seite (/admin); leer = Seite
+    // deaktiviert. Nicht das Palworld-AdminPassword wiederverwenden!
+    password: '',
+    // Anzeigename des Hauptadmins (erscheint im Aktions-Protokoll)
+    name: 'Hauptadmin',
+    // Unter-Admins: eigener Name + eigenes Passwort pro Person, z. B.
+    //   "users": { "Lisa": "langes-passwort", "Tom": "anderes-passwort" }
+    // Unter-Admins dürfen alles außer den Server neu starten.
+    users: {}
   },
   // Besucher-Zähler (Seitenaufrufe + eindeutige Besucher; ohne IP/Cookies)
   visitorCounter: true,
@@ -668,10 +674,13 @@ function sendJson(res, status, obj) {
 // Neustart des Servers meldet alle Admins ab (bewusst einfach gehalten).
 
 const ADMIN_SESSION_HOURS = 12;
-const adminSessions = new Map(); // Token → Ablaufzeit (ms)
+const adminSessions = new Map(); // Token → { expires, user, role }
 
 function adminEnabled() {
-  return Boolean(config.admin && config.admin.password);
+  if (!config.admin) return false;
+  const hasUsers = config.admin.users &&
+    Object.values(config.admin.users).some((p) => typeof p === 'string' && p);
+  return Boolean(config.admin.password || hasUsers);
 }
 
 // Konstantzeit-Vergleich (über Hashes, damit die Längen immer gleich sind)
@@ -681,23 +690,52 @@ function passwordMatches(given, expected) {
   return crypto.timingSafeEqual(ha, hb);
 }
 
+// Wer meldet sich an? Leerer Name (oder der konfigurierte Hauptadmin-Name)
+// → Hauptadmin-Passwort; sonst Unter-Admin aus admin.users (Name egal ob
+// groß/klein geschrieben). Rolle: 'haupt' darf alles, 'admin' alles außer
+// Server-Neustart.
+function resolveLogin(username, password) {
+  const uname = String(username || '').trim().slice(0, 32);
+  const mainName = String((config.admin && config.admin.name) || 'Hauptadmin').slice(0, 32);
+  if (config.admin.password &&
+      (!uname || uname.toLowerCase() === mainName.toLowerCase())) {
+    return passwordMatches(password, config.admin.password)
+      ? { user: mainName, role: 'haupt' }
+      : null;
+  }
+  const users = (config.admin && config.admin.users) || {};
+  const key = Object.keys(users).find(
+    (k) => k.toLowerCase() === uname.toLowerCase()
+  );
+  if (key && typeof users[key] === 'string' && users[key] &&
+      passwordMatches(password, users[key])) {
+    return { user: key, role: 'admin' };
+  }
+  return null;
+}
+
 function adminSessionFromReq(req) {
   const m = (req.headers.cookie || '').match(/(?:^|;\s*)padm=([a-f0-9]{48})/);
   if (!m) return null;
-  const expires = adminSessions.get(m[1]);
-  if (!expires || expires < Date.now()) {
+  const session = adminSessions.get(m[1]);
+  if (!session || session.expires < Date.now()) {
     adminSessions.delete(m[1]);
     return null;
   }
-  return m[1];
+  session.token = m[1];
+  return session;
 }
 
-function newAdminSession() {
-  for (const [token, expires] of adminSessions) {
-    if (expires < Date.now()) adminSessions.delete(token);
+function newAdminSession(user, role) {
+  for (const [token, session] of adminSessions) {
+    if (session.expires < Date.now()) adminSessions.delete(token);
   }
   const token = crypto.randomBytes(24).toString('hex');
-  adminSessions.set(token, Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000);
+  adminSessions.set(token, {
+    expires: Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000,
+    user,
+    role
+  });
   return token;
 }
 
@@ -776,8 +814,13 @@ try {
   if (Array.isArray(raw)) adminLogData = raw.slice(-ADMIN_LOG_MAX);
 } catch { /* noch kein Protokoll */ }
 
-function adminLog(action, detail) {
-  adminLogData.push({ at: new Date().toISOString(), action, detail: String(detail || '') });
+function adminLog(action, detail, user) {
+  adminLogData.push({
+    at: new Date().toISOString(),
+    user: String(user || '–').slice(0, 32),
+    action,
+    detail: String(detail || '')
+  });
   if (adminLogData.length > ADMIN_LOG_MAX) {
     adminLogData = adminLogData.slice(-ADMIN_LOG_MAX);
   }
@@ -1034,15 +1077,19 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const body = await readJsonBody(req);
-      if (!passwordMatches(body.password || '', config.admin.password)) {
-        adminLog('Login', 'Fehlgeschlagener Anmeldeversuch');
-        sendJson(res, 403, { ok: false, message: 'Falsches Passwort.' });
+      const login = resolveLogin(body.username, body.password || '');
+      if (!login) {
+        const tried = String(body.username || '').trim().slice(0, 32);
+        adminLog('Login', tried
+          ? `Fehlgeschlagener Anmeldeversuch für „${tried}"`
+          : 'Fehlgeschlagener Anmeldeversuch');
+        sendJson(res, 403, { ok: false, message: 'Name oder Passwort falsch.' });
         return;
       }
-      const token = newAdminSession();
+      const token = newAdminSession(login.user, login.role);
       res.setHeader('Set-Cookie', adminCookie(req, token, ADMIN_SESSION_HOURS * 3600));
-      adminLog('Login', 'Am Admin-Bereich angemeldet');
-      sendJson(res, 200, { ok: true });
+      adminLog('Login', 'Angemeldet', login.user);
+      sendJson(res, 200, { ok: true, user: login.user, role: login.role });
     } catch {
       sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
     }
@@ -1051,8 +1098,11 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Admin-Logout (POST) ----
   if (req.method === 'POST' && pathname === '/api/admin/logout') {
-    const token = adminSessionFromReq(req);
-    if (token) adminSessions.delete(token);
+    const session = adminSessionFromReq(req);
+    if (session) {
+      adminSessions.delete(session.token);
+      adminLog('Login', 'Abgemeldet', session.user);
+    }
     res.setHeader('Set-Cookie', adminCookie(req, 'abgemeldet', 0));
     sendJson(res, 200, { ok: true });
     return;
@@ -1060,7 +1110,8 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Admin: In-Game-Ansage (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/announce') {
-    if (!adminEnabled() || !adminSessionFromReq(req)) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
       return;
     }
@@ -1072,7 +1123,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       await palworldPost('/v1/api/announce', { message });
-      adminLog('Ansage', `„${message.slice(0, 80)}"`);
+      adminLog('Ansage', `„${message.slice(0, 80)}"`, session.user);
       sendJson(res, 200, { ok: true, message: 'Ansage im Spiel gesendet.' });
     } catch {
       sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Ansage nicht gesendet.' });
@@ -1082,13 +1133,14 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Admin: Spielstand sichern (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/save') {
-    if (!adminEnabled() || !adminSessionFromReq(req)) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
       return;
     }
     try {
       await palworldPost('/v1/api/save', {});
-      adminLog('Spielstand', 'Manuell gesichert');
+      adminLog('Spielstand', 'Manuell gesichert', session.user);
       sendJson(res, 200, { ok: true, message: 'Spielstand wird gespeichert.' });
     } catch {
       sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
@@ -1101,8 +1153,13 @@ const server = http.createServer(async (req, res) => {
   // dann /v1/api/shutdown mit Vorwarnzeit + Ansage – die Docker-Restart-Policy
   // startet den Container anschließend automatisch wieder.
   if (req.method === 'POST' && pathname === '/api/admin/restart') {
-    if (!adminEnabled() || !adminSessionFromReq(req)) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    if (session.role !== 'haupt') {
+      sendJson(res, 403, { ok: false, message: 'Nur der Hauptadmin darf den Server neu starten.' });
       return;
     }
     try {
@@ -1117,7 +1174,7 @@ const server = http.createServer(async (req, res) => {
         await palworldPost('/v1/api/save', {});
       } catch { /* Shutdown speichert normalerweise ebenfalls */ }
       await palworldPost('/v1/api/shutdown', { waittime: wait, message });
-      adminLog('Neustart', `Mit ${wait} s Vorwarnung ausgelöst`);
+      adminLog('Neustart', `Mit ${wait} s Vorwarnung ausgelöst`, session.user);
       sendJson(res, 200, {
         ok: true,
         message: `Neustart eingeleitet: Shutdown in ${wait} s, danach startet ` +
@@ -1131,7 +1188,8 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Admin: Spieler kicken / bannen (POST, nur mit Login) ----
   if (req.method === 'POST' && (pathname === '/api/admin/kick' || pathname === '/api/admin/ban')) {
-    if (!adminEnabled() || !adminSessionFromReq(req)) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
       return;
     }
@@ -1169,7 +1227,8 @@ const server = http.createServer(async (req, res) => {
         });
         saveBans();
       }
-      adminLog(isBan ? 'Bann' : 'Kick', `„${player.name}" – Grund: ${reason.slice(0, 80)}`);
+      adminLog(isBan ? 'Bann' : 'Kick',
+        `„${player.name}" – Grund: ${reason.slice(0, 80)}`, session.user);
       sendJson(res, 200, {
         ok: true,
         message: isBan ? `„${player.name}" wurde gebannt.` : `„${player.name}" wurde gekickt.`
@@ -1182,7 +1241,8 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Admin: Seiten-Banner setzen (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/banner') {
-    if (!adminEnabled() || !adminSessionFromReq(req)) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
       return;
     }
@@ -1199,7 +1259,7 @@ const server = http.createServer(async (req, res) => {
       saveBannerOverride();
       adminLog('Banner', enabled
         ? `Aktiviert (${level}): „${text.slice(0, 80)}"`
-        : 'Ausgeblendet');
+        : 'Ausgeblendet', session.user);
       sendJson(res, 200, {
         ok: true,
         message: enabled ? 'Banner ist jetzt sichtbar.' : 'Banner ist ausgeblendet.'
@@ -1212,7 +1272,8 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Admin: Spieler entbannen (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/unban') {
-    if (!adminEnabled() || !adminSessionFromReq(req)) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
       return;
     }
@@ -1227,7 +1288,7 @@ const server = http.createServer(async (req, res) => {
       const entry = bansData.bans.find((b) => b.userid === userid);
       bansData.bans = bansData.bans.filter((b) => b.userid !== userid);
       saveBans();
-      adminLog('Entbannt', `„${(entry && entry.name) || userid}"`);
+      adminLog('Entbannt', `„${(entry && entry.name) || userid}"`, session.user);
       sendJson(res, 200, {
         ok: true,
         message: `„${(entry && entry.name) || userid}" wurde entbannt.`
@@ -1273,7 +1334,8 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
       return;
     }
-    if (!adminSessionFromReq(req)) {
+    const session = adminSessionFromReq(req);
+    if (!session) {
       sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
       return;
     }
@@ -1299,6 +1361,7 @@ const server = http.createServer(async (req, res) => {
     const eb = effectiveBanner();
     sendJson(res, 200, {
       ok: true,
+      me: { user: session.user, role: session.role },
       status,
       players,
       bans: bansData.bans,

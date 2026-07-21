@@ -67,8 +67,13 @@
       ? `Stand: ${fmtAgo(data.bases.updatedAt)}` : 'noch kein Upload';
     $('admVisits').textContent = data.visits ? data.visits.unique : '–';
     $('admVisitsHint').textContent = data.visits ? `${data.visits.total} Aufrufe gesamt` : '';
+    const me = data.me || {};
+    const who = me.user
+      ? `Angemeldet als ${me.user} (${me.role === 'haupt' ? 'Hauptadmin' : 'Admin'}) · `
+      : '';
     $('admUpdated').textContent =
-      `Aktualisiert ${new Date().toLocaleTimeString('de-DE')} Uhr · lädt alle 30 Sekunden neu.`;
+      `${who}aktualisiert ${new Date().toLocaleTimeString('de-DE')} Uhr · lädt alle 30 Sekunden neu.`;
+    $('admRestartBlock').hidden = me.role !== 'haupt';
 
     const rows = lastPlayers.map((p, i) => `
       <tr>
@@ -90,11 +95,12 @@
       <tr>
         <td>${e.at ? new Date(e.at).toLocaleString('de-DE',
           { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}</td>
+        <td>${esc(e.user || '–')}</td>
         <td>${esc(e.action || '–')}</td>
         <td>${esc(e.detail || '')}</td>
       </tr>`).join('');
     $('admLogRows').innerHTML =
-      logRows || '<tr><td colspan="3">Noch keine Einträge.</td></tr>';
+      logRows || '<tr><td colspan="4">Noch keine Einträge.</td></tr>';
 
     const banRows = lastBans.map((b, i) => `
       <tr>
@@ -195,7 +201,10 @@
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: $('admPassword').value })
+        body: JSON.stringify({
+          username: $('admUser').value.trim(),
+          password: $('admPassword').value
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {

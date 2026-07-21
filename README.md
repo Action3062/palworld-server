@@ -269,10 +269,20 @@ nirgends verlinkt, auf `noindex` und per `robots.txt` ausgeschlossen.
 Aktiviert wird sie über ein eigenes Passwort in der `config.json`:
 
 ```json
-"admin": { "password": "LANGES-EIGENES-PASSWORT" }
+"admin": {
+  "password": "LANGES-EIGENES-PASSWORT",
+  "name": "Action",
+  "users": { "Lisa": "lisas-langes-passwort", "Tom": "toms-langes-passwort" }
+}
 ```
 
-Ohne gesetztes Passwort ist die Seite (und alle `/api/admin/*`-Endpunkte
+- `password` + `name`: der **Hauptadmin** (darf alles; `name` erscheint im
+  Protokoll, Login mit leerem Namensfeld oder dem Namen)
+- `users`: beliebig viele **Unter-Admins** mit eigenem Namen und Passwort –
+  sie dürfen alles außer den Server neu starten. Jede Aktion wird im
+  Protokoll dem jeweiligen Namen zugeordnet
+
+Ohne gesetzte Passwörter ist die Seite (und alle `/api/admin/*`-Endpunkte
 außer dem Broadcast) komplett deaktiviert. Nicht das Palworld-`AdminPassword`
 wiederverwenden! Nach dem Login (Session-Cookie, 12 h gültig, Neustart des
 Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
@@ -285,11 +295,12 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
   `banner`-Block der `config.json`
 - **In-Game-Ansage**: Nachricht an alle Online-Spieler senden
 - **Spielstand sichern**: Welt sofort speichern (vor Wartungen/Neustarts)
-- **Server neustarten**: mit wählbarer Vorwarnzeit (10–600 s) und doppelter
-  Bestätigung. Warnt die Spieler im Spiel, speichert die Welt und fährt den
-  Server per REST-API herunter – die Docker-Restart-Policy startet ihn
-  automatisch wieder (derselbe Mechanismus wie beim nächtlichen
-  Wartungs-Neustart, Downtime ca. 1–2 Minuten)
+- **Server neustarten** (nur Hauptadmin): mit wählbarer Vorwarnzeit
+  (10–600 s) und doppelter Bestätigung. Warnt die Spieler im Spiel,
+  speichert die Welt und fährt den Server per REST-API herunter – die
+  Docker-Restart-Policy startet ihn automatisch wieder (derselbe
+  Mechanismus wie beim nächtlichen Wartungs-Neustart, Downtime
+  ca. 1–2 Minuten)
 - **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
   und „zuletzt gesehen" – Online-Spieler zuerst
 - **Kick & Bann**: bei Online-Spielern direkt aus der Liste (mit Grund, der
