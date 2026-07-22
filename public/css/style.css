@@ -1719,3 +1719,9 @@ code {
   padding: 0 4px;
   line-height: 1.35;
 }
+
+/* Notbremse für überlange Werte in Status-Kacheln (z. B. exotische Versionsformate) */
+.stat-card__value--fit {
+  font-size: 1.35rem;
+  overflow-wrap: anywhere;
+}

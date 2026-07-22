@@ -18,6 +18,7 @@
     players: document.querySelector('[data-stat="players"]'),
     maxPlayers: document.querySelector('[data-stat="maxPlayers"]'),
     version: document.querySelector('[data-stat="version"]'),
+    versionHint: document.querySelector('[data-stat="versionHint"]'),
     uptime: document.querySelector('[data-stat="uptime"]'),
     fps: document.querySelector('[data-stat="fps"]'),
     playerListWrap: document.getElementById('playerListWrap'),
@@ -35,6 +36,23 @@
     return `${m}min`;
   }
 
+  // Lange Versionsnummern (v1.0.1.100619) sprengen die Kachel: Kurzversion
+  // groß anzeigen, Build-Nummer in die Unterzeile. Passt ein unbekanntes
+  // Format trotzdem nicht, wird die Schrift automatisch verkleinert.
+  function setVersion(raw) {
+    const v = raw || '–';
+    const m = /^(v?\d+\.\d+(?:\.\d+)?)\.(\d{4,})$/.exec(v);
+    el.version.classList.remove('stat-card__value--fit');
+    if (m) {
+      el.version.textContent = m[1];
+      if (el.versionHint) el.versionHint.textContent = `Build ${m[2]} · Dedicated Server`;
+      return;
+    }
+    el.version.textContent = v;
+    if (v.length > 9) el.version.classList.add('stat-card__value--fit');
+    if (el.versionHint) el.versionHint.textContent = 'Palworld Dedicated Server';
+  }
+
   function renderOnline(data) {
     el.statusDot.classList.add('is-online');
     el.statusDot.classList.remove('is-offline');
@@ -47,7 +65,7 @@
 
     el.players.textContent = data.players.current;
     el.maxPlayers.textContent = data.players.max || '–';
-    el.version.textContent = data.version || '–';
+    setVersion(data.version);
     el.uptime.textContent = formatUptime(data.uptimeSeconds);
     el.fps.textContent = data.serverFps != null ? Math.round(data.serverFps) : '–';
 
@@ -89,7 +107,7 @@
     el.statusHint.textContent = 'Wartung oder Update – Infos im Discord';
 
     el.players.textContent = '–';
-    el.version.textContent = '–';
+    setVersion(null);
     el.uptime.textContent = '–';
     el.fps.textContent = '–';
     el.playerListWrap.hidden = true;
