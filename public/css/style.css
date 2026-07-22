@@ -1691,3 +1691,31 @@ code {
   cursor: pointer;
 }
 .adm-details[open] summary { margin-bottom: 8px; }
+
+/* Karten-Filter (Legende als klickbare Chips) */
+.map-filter {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: none;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  padding: 3px 11px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+}
+.map-filter:hover { border-color: rgba(22, 64, 95, 0.28); }
+.map-filter:focus-visible { outline: 3px solid var(--accent, #f98a1b); outline-offset: 2px; }
+.map-filter.is-off { opacity: 0.42; }
+.map-filter.is-off .map-legend__dot,
+.map-filter.is-off .map-filter__tag { filter: grayscale(1); }
+.map-filter__tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: var(--blue-dark, #176ba6);
+  border-radius: 4px;
+  padding: 0 4px;
+  line-height: 1.35;
+}
