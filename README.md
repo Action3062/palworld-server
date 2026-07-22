@@ -1,11 +1,11 @@
 # PalHeim – Palworld Server Webseite
 
-Eine moderne Webseite für deinen Palworld Dedicated Server auf Hetzner Cloud –
+Eine moderne Webseite für deinen Palworld Dedicated Server auf eigener Hardware –
 mit **Live-Serverstatus** (Spielerzahl, Version, Uptime, Spielerliste) über die
 offizielle Palworld REST-API.
 
 **Kein Framework, kein Build-Schritt, keine npm-Abhängigkeiten** – nur Node.js.
-Dadurch ist das Deployment auf dem Hetzner-Server in wenigen Minuten erledigt.
+Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 
 ## Features
 
@@ -47,7 +47,7 @@ gesehen – bewusst keine IPs oder Account-IDs).
 
 ## Voraussetzungen
 
-1. **Palworld Dedicated Server** läuft bereits auf dem Hetzner-Server
+1. **Palworld Dedicated Server** läuft bereits auf deinem Server
 2. **REST-API aktivieren** – in der `PalWorldSettings.ini` innerhalb von `OptionSettings=(...)`:
 
    ```ini
@@ -79,7 +79,7 @@ andere funktioniert trotzdem.
 
 ## Schnellinstallation (ein Befehl)
 
-Auf dem Hetzner-Server als root ausführen – installiert alles automatisch
+Auf dem Web-Server als root ausführen – installiert alles automatisch
 (Node.js, nginx, Benutzer, systemd-Service) und erkennt einen lokal laufenden
 Palworld-Server samt Admin-Passwort:
 
@@ -118,10 +118,10 @@ sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Ac
 
 Voraussetzung: Der A-Record von `palheim.de` (und optional `www.palheim.de`)
 zeigt auf die Server-IP, und Port **80** und **443** sind in der Firewall offen
-(Hetzner Cloud Firewall bzw. `ufw`). Das Skript ist idempotent – ein erneuter
+(Firewall deines Hosters bzw. `ufw`). Das Skript ist idempotent – ein erneuter
 Aufruf erneuert nichts, solange das Zertifikat gültig ist.
 
-## Manuelles Deployment auf Hetzner Cloud
+## Manuelles Deployment
 
 ```bash
 # 1. Code auf den Server holen
@@ -161,7 +161,7 @@ sudo bash deploy/enable-https.sh
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d palheim.de -d www.palheim.de --redirect
 
-# 8. Firewall (Hetzner Cloud Firewall oder ufw)
+# 8. Firewall (Hoster-Firewall oder ufw)
 #    Offen:  80/tcp, 443/tcp (Web), 8211/udp (Palworld), SSH
 #    Zu:     3000/tcp und 8212/tcp von außen NICHT erreichbar machen
 ```
@@ -207,7 +207,7 @@ curl -s -u admin:DEIN-ADMIN-PASSWORT http://10.88.0.2:8212/v1/api/info
 ```
 
 Firewall: Auf dem Palworld-Server muss **UDP 51821** eingehend offen sein
-(Hetzner Cloud Firewall bzw. ufw – das Skript richtet ufw automatisch ein).
+(Hoster-Firewall bzw. ufw – das Skript richtet ufw automatisch ein).
 Port 8212 dagegen **nicht** öffentlich öffnen.
 
 ### Updates einspielen
