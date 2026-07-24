@@ -182,22 +182,30 @@ aus den klassischen Feldern, bestehende Daten bleiben erhalten):
     "name": "PalHeim",
     "shortName": "PvE",
     "mode": "PvE · Koop",
-    "description": "Gemeinsam bauen und erkunden – ohne Wipes.",
+    "description": "Der Klassiker: gemeinsam bauen und erkunden – ohne Wipes.",
+    "facts": ["3× EP", "2× Fangrate", "Keine Todesstrafe"],
     "address": "pve.palheim.de:8211"
   },
   {
-    "id": "pvp",
+    "id": "pve2",
     "name": "PalHeim",
-    "shortName": "PvP",
-    "mode": "PvP · Hardcore",
-    "description": "Spieler gegen Spieler – wer baut, verteidigt.",
-    "address": "pvp.palheim.de:8211",
+    "shortName": "Classic",
+    "mode": "PvE · Vanilla-nah",
+    "description": "Die Herausforderung: gleiche Community, knappere Raten.",
+    "facts": ["1× EP", "1× Fangrate", "Volle Härte"],
+    "color": "#2e7d35",
+    "colorDeep": "#1d5423",
+    "address": "classic.palheim.de:8211",
     "palworldApiUrl": "http://10.88.0.3:8212",
-    "palworldAdminPassword": "ADMINPASSWORT-VOM-PVP-SERVER",
-    "uploadSecret": "EIGENES-UPLOAD-SECRET-FUER-PVP"
+    "palworldAdminPassword": "ADMINPASSWORT-VOM-ZWEITEN-SERVER",
+    "uploadSecret": "EIGENES-UPLOAD-SECRET-FUER-SERVER-2"
   }
 ]
 ```
+
+`facts` sind freie Chips auf der Server-Karte – ideal, um die
+unterschiedlichen Raten der Server nebeneinander zu zeigen. `mode`,
+Farben und Namen sind ebenfalls frei (nichts ist auf PvP festgelegt).
 
 - Pro Server einstellbar: `palworldApiUrl`, `palworldAdminPassword`,
   `address`, `color`/`colorDeep` (Standard: Blau für den ersten, Glutrot

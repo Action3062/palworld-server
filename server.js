@@ -212,6 +212,8 @@ function buildServers() {
       shortName: s.shortName || (i === 0 ? 'PvE' : id.toUpperCase()),
       mode: s.mode || (i === 0 ? 'PvE · Koop' : ''),
       description: s.description || '',
+      // Kurze Fakten-Chips für die Server-Karte, z. B. ["3× EP", "2× Fangrate"]
+      facts: Array.isArray(s.facts) ? s.facts.slice(0, 8).map((f) => String(f).slice(0, 24)) : [],
       address: s.address || '',
       color: s.color || fallback.color,
       colorDeep: s.colorDeep || fallback.colorDeep,
@@ -259,6 +261,7 @@ function publicServerInfo(srv) {
     shortName: srv.shortName,
     mode: srv.mode,
     description: srv.description,
+    facts: srv.facts,
     address: srv.address,
     color: srv.color,
     colorDeep: srv.colorDeep

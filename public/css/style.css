@@ -1827,3 +1827,14 @@ code {
   border-color: var(--sc, var(--blue));
   color: #ffffff;
 }
+.server-card__facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.server-card__fact {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text);
+  background: #f5fbff;
+  border: 1px solid rgba(22, 64, 95, 0.16);
+  border-radius: 999px;
+  padding: 2px 11px;
+  white-space: nowrap;
+}

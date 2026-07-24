@@ -167,6 +167,9 @@
               <span class="server-card__dot"></span>${s.online ? 'Online' : 'Offline'}</span>
           </div>
           ${s.description ? `<p class="server-card__desc">${escHtml(s.description)}</p>` : ''}
+          ${Array.isArray(s.facts) && s.facts.length ? `<div class="server-card__facts">${
+            s.facts.map((f) => `<span class="server-card__fact">${escHtml(f)}</span>`).join('')
+          }</div>` : ''}
           <div class="server-card__players">${s.online && cur != null
             ? `<b>${cur} / ${max ?? '?'}</b><span>Spieler online</span>`
             : '<span>Gerade nicht erreichbar</span>'}</div>
