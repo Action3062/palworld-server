@@ -81,13 +81,25 @@
           Wer ist wo unterwegs? Spieler-Positionen aktualisieren sich alle
           30&nbsp;Sekunden, Basen kommen aus dem letzten Spielstand.
           Mausrad zum Zoomen, Ziehen zum Verschieben, Doppelklick setzt die Ansicht zurück.
+          Über die Legende lassen sich Spieler, Basen und Namen ein- und ausblenden.
         </p>
+        <div class="server-tabs" data-server-tabs hidden></div>
 
         <div class="map-card reveal">
           <div class="map-card__head">
-            <div class="map-legend">
-              <span class="map-legend__item"><span class="map-legend__dot map-legend__dot--player"></span> Spieler</span>
-              <span class="map-legend__item"><span class="map-legend__dot map-legend__dot--base"></span> Basis</span>
+            <div class="map-legend" role="group" aria-label="Karten-Filter">
+              <button type="button" class="map-legend__item map-filter" id="mapFilterPlayers"
+                      aria-pressed="true" title="Spieler ein-/ausblenden">
+                <span class="map-legend__dot map-legend__dot--player"></span> Spieler
+              </button>
+              <button type="button" class="map-legend__item map-filter" id="mapFilterBases"
+                      aria-pressed="true" title="Basen ein-/ausblenden">
+                <span class="map-legend__dot map-legend__dot--base"></span> Basen
+              </button>
+              <button type="button" class="map-legend__item map-filter" id="mapFilterLabels"
+                      aria-pressed="true" title="Namen ein-/ausblenden">
+                <span class="map-filter__tag">Aa</span> Namen
+              </button>
             </div>
             <span class="map-card__status" id="mapStatus">Karte wird geladen …</span>
             <button class="copy-mini" id="mapReset" hidden>Ansicht zurücksetzen</button>
@@ -137,6 +149,7 @@
     document.getElementById('year').textContent = new Date().getFullYear();
     document.querySelectorAll('.reveal').forEach((n) => n.classList.add('is-visible'));
   </script>
+  <script src="/js/server-select.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/banner.js"></script>
   <script src="/js/visits.js"></script>

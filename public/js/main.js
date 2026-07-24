@@ -18,6 +18,7 @@
     players: document.querySelector('[data-stat="players"]'),
     maxPlayers: document.querySelector('[data-stat="maxPlayers"]'),
     version: document.querySelector('[data-stat="version"]'),
+    versionHint: document.querySelector('[data-stat="versionHint"]'),
     uptime: document.querySelector('[data-stat="uptime"]'),
     fps: document.querySelector('[data-stat="fps"]'),
     playerListWrap: document.getElementById('playerListWrap'),
@@ -35,11 +36,24 @@
     return `${m}min`;
   }
 
-  function renderOnline(data) {
-    el.statusDot.classList.add('is-online');
-    el.statusDot.classList.remove('is-offline');
-    el.statusText.textContent = `Server online · ${data.players.current}/${data.players.max} Spieler`;
+  // Lange Versionsnummern (v1.0.1.100619) sprengen die Kachel: Kurzversion
+  // groß anzeigen, Build-Nummer in die Unterzeile. Passt ein unbekanntes
+  // Format trotzdem nicht, wird die Schrift automatisch verkleinert.
+  function setVersion(raw) {
+    const v = raw || '–';
+    const m = /^(v?\d+\.\d+(?:\.\d+)?)\.(\d{4,})$/.exec(v);
+    el.version.classList.remove('stat-card__value--fit');
+    if (m) {
+      el.version.textContent = m[1];
+      if (el.versionHint) el.versionHint.textContent = `Build ${m[2]} · Dedicated Server`;
+      return;
+    }
+    el.version.textContent = v;
+    if (v.length > 9) el.version.classList.add('stat-card__value--fit');
+    if (el.versionHint) el.versionHint.textContent = 'Palworld Dedicated Server';
+  }
 
+  function renderOnline(data) {
     el.status.textContent = 'Online';
     el.status.classList.add('is-online');
     el.status.classList.remove('is-offline');
@@ -47,7 +61,7 @@
 
     el.players.textContent = data.players.current;
     el.maxPlayers.textContent = data.players.max || '–';
-    el.version.textContent = data.version || '–';
+    setVersion(data.version);
     el.uptime.textContent = formatUptime(data.uptimeSeconds);
     el.fps.textContent = data.serverFps != null ? Math.round(data.serverFps) : '–';
 
@@ -59,7 +73,8 @@
         const li = document.createElement('li');
         const nameLink = document.createElement('a');
         nameLink.className = 'player-list__link';
-        nameLink.href = `/spieler/${encodeURIComponent(p.name)}`;
+        nameLink.href = `/spieler/${encodeURIComponent(p.name)}` +
+          (window.PalServers ? window.PalServers.query() : '');
         nameLink.textContent = p.name;
         li.appendChild(nameLink);
         const details = [];
@@ -79,17 +94,13 @@
   }
 
   function renderOffline() {
-    el.statusDot.classList.add('is-offline');
-    el.statusDot.classList.remove('is-online');
-    el.statusText.textContent = 'Server offline';
-
     el.status.textContent = 'Offline';
     el.status.classList.add('is-offline');
     el.status.classList.remove('is-online');
     el.statusHint.textContent = 'Wartung oder Update – Infos im Discord';
 
     el.players.textContent = '–';
-    el.version.textContent = '–';
+    setVersion(null);
     el.uptime.textContent = '–';
     el.fps.textContent = '–';
     el.playerListWrap.hidden = true;
@@ -97,7 +108,8 @@
 
   async function refreshStatus() {
     try {
-      const res = await fetch('/api/status', { cache: 'no-store' });
+      const q = window.PalServers ? window.PalServers.query() : '';
+      const res = await fetch(`/api/status${q}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.online) {
@@ -116,8 +128,112 @@
     }
   }
 
-  refreshStatus();
-  setInterval(refreshStatus, REFRESH_INTERVAL);
+  // -------------------------------------------------------------
+  // Server-Karten (nur im Mehrserver-Betrieb sichtbar)
+  // -------------------------------------------------------------
+
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  // Kopf-Pille oben + (im Mehrserver-Betrieb) die Server-Karten – beide
+  // speisen sich aus /api/servers, also nur EIN Abruf.
+  async function refreshHeader() {
+    let servers = null;
+    try {
+      const res = await fetch('/api/servers', { cache: 'no-store' });
+      if (res.ok) servers = (await res.json()).servers || [];
+    } catch { /* Pille/Karten behalten letzten Stand */ }
+    if (!servers) return;
+
+    // Kopf-Pille: online, sobald mind. ein Server läuft; Zahl = Summe aller
+    // Online-Spieler über alle Server
+    const anyOnline = servers.some((s) => s.online);
+    let total = 0;
+    for (const s of servers) {
+      if (s.online && s.players && Number.isFinite(s.players.current)) {
+        total += s.players.current;
+      }
+    }
+    el.statusDot.classList.toggle('is-online', anyOnline);
+    el.statusDot.classList.toggle('is-offline', !anyOnline);
+    el.statusText.textContent = anyOnline
+      ? `Server online · ${total} Spieler`
+      : 'Server offline';
+
+    if (window.PalServers && window.PalServers.multi()) renderServerCards(servers);
+  }
+
+  function renderServerCards(servers) {
+    const section = document.getElementById('unsere-server');
+    const grid = document.getElementById('serverCards');
+    if (!section || !grid) return;
+    section.hidden = false;
+    grid.innerHTML = servers.map((s) => {
+        const cur = s.players ? s.players.current : null;
+        const max = s.players ? s.players.max : null;
+        const pct = cur != null && max ? Math.min(100, Math.round((cur / max) * 100)) : 0;
+        return `<article class="server-card reveal is-visible" style="--sc:${escHtml(s.color)};--sc-deep:${escHtml(s.colorDeep)}">
+          <div class="server-card__head">
+            <span class="server-card__name">${escHtml(s.name)}</span>
+            ${s.mode ? `<span class="server-card__badge">${escHtml(s.mode)}</span>` : ''}
+            <span class="server-card__live ${s.online ? 'is-on' : 'is-off'}">
+              <span class="server-card__dot"></span>${s.online ? 'Online' : 'Offline'}</span>
+          </div>
+          ${s.description ? `<p class="server-card__desc">${escHtml(s.description)}</p>` : ''}
+          ${Array.isArray(s.facts) && s.facts.length ? `<div class="server-card__facts">${
+            s.facts.map((f) => `<span class="server-card__fact">${escHtml(f)}</span>`).join('')
+          }</div>` : ''}
+          <div class="server-card__players">${s.online && cur != null
+            ? `<b>${cur} / ${max ?? '?'}</b><span>Spieler online</span>`
+            : '<span>Gerade nicht erreichbar</span>'}</div>
+          <div class="server-card__bar"><i style="width:${pct}%"></i></div>
+          <div class="server-card__join">
+            ${s.address ? `<button type="button" class="server-card__addr" data-copy="${escHtml(s.address)}"
+               title="Adresse kopieren">${escHtml(s.address)}</button>` : ''}
+            <button type="button" class="btn btn--small" data-select-server="${escHtml(s.id)}">Anzeigen ↓</button>
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  document.addEventListener('click', async (e) => {
+    const sel = e.target.closest('[data-select-server]');
+    if (sel && window.PalServers) {
+      window.PalServers.select(sel.dataset.selectServer);
+      const status = document.getElementById('status');
+      if (status) status.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    const addr = e.target.closest('.server-card__addr[data-copy]');
+    if (addr) {
+      try {
+        await navigator.clipboard.writeText(addr.dataset.copy);
+        flashCopied(addr, 'Kopiert ✓');
+      } catch { /* Clipboard nicht verfügbar */ }
+    }
+  });
+
+  // Start: erst die Server-Liste laden, dann Status anzeigen – so gilt die
+  // gemerkte/verlinkte Server-Auswahl schon beim allerersten Abruf.
+  // refreshHeader() versorgt die Kopf-Pille (Summe aller Server) und läuft in
+  // beiden Betriebsarten; refreshStatus() füllt die Status-Kachel des gewählten
+  // Servers.
+  const startStatus = () => {
+    refreshHeader();
+    refreshStatus();
+    setInterval(() => { refreshHeader(); refreshStatus(); }, REFRESH_INTERVAL);
+  };
+  if (window.PalServers) {
+    window.PalServers.ready.then(() => {
+      window.PalServers.onChange(() => refreshStatus());
+      startStatus();
+    });
+  } else {
+    startStatus();
+  }
 
   // -------------------------------------------------------------
   // Adresse kopieren

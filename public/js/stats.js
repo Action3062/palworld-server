@@ -133,7 +133,8 @@
       name.className = 'leaderboard__name';
       const nameLink = document.createElement('a');
       nameLink.className = 'leaderboard__link';
-      nameLink.href = `/spieler/${encodeURIComponent(p.name)}`;
+      nameLink.href = `/spieler/${encodeURIComponent(p.name)}` +
+        (window.PalServers ? window.PalServers.query() : '');
       nameLink.textContent = p.name; // textContent: Spielernamen sind Fremddaten
       name.appendChild(nameLink);
 
@@ -519,7 +520,8 @@
 
   async function refreshStats() {
     try {
-      const res = await fetch('/api/stats', { cache: 'no-store' });
+      const q = window.PalServers ? window.PalServers.query() : '';
+      const res = await fetch(`/api/stats${q}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.enabled) {
@@ -536,6 +538,15 @@
     }
   }
 
-  refreshStats();
-  setInterval(refreshStats, REFRESH_INTERVAL);
+  // Im Mehrserver-Betrieb erst die Server-Auswahl laden, dann Statistik holen
+  if (window.PalServers) {
+    window.PalServers.ready.then(() => {
+      window.PalServers.onChange(() => refreshStats());
+      refreshStats();
+      setInterval(refreshStats, REFRESH_INTERVAL);
+    });
+  } else {
+    refreshStats();
+    setInterval(refreshStats, REFRESH_INTERVAL);
+  }
 })();

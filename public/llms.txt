@@ -2,7 +2,7 @@
 
 > PalHeim (palheim.de) ist ein privater, kostenloser, deutschsprachiger
 > Palworld-Server: reines PvE/Koop (PvP aus), faire Raten, keine geplanten
-> Wipes, 32 Slots, 24/7 auf eigener Hardware bei Hetzner in Deutschland.
+> Wipes, 32 Slots, 24/7 auf eigenen Servern in Deutschland.
 > Server-Adresse zum Beitreten: **pve.palheim.de:8211**
 
 ## Schnellfakten
@@ -17,7 +17,7 @@
 - Slots: 32 Spieler
 - Wipes: keine regelmäßigen Wipes geplant
 - Backups: automatisch, mehrmals täglich; täglicher Neustart um 03:00 Uhr
-- Standort: Hetzner Cloud, Deutschland
+- Standort: Eigene Server, Deutschland
 - Kosten: keine – privater Community-Server
 
 ## Regeln (Kurzfassung)

@@ -241,7 +241,10 @@ def base_camps(world, guilds: dict) -> list:
     return bases
 
 
-def upload(url: str, secret: str, bases: list) -> None:
+def upload(url: str, secret: str, bases: list, server: str = "") -> None:
+    if server:
+        # Mehrserver-Betrieb der Webseite: Ziel-Server explizit angeben
+        url += ("&" if "?" in url else "?") + "server=" + server
     body = json.dumps({"bases": bases}).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -258,6 +261,7 @@ def main() -> None:
     parser.add_argument("--sav", required=True, help="Pfad/Glob zur Level.sav")
     parser.add_argument("--url", required=True, help="Upload-URL, z. B. http://10.88.0.1/api/map/bases")
     parser.add_argument("--secret", required=True, help="uploadSecret aus der config.json der Webseite")
+    parser.add_argument("--server", default="", help="Server-ID der Webseite bei Mehrserver-Betrieb (z. B. pve, pvp)")
     parser.add_argument("--dry-run", action="store_true", help="nur anzeigen, nichts hochladen")
     args = parser.parse_args()
 
@@ -271,7 +275,7 @@ def main() -> None:
     if args.dry_run:
         print("Dry-Run – kein Upload.")
         return
-    upload(args.url, args.secret, bases)
+    upload(args.url, args.secret, bases, args.server)
 
 
 if __name__ == "__main__":

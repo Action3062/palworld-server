@@ -32,6 +32,36 @@
 
   const alignMode = new URLSearchParams(location.search).has('align');
 
+  // Filter (Spieler/Basen/Namen ein- und ausblenden) – Auswahl bleibt im
+  // Browser gespeichert, weil 100+ Basen die Karte schnell unübersichtlich machen
+  const FILTER_KEY = 'palheim.map.filters';
+  const filters = { players: true, bases: true, labels: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTER_KEY) || '{}');
+    for (const k of Object.keys(filters)) {
+      if (typeof saved[k] === 'boolean') filters[k] = saved[k];
+    }
+  } catch { /* localStorage gesperrt o. Ä. – Standardwerte nutzen */ }
+
+  function bindFilter(id, key) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const apply = () => {
+      btn.classList.toggle('is-off', !filters[key]);
+      btn.setAttribute('aria-pressed', String(filters[key]));
+    };
+    apply();
+    btn.addEventListener('click', () => {
+      filters[key] = !filters[key];
+      try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch { /* egal */ }
+      apply();
+      render();
+    });
+  }
+  bindFilter('mapFilterPlayers', 'players');
+  bindFilter('mapFilterBases', 'bases');
+  bindFilter('mapFilterLabels', 'labels');
+
   let lastData = null;
   let mapImage = null;      // { url } – Kartenbild, sofern vorhanden
   let calibration = null;   // Welt-Koordinaten der Bildränder (aus config.json)
@@ -112,11 +142,17 @@
     if (!lastData) return;
     view.querySelectorAll('svg').forEach((n) => n.remove());
 
-    const players = lastData.players || [];
-    const bases = lastData.bases || [];
+    const players = filters.players ? (lastData.players || []) : [];
+    const bases = filters.bases ? (lastData.bases || []) : [];
     const points = [...players.map(toScreen), ...bases.map(toScreen)];
 
     if (points.length === 0 && !mapImage && !alignMode) {
+      const hiddenByFilter =
+        (!filters.players && (lastData.players || []).length > 0) ||
+        (!filters.bases && (lastData.bases || []).length > 0);
+      empty.textContent = hiddenByFilter
+        ? 'Alles ausgeblendet – über die Legende oben wieder einschalten.'
+        : 'Gerade nichts zu sehen – niemand online und noch keine Basendaten.';
       empty.hidden = false;
       return;
     }
@@ -188,11 +224,18 @@
       icon.setAttribute('d', 'M-7 1 L0 -6 L7 1 L7 7 L2 7 L2 3 L-2 3 L-2 7 L-7 7 Z');
       g.appendChild(icon);
 
-      const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('y', 19);
-      label.setAttribute('class', 'map-label');
-      label.textContent = b.guild;
-      g.appendChild(label);
+      if (filters.labels) {
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('y', 19);
+        label.setAttribute('class', 'map-label');
+        label.textContent = b.guild;
+        g.appendChild(label);
+      } else {
+        // ohne Beschriftung wenigstens per Tooltip erkennbar
+        const tip = document.createElementNS(SVG_NS, 'title');
+        tip.textContent = b.guild;
+        g.appendChild(tip);
+      }
 
       svg.appendChild(g);
     }
@@ -213,11 +256,18 @@
       dot.setAttribute('r', 5.5);
       g.appendChild(dot);
 
-      const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('y', -12);
-      label.setAttribute('class', 'map-label map-label--player');
-      label.textContent = p.level != null ? `${p.name} (${p.level})` : p.name;
-      g.appendChild(label);
+      const playerText = p.level != null ? `${p.name} (${p.level})` : p.name;
+      if (filters.labels) {
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('y', -12);
+        label.setAttribute('class', 'map-label map-label--player');
+        label.textContent = playerText;
+        g.appendChild(label);
+      } else {
+        const tip = document.createElementNS(SVG_NS, 'title');
+        tip.textContent = playerText;
+        g.appendChild(tip);
+      }
 
       svg.appendChild(g);
     }
@@ -383,7 +433,8 @@
 
   async function refresh() {
     try {
-      const res = await fetch('/api/map', { cache: 'no-store' });
+      const q = window.PalServers ? window.PalServers.query() : '';
+      const res = await fetch(`/api/map${q}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
@@ -425,6 +476,17 @@
     resizeTimer = setTimeout(render, 250);
   });
 
-  refresh();
-  setInterval(refresh, REFRESH_INTERVAL);
+  if (window.PalServers) {
+    window.PalServers.ready.then(() => {
+      window.PalServers.onChange(() => {
+        status.textContent = 'Server wird gewechselt …';
+        refresh();
+      });
+      refresh();
+      setInterval(refresh, REFRESH_INTERVAL);
+    });
+  } else {
+    refresh();
+    setInterval(refresh, REFRESH_INTERVAL);
+  }
 })();

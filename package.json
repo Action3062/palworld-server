@@ -1,7 +1,7 @@
 {
   "name": "palworld-server-website",
   "version": "1.0.0",
-  "description": "Webseite für einen Palworld Dedicated Server mit Live-Status (Hetzner Cloud)",
+  "description": "Webseite für einen Palworld Dedicated Server mit Live-Status",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

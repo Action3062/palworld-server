@@ -19,12 +19,17 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // Konfiguration laden
 // ---------------------------------------------------------------------------
 
 const DEFAULTS = {
+  // Mehrserver-Betrieb: Liste der Spielserver. Leer = genau ein Server aus
+  // den klassischen Feldern unten (palworldApiUrl, statsFile, map.*).
+  // Beispiel für zwei Server siehe README, Abschnitt „Zweiter Server".
+  servers: [],
   // Port, auf dem DIESE Webseite läuft (nginx leitet 80/443 hierher weiter)
   port: 3000,
   host: '127.0.0.1',
@@ -50,10 +55,19 @@ const DEFAULTS = {
     // Optik: "info" (blau), "event" (grün), "warn" (orange/rot)
     level: 'info'
   },
-  // Broadcast von der Website (schickt eine In-Game-Ansage über die REST-API)
+  // Admin-Funktionen der Website
   admin: {
-    // Langes Zufalls-Token; leer = Broadcast-Seite deaktiviert
-    broadcastSecret: ''
+    // Langes Zufalls-Token; leer = Broadcast-Seite (/broadcast) deaktiviert
+    broadcastSecret: '',
+    // Passwort des HAUPTADMINS für die Admin-Seite (/admin); leer = Seite
+    // deaktiviert. Nicht das Palworld-AdminPassword wiederverwenden!
+    password: '',
+    // Anzeigename des Hauptadmins (erscheint im Aktions-Protokoll)
+    name: 'Hauptadmin',
+    // Unter-Admins: eigener Name + eigenes Passwort pro Person, z. B.
+    //   "users": { "Lisa": "langes-passwort", "Tom": "anderes-passwort" }
+    // Unter-Admins dürfen alles außer den Server neu starten.
+    users: {}
   },
   // Besucher-Zähler (Seitenaufrufe + eindeutige Besucher; ohne IP/Cookies)
   visitorCounter: true,
@@ -113,7 +127,7 @@ const DEFAULTS = {
       mode: 'announce',
       rcon: { host: '127.0.0.1', port: 25575, password: '' },
       commands: [],
-      announce: '{name} hat fuer den Server gevotet - danke!'
+      announce: '{name} hat für den Server gevotet – danke!'
     },
     // Belohnung nur, wenn der Spieler gerade online ist
     requireOnline: true,
@@ -136,12 +150,53 @@ function deepMerge(base, override) {
   return out;
 }
 
+// Liest eine Textdatei als UTF-8. Wurde sie versehentlich als Windows-1252/
+// Latin-1 gespeichert (typisch für manche Windows-Editoren), enthält der
+// UTF-8-Decode Ersatzzeichen (U+FFFD) – dann werden die Rohbytes stattdessen
+// als Windows-1252 dekodiert, sodass Umlaute (ä ö ü ß, auch – „ " €) korrekt
+// ankommen. Eine UTF-8-BOM am Dateianfang wird entfernt (sonst scheitert
+// JSON.parse daran).
+function readTextSmart(file) {
+  const buf = fs.readFileSync(file);
+  // UTF-16 (Windows-Notepad speichert als „Unicode" = UTF-16 LE mit BOM)
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+    return { text: buf.subarray(2).toString('utf16le'), encoding: 'utf-16le' };
+  }
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    return { text: new TextDecoder('utf-16be').decode(buf.subarray(2)), encoding: 'utf-16be' };
+  }
+  // UTF-8-BOM entfernen (sonst scheitert JSON.parse daran)
+  const body = (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF)
+    ? buf.subarray(3)
+    : buf;
+  const utf8 = body.toString('utf8');
+  // Gültiges UTF-8 lässt sich verlustfrei zurück-kodieren. Diese Prüfung ist
+  // sicherer als „enthält Ersatzzeichen?": Eine sonst gültige UTF-8-Datei, die
+  // ein echtes U+FFFD-Zeichen enthält (z. B. weil kaputter Text von der Seite
+  // zurückkopiert wurde), bliebe sonst fälschlich Windows-1252 und ALLE Umlaute
+  // würden zerstört.
+  if (Buffer.compare(Buffer.from(utf8, 'utf8'), body) === 0) {
+    return { text: utf8, encoding: 'utf8' };
+  }
+  try {
+    return { text: new TextDecoder('windows-1252').decode(body), encoding: 'windows-1252' };
+  } catch {
+    return { text: body.toString('latin1'), encoding: 'latin1' };
+  }
+}
+
 function loadConfig() {
   const cfg = { ...DEFAULTS };
   const file = path.join(__dirname, 'config.json');
   if (fs.existsSync(file)) {
     try {
-      const loaded = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const { text, encoding } = readTextSmart(file);
+      if (encoding !== 'utf8') {
+        console.warn(`[config] Achtung: config.json ist als ${encoding} gespeichert, ` +
+          'nicht als UTF-8. Umlaute wurden automatisch umgewandelt – bitte die ' +
+          'Datei bei Gelegenheit als UTF-8 speichern.');
+      }
+      const loaded = JSON.parse(text);
       Object.assign(cfg, loaded);
       cfg.votes = deepMerge(DEFAULTS.votes, loaded.votes);
       cfg.achievements = deepMerge(DEFAULTS.achievements, loaded.achievements);
@@ -169,17 +224,102 @@ function loadConfig() {
 const config = loadConfig();
 
 // ---------------------------------------------------------------------------
-// Palworld REST-API abfragen (mit Cache)
+// Server-Kontexte (Mehrserver-Betrieb)
+// ---------------------------------------------------------------------------
+// Ohne "servers"-Liste in der config.json läuft alles wie bisher mit genau
+// einem Server aus den klassischen Feldern (palworldApiUrl, statsFile,
+// map.*). Mit Liste bekommt jeder Server eigenen API-Zugang, eigene
+// Statistik-/Basen-Dateien und eine eigene Farbe für die Webseite. Der erste
+// Eintrag ist der Standard-Server und erbt fehlende Werte aus den
+// klassischen Feldern – bestehende Daten-Dateien bleiben so erhalten.
+
+const SERVER_FALLBACK_COLORS = [
+  { color: '#2f9de4', colorDeep: '#176ba6' },   // Blau (PvE-Klassiker)
+  { color: '#d64545', colorDeep: '#9c2f2f' },   // Glutrot (z. B. PvP)
+  { color: '#2e7d35', colorDeep: '#1d5423' },   // Grün
+  { color: '#8a63d2', colorDeep: '#5f3fa3' }    // Violett
+];
+
+function buildServers() {
+  const raw = Array.isArray(config.servers) && config.servers.length > 0
+    ? config.servers
+    : [{}];   // Legacy-Modus: genau ein Server aus den klassischen Feldern
+  return raw.map((s, i) => {
+    const id = String(s.id || (i === 0 ? 'pve' : `server${i + 1}`)).slice(0, 24);
+    const fallback = SERVER_FALLBACK_COLORS[i % SERVER_FALLBACK_COLORS.length];
+    return {
+      id,
+      name: s.name || 'PalHeim',
+      shortName: s.shortName || (i === 0 ? 'PvE' : id.toUpperCase()),
+      mode: s.mode || (i === 0 ? 'PvE · Koop' : ''),
+      description: s.description || '',
+      // Kurze Fakten-Chips für die Server-Karte, z. B. ["3× EP", "2× Fangrate"]
+      facts: Array.isArray(s.facts) ? s.facts.slice(0, 8).map((f) => String(f).slice(0, 24)) : [],
+      address: s.address || '',
+      color: s.color || fallback.color,
+      colorDeep: s.colorDeep || fallback.colorDeep,
+      apiUrl: s.palworldApiUrl || (i === 0 ? config.palworldApiUrl : ''),
+      adminPassword: s.palworldAdminPassword ??
+        (i === 0 ? config.palworldAdminPassword : ''),
+      statsFile: path.join(__dirname,
+        s.statsFile || (i === 0 ? config.statsFile : `data/stats-${id}.json`)),
+      basesFile: path.join(__dirname,
+        s.basesFile || (i === 0
+          ? ((config.map && config.map.basesFile) || 'data/bases.json')
+          : `data/bases-${id}.json`)),
+      uploadSecret: s.uploadSecret ??
+        (i === 0 ? ((config.map && config.map.uploadSecret) || '') : ''),
+      // Laufzeit-Zustand (pro Server)
+      statusCache: { data: null, fetchedAt: 0 },
+      stats: { samples: [], peak: null, players: {}, inGameDays: null },
+      statsDirty: false,
+      lastStatsSave: 0,
+      prevOnline: new Set(),
+      prevPos: new Map(),
+      basesData: { bases: [], updatedAt: null },
+      mapPlayersCache: { players: null, at: 0 }
+    };
+  });
+}
+
+const SERVERS = buildServers();
+const DEFAULT_SERVER = SERVERS[0];
+
+function serverFromParams(searchParams) {
+  const id = (searchParams.get('server') || '').trim();
+  return SERVERS.find((s) => s.id === id) || DEFAULT_SERVER;
+}
+
+function serverFromId(id) {
+  return SERVERS.find((s) => s.id === String(id || '').trim()) || DEFAULT_SERVER;
+}
+
+// Öffentliche Server-Metadaten (ohne API-URLs/Passwörter/Secrets!)
+function publicServerInfo(srv) {
+  return {
+    id: srv.id,
+    name: srv.name,
+    shortName: srv.shortName,
+    mode: srv.mode,
+    description: srv.description,
+    facts: srv.facts,
+    address: srv.address,
+    color: srv.color,
+    colorDeep: srv.colorDeep
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Palworld REST-API abfragen (mit Cache, pro Server)
 // ---------------------------------------------------------------------------
 
-let statusCache = { data: null, fetchedAt: 0 };
-
-async function palworldGet(endpoint) {
+async function palworldGet(srv, endpoint) {
+  if (!srv.apiUrl) throw new Error('Keine API-URL konfiguriert');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const auth = Buffer.from(`admin:${config.palworldAdminPassword}`).toString('base64');
-    const res = await fetch(`${config.palworldApiUrl}${endpoint}`, {
+    const auth = Buffer.from(`admin:${srv.adminPassword}`).toString('base64');
+    const res = await fetch(`${srv.apiUrl}${endpoint}`, {
       headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
       signal: controller.signal
     });
@@ -190,12 +330,13 @@ async function palworldGet(endpoint) {
   }
 }
 
-async function palworldPost(endpoint, body) {
+async function palworldPost(srv, endpoint, body) {
+  if (!srv.apiUrl) throw new Error('Keine API-URL konfiguriert');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const auth = Buffer.from(`admin:${config.palworldAdminPassword}`).toString('base64');
-    const res = await fetch(`${config.palworldApiUrl}${endpoint}`, {
+    const auth = Buffer.from(`admin:${srv.adminPassword}`).toString('base64');
+    const res = await fetch(`${srv.apiUrl}${endpoint}`, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -211,17 +352,17 @@ async function palworldPost(endpoint, body) {
   }
 }
 
-async function fetchServerStatus() {
+async function fetchServerStatus(srv) {
   try {
     const [info, metrics] = await Promise.all([
-      palworldGet('/v1/api/info'),
-      palworldGet('/v1/api/metrics')
+      palworldGet(srv, '/v1/api/info'),
+      palworldGet(srv, '/v1/api/metrics')
     ]);
 
     let players = [];
     if (config.showPlayerList) {
       try {
-        const data = await palworldGet('/v1/api/players');
+        const data = await palworldGet(srv, '/v1/api/players');
         // Nur unbedenkliche Felder veröffentlichen (keine IPs, keine IDs!)
         players = (data.players || []).map((p) => ({
           name: p.name,
@@ -257,13 +398,13 @@ async function fetchServerStatus() {
   }
 }
 
-async function getStatus() {
+async function getStatus(srv) {
   const now = Date.now();
-  if (statusCache.data && now - statusCache.fetchedAt < config.cacheSeconds * 1000) {
-    return statusCache.data;
+  if (srv.statusCache.data && now - srv.statusCache.fetchedAt < config.cacheSeconds * 1000) {
+    return srv.statusCache.data;
   }
-  const data = await fetchServerStatus();
-  statusCache = { data, fetchedAt: now };
+  const data = await fetchServerStatus(srv);
+  srv.statusCache = { data, fetchedAt: now };
   return data;
 }
 
@@ -280,79 +421,70 @@ async function getStatus() {
 const STATS_BUCKET_SECONDS = 300;
 const STATS_RETENTION_BUCKETS = (7 * 24 * 3600) / STATS_BUCKET_SECONDS;
 
-const statsFile = path.join(__dirname, config.statsFile);
-
-let stats = { samples: [], peak: null, players: {}, inGameDays: null };
-let statsDirty = false;
-let lastStatsSave = 0;
-
-function loadStats() {
+function loadStats(srv) {
   try {
-    const raw = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
-    if (Array.isArray(raw.samples)) stats.samples = raw.samples;
-    if (raw.peak && typeof raw.peak.count === 'number') stats.peak = raw.peak;
-    if (raw.players && typeof raw.players === 'object') stats.players = raw.players;
-    if (typeof raw.inGameDays === 'number') stats.inGameDays = raw.inGameDays;
-    console.log(`[stats] ${stats.samples.length} Messpunkte, ${Object.keys(stats.players).length} Spieler geladen`);
+    const raw = JSON.parse(fs.readFileSync(srv.statsFile, 'utf8'));
+    if (Array.isArray(raw.samples)) srv.stats.samples = raw.samples;
+    if (raw.peak && typeof raw.peak.count === 'number') srv.stats.peak = raw.peak;
+    if (raw.players && typeof raw.players === 'object') srv.stats.players = raw.players;
+    if (typeof raw.inGameDays === 'number') srv.stats.inGameDays = raw.inGameDays;
+    console.log(`[stats:${srv.id}] ${srv.stats.samples.length} Messpunkte, ` +
+      `${Object.keys(srv.stats.players).length} Spieler geladen`);
   } catch {
     // Noch keine Statistik-Datei vorhanden – wird beim ersten Poll angelegt
   }
 }
 
-function saveStats(force = false) {
-  if (!statsDirty) return;
+function saveStats(srv, force = false) {
+  if (!srv.statsDirty) return;
   const now = Date.now();
-  if (!force && now - lastStatsSave < 60_000) return; // höchstens 1×/Minute schreiben
+  if (!force && now - srv.lastStatsSave < 60_000) return; // höchstens 1×/Minute schreiben
   try {
-    fs.mkdirSync(path.dirname(statsFile), { recursive: true });
-    const tmp = `${statsFile}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(stats));
-    fs.renameSync(tmp, statsFile); // atomar ersetzen
-    statsDirty = false;
-    lastStatsSave = now;
+    fs.mkdirSync(path.dirname(srv.statsFile), { recursive: true });
+    const tmp = `${srv.statsFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(srv.stats));
+    fs.renameSync(tmp, srv.statsFile); // atomar ersetzen
+    srv.statsDirty = false;
+    srv.lastStatsSave = now;
   } catch (err) {
-    console.error(`[stats] Speichern fehlgeschlagen: ${err.message}`);
+    console.error(`[stats:${srv.id}] Speichern fehlgeschlagen: ${err.message}`);
   }
 }
 
 // count = null bedeutet: Server war nicht erreichbar (Lücke im Chart)
 // Ein Messpunkt ist [t, Spielerzahl, Server-FPS]; ältere Punkte ohne FPS
 // (nur [t, count]) bleiben kompatibel – FPS ist dann undefined/null.
-function recordSample(count, fps = null) {
+function recordSample(srv, count, fps = null) {
   const t = Math.floor(Date.now() / 1000 / STATS_BUCKET_SECONDS) * STATS_BUCKET_SECONDS;
   const fpsVal = fps != null ? Math.round(fps) : null;
-  const last = stats.samples[stats.samples.length - 1];
+  const last = srv.stats.samples[srv.stats.samples.length - 1];
   if (last && last[0] === t) {
     if (count != null) last[1] = Math.max(last[1] ?? 0, count);
     if (fpsVal != null) last[2] = fpsVal; // jüngster FPS-Wert im Bucket
   } else {
-    stats.samples.push([t, count, fpsVal]);
-    if (stats.samples.length > STATS_RETENTION_BUCKETS) {
-      stats.samples.splice(0, stats.samples.length - STATS_RETENTION_BUCKETS);
+    srv.stats.samples.push([t, count, fpsVal]);
+    if (srv.stats.samples.length > STATS_RETENTION_BUCKETS) {
+      srv.stats.samples.splice(0, srv.stats.samples.length - STATS_RETENTION_BUCKETS);
     }
   }
 }
-
-// Wer war beim letzten Poll online? (für Session-Zählung)
-let prevOnline = new Set();
-// Letzte bekannte Position pro Spieler (für Distanz-Tracking)
-let prevPos = new Map();
 
 function localDayKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-async function pollStats() {
+async function pollStats(srv) {
   let count = null;
   let fps = null;
+  const stats = srv.stats;
   try {
-    const metrics = await palworldGet('/v1/api/metrics');
+    const metrics = await palworldGet(srv, '/v1/api/metrics');
     count = metrics.currentplayernum ?? 0;
     fps = typeof metrics.serverfps === 'number' ? metrics.serverfps : null;
     if (typeof metrics.days === 'number') stats.inGameDays = metrics.days;
 
     if (count > 0) {
-      const data = await palworldGet('/v1/api/players');
+      const data = await palworldGet(srv, '/v1/api/players');
       const now = new Date().toISOString();
       const hour = new Date().getHours();
       const today = localDayKey();
@@ -382,7 +514,7 @@ async function pollStats() {
         rec.minutes += minutes;
 
         // Zusatzdaten für Erfolge
-        if (!prevOnline.has(p.name)) rec.sessions = (rec.sessions || 0) + 1;
+        if (!srv.prevOnline.has(p.name)) rec.sessions = (rec.sessions || 0) + 1;
         if (rec.lastDay !== today) {
           rec.daysCount = (rec.daysCount || 0) + 1;
           rec.lastDay = today;
@@ -393,31 +525,31 @@ async function pollStats() {
         // Bewegung: Distanz + besuchte Gebiete aus den Positionsdaten
         const pos = trackMovement(
           rec,
-          prevPos.get(p.name) || null,
+          srv.prevPos.get(p.name) || null,
           Number(p.location_x),
           Number(p.location_y)
         );
-        if (pos) prevPos.set(p.name, pos);
+        if (pos) srv.prevPos.set(p.name, pos);
 
-        checkAchievements(p.name, rec);
+        checkAchievements(srv, p.name, rec);
       }
-      prevOnline = nowOnline;
+      srv.prevOnline = nowOnline;
       // Positionen von Spielern vergessen, die offline gingen
       // (verhindert Riesen-Deltas beim nächsten Login)
-      for (const name of prevPos.keys()) {
-        if (!nowOnline.has(name)) prevPos.delete(name);
+      for (const name of srv.prevPos.keys()) {
+        if (!nowOnline.has(name)) srv.prevPos.delete(name);
       }
     } else {
-      prevOnline = new Set();
-      prevPos = new Map();
+      srv.prevOnline = new Set();
+      srv.prevPos = new Map();
     }
   } catch {
     count = null;
     fps = null;
   }
-  recordSample(count, fps);
-  statsDirty = true;
-  saveStats();
+  recordSample(srv, count, fps);
+  srv.statsDirty = true;
+  saveStats(srv);
 }
 
 // ---------------------------------------------------------------------------
@@ -426,37 +558,39 @@ async function pollStats() {
 
 const { evaluate: evaluateAchievements, trackMovement } = require('./lib/achievements');
 
-function achievementContext(name) {
+function achievementContext(srv, name) {
   return {
     // voteSystem wird weiter unten initialisiert; alle Aufrufe hier passieren
-    // erst nach dem vollständigen Laden des Moduls (async/Intervall)
+    // erst nach dem vollständigen Laden des Moduls (async/Intervall).
+    // Votes zählen community-weit (eine Serverliste), daher serverunabhängig.
     voteCount: voteSystem ? voteSystem.getVoteCount(name) : 0,
-    firstSampleT: stats.samples.length > 0 ? stats.samples[0][0] : null,
-    peakPlayers: (stats.peak && stats.peak.players) || []
+    firstSampleT: srv.stats.samples.length > 0 ? srv.stats.samples[0][0] : null,
+    peakPlayers: (srv.stats.peak && srv.stats.peak.players) || []
   };
 }
 
 /** Prüft auf neu freigeschaltete Erfolge und kündigt sie im Spiel an. */
-function checkAchievements(name, rec) {
+function checkAchievements(srv, name, rec) {
   if (!config.achievements.enabled) return;
-  const results = evaluateAchievements(name, rec, achievementContext(name));
+  const results = evaluateAchievements(name, rec, achievementContext(srv, name));
   const known = new Set(rec.ach || []);
   const fresh = results.filter((a) => a.unlocked && !known.has(a.id));
   if (fresh.length === 0) return;
 
   rec.ach = [...known, ...fresh.map((a) => a.id)];
-  statsDirty = true;
+  srv.statsDirty = true;
 
   if (config.achievements.announceUnlocks) {
     for (const a of fresh) {
-      palworldPost('/v1/api/announce', {
+      palworldPost(srv, '/v1/api/announce', {
         message: `[Erfolg] ${name} hat "${a.name}" freigeschaltet! (${a.desc})`
       }).catch(() => { /* Ansage ist nice-to-have */ });
     }
   }
 }
 
-function buildStatsResponse() {
+function buildStatsResponse(srv) {
+  const stats = srv.stats;
   const nowSec = Math.floor(Date.now() / 1000);
   const weekAgo = nowSec - 7 * 24 * 3600;
   const samples = stats.samples.filter(([t]) => t >= weekAgo);
@@ -531,14 +665,21 @@ function buildStatsResponse() {
     topPlayers,
     availability: { day: availability(daySamples), week: availability(samples) },
     outages: outageList,
-    online
+    online,
+    server: publicServerInfo(srv)
   };
 }
 
 if (config.statsEnabled) {
-  loadStats();
-  pollStats();
-  setInterval(pollStats, config.statsPollSeconds * 1000);
+  SERVERS.forEach((srv, i) => {
+    if (!srv.apiUrl) return;   // Server ohne API-URL: nur Platzhalter, kein Poll
+    loadStats(srv);
+    // Polls leicht versetzen, damit nicht alle Server gleichzeitig abgefragt werden
+    setTimeout(() => {
+      pollStats(srv);
+      setInterval(() => pollStats(srv), config.statsPollSeconds * 1000);
+    }, i * 3000);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -549,10 +690,12 @@ const { VoteSystem } = require('./lib/votes');
 
 let voteSystem = null;
 if (config.votes && config.votes.enabled) {
+  // Votes laufen über den Standard-Server (eine Serverlisten-Seite, eine
+  // Belohnung) – die Helfer werden daher fest an ihn gebunden.
   voteSystem = new VoteSystem(config.votes, {
     dataFile: path.join(__dirname, config.votes.votesFile || 'data/votes.json'),
-    palworldGet,
-    palworldPost
+    palworldGet: (endpoint) => palworldGet(DEFAULT_SERVER, endpoint),
+    palworldPost: (endpoint, body) => palworldPost(DEFAULT_SERVER, endpoint, body)
   });
   console.log('[votes] Vote-Belohnungssystem aktiv');
 }
@@ -564,35 +707,33 @@ if (config.votes && config.votes.enabled) {
 // nur in der Level.sav – tools/upload-bases.py auf dem Palworld-Server
 // lädt sie regelmäßig hierher hoch (POST /api/map/bases).
 
-const basesFile = path.join(__dirname, (config.map && config.map.basesFile) || 'data/bases.json');
-let basesData = { bases: [], updatedAt: null };
-try {
-  const raw = JSON.parse(fs.readFileSync(basesFile, 'utf8'));
-  if (Array.isArray(raw.bases)) basesData = raw;
-} catch { /* noch keine Basendaten */ }
-
-function saveBases() {
+for (const srv of SERVERS) {
   try {
-    fs.mkdirSync(path.dirname(basesFile), { recursive: true });
-    const tmp = `${basesFile}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(basesData));
-    fs.renameSync(tmp, basesFile);
+    const raw = JSON.parse(fs.readFileSync(srv.basesFile, 'utf8'));
+    if (Array.isArray(raw.bases)) srv.basesData = raw;
+  } catch { /* noch keine Basendaten für diesen Server */ }
+}
+
+function saveBases(srv) {
+  try {
+    fs.mkdirSync(path.dirname(srv.basesFile), { recursive: true });
+    const tmp = `${srv.basesFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(srv.basesData));
+    fs.renameSync(tmp, srv.basesFile);
   } catch (err) {
-    console.error(`[map] Basen speichern fehlgeschlagen: ${err.message}`);
+    console.error(`[map:${srv.id}] Basen speichern fehlgeschlagen: ${err.message}`);
   }
 }
 
 // Positions-Cache (eigener Abruf, /api/status enthält keine Koordinaten)
-let mapPlayersCache = { players: null, at: 0 };
-
-async function getMapPlayers() {
+async function getMapPlayers(srv) {
   const now = Date.now();
-  if (now - mapPlayersCache.at < config.cacheSeconds * 1000) {
-    return mapPlayersCache.players;
+  if (now - srv.mapPlayersCache.at < config.cacheSeconds * 1000) {
+    return srv.mapPlayersCache.players;
   }
   let players = null;
   try {
-    const data = await palworldGet('/v1/api/players');
+    const data = await palworldGet(srv, '/v1/api/players');
     players = (data.players || [])
       .filter((p) => p.name && Number.isFinite(Number(p.location_x)) && Number.isFinite(Number(p.location_y)))
       .map((p) => ({
@@ -604,7 +745,7 @@ async function getMapPlayers() {
   } catch {
     players = null; // Server offline
   }
-  mapPlayersCache = { players, at: now };
+  srv.mapPlayersCache = { players, at: now };
   return players;
 }
 
@@ -654,6 +795,175 @@ function sendJson(res, status, obj) {
     'Cache-Control': 'no-store'
   });
   res.end(JSON.stringify(obj));
+}
+
+// ---------------------------------------------------------------------------
+// Admin-Seite (/admin)
+// ---------------------------------------------------------------------------
+// Login mit Passwort aus config.json (admin.password); solange es leer ist,
+// ist die Seite komplett deaktiviert. Sessions leben nur im Speicher – ein
+// Neustart des Servers meldet alle Admins ab (bewusst einfach gehalten).
+
+const ADMIN_SESSION_HOURS = 12;
+const adminSessions = new Map(); // Token → { expires, user, role }
+
+function adminEnabled() {
+  if (!config.admin) return false;
+  const hasUsers = config.admin.users &&
+    Object.values(config.admin.users).some((p) => typeof p === 'string' && p);
+  return Boolean(config.admin.password || hasUsers);
+}
+
+// Konstantzeit-Vergleich (über Hashes, damit die Längen immer gleich sind)
+function passwordMatches(given, expected) {
+  const ha = crypto.createHash('sha256').update(String(given)).digest();
+  const hb = crypto.createHash('sha256').update(String(expected)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+// Wer meldet sich an? Leerer Name (oder der konfigurierte Hauptadmin-Name)
+// → Hauptadmin-Passwort; sonst Unter-Admin aus admin.users (Name egal ob
+// groß/klein geschrieben). Rolle: 'haupt' darf alles, 'admin' alles außer
+// Server-Neustart.
+function resolveLogin(username, password) {
+  const uname = String(username || '').trim().slice(0, 32);
+  const mainName = String((config.admin && config.admin.name) || 'Hauptadmin').slice(0, 32);
+  if (config.admin.password &&
+      (!uname || uname.toLowerCase() === mainName.toLowerCase())) {
+    return passwordMatches(password, config.admin.password)
+      ? { user: mainName, role: 'haupt' }
+      : null;
+  }
+  const users = (config.admin && config.admin.users) || {};
+  const key = Object.keys(users).find(
+    (k) => k.toLowerCase() === uname.toLowerCase()
+  );
+  if (key && typeof users[key] === 'string' && users[key] &&
+      passwordMatches(password, users[key])) {
+    return { user: key, role: 'admin' };
+  }
+  return null;
+}
+
+function adminSessionFromReq(req) {
+  const m = (req.headers.cookie || '').match(/(?:^|;\s*)padm=([a-f0-9]{48})/);
+  if (!m) return null;
+  const session = adminSessions.get(m[1]);
+  if (!session || session.expires < Date.now()) {
+    adminSessions.delete(m[1]);
+    return null;
+  }
+  session.token = m[1];
+  return session;
+}
+
+function newAdminSession(user, role) {
+  for (const [token, session] of adminSessions) {
+    if (session.expires < Date.now()) adminSessions.delete(token);
+  }
+  const token = crypto.randomBytes(24).toString('hex');
+  adminSessions.set(token, {
+    expires: Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000,
+    user,
+    role
+  });
+  return token;
+}
+
+function adminCookie(req, token, maxAgeSeconds) {
+  // hinter nginx/HTTPS das Secure-Flag setzen
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  return `padm=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure}`;
+}
+
+// Kick/Bann brauchen die User-ID – die liefert die REST-API nur für Spieler,
+// die GERADE online sind (die Website-Statistik speichert bewusst keine IDs).
+// Deshalb hier immer frisch abfragen, ohne Cache.
+async function findOnlinePlayer(srv, name) {
+  const data = await palworldGet(srv, '/v1/api/players');
+  const wanted = String(name || '').trim().toLowerCase();
+  if (!wanted) return null;
+  return (data.players || []).find(
+    (p) => String(p.name || '').toLowerCase() === wanted
+  ) || null;
+}
+
+// Lokale Bann-Liste: Palworld bietet keine "Banns auflisten"-API. Damit man
+// Banns später von der Website aus zurücknehmen kann, merken wir uns hier,
+// wen wir gebannt haben (Name, User-ID, Grund, Zeitpunkt).
+const bansFile = path.join(__dirname, 'data/bans.json');
+let bansData = { bans: [] };
+try {
+  const raw = JSON.parse(fs.readFileSync(bansFile, 'utf8'));
+  if (Array.isArray(raw.bans)) bansData = raw;
+} catch { /* noch keine Bann-Liste */ }
+
+function saveBans() {
+  try {
+    fs.mkdirSync(path.dirname(bansFile), { recursive: true });
+    const tmp = `${bansFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(bansData));
+    fs.renameSync(tmp, bansFile);
+  } catch (err) {
+    console.error(`[admin] Bann-Liste speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
+// Seiten-Banner, von der Admin-Seite gepflegt. Liegt in data/banner.json und
+// gewinnt gegenüber dem banner-Block der config.json (die nur beim Start
+// gelesen wird) – so wirken Änderungen sofort, ohne Neustart.
+const bannerFile = path.join(__dirname, 'data/banner.json');
+let bannerOverride = null; // null = kein Override, config.json gilt
+try {
+  // readTextSmart, falls die Datei von Hand (evtl. Windows-1252) editiert wurde
+  const raw = JSON.parse(readTextSmart(bannerFile).text);
+  if (raw && typeof raw === 'object' && 'enabled' in raw) bannerOverride = raw;
+} catch { /* kein Override gesetzt */ }
+
+function saveBannerOverride() {
+  try {
+    fs.mkdirSync(path.dirname(bannerFile), { recursive: true });
+    const tmp = `${bannerFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(bannerOverride));
+    fs.renameSync(tmp, bannerFile);
+  } catch (err) {
+    console.error(`[admin] Banner speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
+function effectiveBanner() {
+  return bannerOverride || config.banner || {};
+}
+
+// Aktions-Protokoll: was wurde über die Website ausgeführt (Kick, Bann,
+// Neustart, Ansagen, Banner …). Bewusst ohne IP-Adressen – nur Zeitpunkt,
+// Aktion und Details. Maximal 200 Einträge, die ältesten fallen raus.
+const ADMIN_LOG_MAX = 200;
+const adminLogFile = path.join(__dirname, 'data/admin-log.json');
+let adminLogData = [];
+try {
+  const raw = JSON.parse(fs.readFileSync(adminLogFile, 'utf8'));
+  if (Array.isArray(raw)) adminLogData = raw.slice(-ADMIN_LOG_MAX);
+} catch { /* noch kein Protokoll */ }
+
+function adminLog(action, detail, user) {
+  adminLogData.push({
+    at: new Date().toISOString(),
+    user: String(user || '–').slice(0, 32),
+    action,
+    detail: String(detail || '')
+  });
+  if (adminLogData.length > ADMIN_LOG_MAX) {
+    adminLogData = adminLogData.slice(-ADMIN_LOG_MAX);
+  }
+  try {
+    fs.mkdirSync(path.dirname(adminLogFile), { recursive: true });
+    const tmp = `${adminLogFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(adminLogData));
+    fs.renameSync(tmp, adminLogFile);
+  } catch (err) {
+    console.error(`[admin] Protokoll speichern fehlgeschlagen: ${err.message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -777,12 +1087,22 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Basen-Upload für die Live-Karte (POST) ----
   if (req.method === 'POST' && pathname === '/api/map/bases') {
-    if (!config.map.enabled || !config.map.uploadSecret) {
+    if (!config.map.enabled) {
       res.writeHead(404).end();
       return;
     }
     const secret = searchParams.get('secret') || req.headers['x-upload-secret'] || '';
-    if (secret !== config.map.uploadSecret) {
+    // Ziel-Server: explizit per ?server=… – oder eindeutig über das Secret
+    // (jeder Server hat sein eigenes uploadSecret)
+    const requested = (searchParams.get('server') || '').trim();
+    const srv = requested
+      ? SERVERS.find((s) => s.id === requested)
+      : SERVERS.find((s) => s.uploadSecret && s.uploadSecret === secret);
+    if (!srv || !srv.uploadSecret) {
+      res.writeHead(404).end();
+      return;
+    }
+    if (secret !== srv.uploadSecret) {
       res.writeHead(403).end();
       return;
     }
@@ -796,9 +1116,9 @@ const server = http.createServer(async (req, res) => {
           x: Math.round(Number(b.x)),
           y: Math.round(Number(b.y))
         }));
-      basesData = { bases, updatedAt: new Date().toISOString() };
-      saveBases();
-      sendJson(res, 200, { ok: true, count: bases.length });
+      srv.basesData = { bases, updatedAt: new Date().toISOString() };
+      saveBases(srv);
+      sendJson(res, 200, { ok: true, count: bases.length, server: srv.id });
     } catch {
       sendJson(res, 400, { ok: false });
     }
@@ -877,10 +1197,257 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { ok: false, message: 'Die Nachricht ist leer.' });
         return;
       }
-      await palworldPost('/v1/api/announce', { message });
+      await palworldPost(serverFromId(body.server), '/v1/api/announce', { message });
       sendJson(res, 200, { ok: true, message: 'Ansage im Spiel gesendet.' });
     } catch {
       sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Ansage nicht gesendet.' });
+    }
+    return;
+  }
+
+  // ---- Admin-Login (POST) ----
+  if (req.method === 'POST' && pathname === '/api/admin/login') {
+    if (!adminEnabled()) {
+      sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
+      return;
+    }
+    const ip = req.socket.remoteAddress || 'unknown';
+    // strenges Limit gegen Passwort-Raten: 5 Versuche pro 10 Minuten
+    if (rateLimited('admin:' + ip, 5, 10 * 60_000)) {
+      sendJson(res, 429, { ok: false, message: 'Zu viele Versuche – bitte 10 Minuten warten.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const login = resolveLogin(body.username, body.password || '');
+      if (!login) {
+        const tried = String(body.username || '').trim().slice(0, 32);
+        adminLog('Login', tried
+          ? `Fehlgeschlagener Anmeldeversuch für „${tried}"`
+          : 'Fehlgeschlagener Anmeldeversuch');
+        sendJson(res, 403, { ok: false, message: 'Name oder Passwort falsch.' });
+        return;
+      }
+      const token = newAdminSession(login.user, login.role);
+      res.setHeader('Set-Cookie', adminCookie(req, token, ADMIN_SESSION_HOURS * 3600));
+      adminLog('Login', 'Angemeldet', login.user);
+      sendJson(res, 200, { ok: true, user: login.user, role: login.role });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+    }
+    return;
+  }
+
+  // ---- Admin-Logout (POST) ----
+  if (req.method === 'POST' && pathname === '/api/admin/logout') {
+    const session = adminSessionFromReq(req);
+    if (session) {
+      adminSessions.delete(session.token);
+      adminLog('Login', 'Abgemeldet', session.user);
+    }
+    res.setHeader('Set-Cookie', adminCookie(req, 'abgemeldet', 0));
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // ---- Admin: In-Game-Ansage (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/announce') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const message = String(body.message || '').trim().slice(0, 200);
+      if (!message) {
+        sendJson(res, 400, { ok: false, message: 'Die Nachricht ist leer.' });
+        return;
+      }
+      const srv = serverFromId(body.server);
+      await palworldPost(srv, '/v1/api/announce', { message });
+      adminLog('Ansage', `[${srv.id}] „${message.slice(0, 80)}"`, session.user);
+      sendJson(res, 200, { ok: true, message: 'Ansage im Spiel gesendet.' });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Ansage nicht gesendet.' });
+    }
+    return;
+  }
+
+  // ---- Admin: Spielstand sichern (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/save') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const srv = serverFromId(body.server);
+      await palworldPost(srv, '/v1/api/save', {});
+      adminLog('Spielstand', `[${srv.id}] Manuell gesichert`, session.user);
+      sendJson(res, 200, { ok: true, message: 'Spielstand wird gespeichert.' });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
+    }
+    return;
+  }
+
+  // ---- Admin: Spielserver neu starten (POST, nur mit Login) ----
+  // Gleicher Mechanismus wie der nächtliche Wartungs-Neustart: Welt speichern,
+  // dann /v1/api/shutdown mit Vorwarnzeit + Ansage – die Docker-Restart-Policy
+  // startet den Container anschließend automatisch wieder.
+  if (req.method === 'POST' && pathname === '/api/admin/restart') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    if (session.role !== 'haupt') {
+      sendJson(res, 403, { ok: false, message: 'Nur der Hauptadmin darf den Server neu starten.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      let wait = Math.round(Number(body.waitSeconds));
+      if (!Number.isFinite(wait)) wait = 60;
+      wait = Math.min(600, Math.max(10, wait));
+      // Umlaute sind in In-Game-Ansagen okay (UTF-8 über die REST-API; die
+      // Erfolgs-Ansagen laufen seit jeher mit ü/ö ohne Probleme)
+      const message = String(body.message || '').trim().slice(0, 150) ||
+        `Server-Neustart in ${wait} Sekunden! Bitte Fortschritt sichern.`;
+      const srv = serverFromId(body.server);
+      try {
+        await palworldPost(srv, '/v1/api/save', {});
+      } catch { /* Shutdown speichert normalerweise ebenfalls */ }
+      await palworldPost(srv, '/v1/api/shutdown', { waittime: wait, message });
+      adminLog('Neustart', `[${srv.id}] Mit ${wait} s Vorwarnung ausgelöst`, session.user);
+      sendJson(res, 200, {
+        ok: true,
+        message: `Neustart eingeleitet: Shutdown in ${wait} s, danach startet ` +
+          'Docker den Server automatisch neu (Downtime ca. 1–2 Minuten).'
+      });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar – Neustart nicht ausgelöst.' });
+    }
+    return;
+  }
+
+  // ---- Admin: Spieler kicken / bannen (POST, nur mit Login) ----
+  if (req.method === 'POST' && (pathname === '/api/admin/kick' || pathname === '/api/admin/ban')) {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    const isBan = pathname === '/api/admin/ban';
+    try {
+      const body = await readJsonBody(req);
+      const name = String(body.name || '').trim().slice(0, 32);
+      const reason = String(body.message || '').trim().slice(0, 200) ||
+        (isBan ? 'Du wurdest vom Server gebannt.' : 'Du wurdest vom Server gekickt.');
+      if (!name) {
+        sendJson(res, 400, { ok: false, message: 'Kein Spielername angegeben.' });
+        return;
+      }
+      const srv = serverFromId(body.server);
+      let player;
+      try {
+        player = await findOnlinePlayer(srv, name);
+      } catch {
+        sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
+        return;
+      }
+      const userid = player && (player.userId || player.userid);
+      if (!userid) {
+        sendJson(res, 404, {
+          ok: false,
+          message: `„${name}" ist gerade nicht online – Kick/Bann geht nur bei Online-Spielern.`
+        });
+        return;
+      }
+      await palworldPost(srv, isBan ? '/v1/api/ban' : '/v1/api/kick', { userid, message: reason });
+      if (isBan) {
+        // für späteres Entbannen von der Website merken (inkl. Server)
+        bansData.bans = bansData.bans.filter((b) => b.userid !== userid || b.server !== srv.id);
+        bansData.bans.push({
+          name: player.name, userid, reason, server: srv.id, at: new Date().toISOString()
+        });
+        saveBans();
+      }
+      adminLog(isBan ? 'Bann' : 'Kick',
+        `[${srv.id}] „${player.name}" – Grund: ${reason.slice(0, 80)}`, session.user);
+      sendJson(res, 200, {
+        ok: true,
+        message: isBan ? `„${player.name}" wurde gebannt.` : `„${player.name}" wurde gekickt.`
+      });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Aktion fehlgeschlagen – Spielserver nicht erreichbar?' });
+    }
+    return;
+  }
+
+  // ---- Admin: Seiten-Banner setzen (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/banner') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const enabled = body.enabled === true;
+      const text = String(body.text || '').trim().slice(0, 160);
+      const level = ['info', 'event', 'warn'].includes(body.level) ? body.level : 'info';
+      if (enabled && !text) {
+        sendJson(res, 400, { ok: false, message: 'Der Banner-Text ist leer.' });
+        return;
+      }
+      bannerOverride = { enabled, text, level, updatedAt: new Date().toISOString() };
+      saveBannerOverride();
+      adminLog('Banner', enabled
+        ? `Aktiviert (${level}): „${text.slice(0, 80)}"`
+        : 'Ausgeblendet', session.user);
+      sendJson(res, 200, {
+        ok: true,
+        message: enabled ? 'Banner ist jetzt sichtbar.' : 'Banner ist ausgeblendet.'
+      });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+    }
+    return;
+  }
+
+  // ---- Admin: Spieler entbannen (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/unban') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const userid = String(body.userid || '').trim().slice(0, 64);
+      if (!/^[A-Za-z0-9_.-]+$/.test(userid)) {
+        sendJson(res, 400, { ok: false, message: 'Ungültige User-ID.' });
+        return;
+      }
+      // Entbannen auf dem Server, auf dem der Bann ausgesprochen wurde
+      // (alte Einträge ohne server-Feld → Standard-Server)
+      const entry = bansData.bans.find((b) => b.userid === userid);
+      const srv = serverFromId(body.server || (entry && entry.server));
+      await palworldPost(srv, '/v1/api/unban', { userid });
+      bansData.bans = bansData.bans.filter(
+        (b) => !(b.userid === userid && serverFromId(b.server).id === srv.id)
+      );
+      saveBans();
+      adminLog('Entbannt', `[${srv.id}] „${(entry && entry.name) || userid}"`, session.user);
+      sendJson(res, 200, {
+        ok: true,
+        message: `„${(entry && entry.name) || userid}" wurde entbannt.`
+      });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Entbannen fehlgeschlagen – Spielserver nicht erreichbar?' });
     }
     return;
   }
@@ -914,30 +1481,127 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Seiten-Konfiguration (Banner, Support-Karte) – bewusst vom Spielstatus entkoppelt
+  // Admin-Übersicht (nur mit Login): Live-Status + alle bekannten Spieler
+  if (pathname === '/api/admin/overview') {
+    if (!adminEnabled()) {
+      sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
+      return;
+    }
+    const session = adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    const srv = serverFromParams(searchParams);
+    const status = await getStatus(srv);
+    const onlinePings = new Map(
+      status.online
+        ? (status.players.list || []).map((p) => [p.name, p.ping ?? null])
+        : []
+    );
+    const players = Object.entries(srv.stats.players)
+      .map(([name, p]) => ({
+        name,
+        level: p.level ?? null,
+        minutes: Math.round(p.minutes || 0),
+        sessions: p.sessions || 0,
+        firstSeen: p.firstSeen || null,
+        lastSeen: p.lastSeen || null,
+        online: onlinePings.has(name),
+        ping: onlinePings.get(name) ?? null
+      }))
+      .sort((a, b) => Number(b.online) - Number(a.online) ||
+        String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
+    const eb = effectiveBanner();
+    sendJson(res, 200, {
+      ok: true,
+      me: { user: session.user, role: session.role },
+      server: publicServerInfo(srv),
+      servers: SERVERS.map(publicServerInfo),
+      status,
+      players,
+      bans: bansData.bans,
+      log: adminLogData.slice(-30).reverse(),
+      banner: {
+        enabled: Boolean(eb.enabled && eb.text),
+        text: eb.text || '',
+        level: eb.level || 'info'
+      },
+      bases: { count: srv.basesData.bases.length, updatedAt: srv.basesData.updatedAt },
+      visits: config.visitorCounter ? visits : null
+    });
+    return;
+  }
+
+  // Admin: aktuelle Server-Einstellungen (read-only, nur mit Login)
+  if (pathname === '/api/admin/settings') {
+    if (!adminEnabled()) {
+      sendJson(res, 404, { ok: false, message: 'Admin-Seite ist nicht aktiviert.' });
+      return;
+    }
+    if (!adminSessionFromReq(req)) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const settings = await palworldGet(serverFromParams(searchParams), '/v1/api/settings');
+      sendJson(res, 200, { ok: true, settings });
+    } catch {
+      sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
+    }
+    return;
+  }
+
+  // Seiten-Konfiguration (Banner, Support-Karte, Server-Liste) – bewusst vom
+  // Spielstatus entkoppelt
   if (pathname === '/api/site') {
-    const b = config.banner;
+    const b = effectiveBanner();
     const s = config.support;
     sendJson(res, 200, {
       banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null,
-      support: s && s.enabled && s.url ? { url: s.url, text: s.text || '' } : null
+      support: s && s.enabled && s.url ? { url: s.url, text: s.text || '' } : null,
+      servers: SERVERS.map(publicServerInfo)
     });
+    return;
+  }
+
+  // Alle Server mit Live-Status (für die Server-Karten der Startseite)
+  if (pathname === '/api/servers') {
+    const list = await Promise.all(SERVERS.map(async (srv) => {
+      let online = false;
+      let current = null;
+      let max = null;
+      let version = null;
+      if (srv.apiUrl) {
+        const st = await getStatus(srv);
+        online = st.online === true;
+        if (online) {
+          current = st.players.current;
+          max = st.players.max;
+          version = st.version;
+        }
+      }
+      return { ...publicServerInfo(srv), online, players: { current, max }, version };
+    }));
+    sendJson(res, 200, { servers: list });
     return;
   }
 
   // Spieler-Profil (Kennzahlen + Erfolge)
   if (pathname === '/api/player') {
+    const srv = serverFromParams(searchParams);
     const enabled = config.statsEnabled && config.showPlayerList;
     const rawName = (searchParams.get('name') || '').trim().slice(0, 32);
     if (!enabled) { sendJson(res, 200, { enabled: false }); return; }
     if (!rawName) { sendJson(res, 200, { enabled: true, found: false }); return; }
-    const key = Object.keys(stats.players).find((k) => k.toLowerCase() === rawName.toLowerCase());
+    const key = Object.keys(srv.stats.players).find((k) => k.toLowerCase() === rawName.toLowerCase());
     if (!key) { sendJson(res, 200, { enabled: true, found: false }); return; }
-    const p = stats.players[key];
+    const p = srv.stats.players[key];
     sendJson(res, 200, {
       enabled: true,
       found: true,
       name: key,
+      server: publicServerInfo(srv),
       level: p.level ?? null,
       minutes: Math.round(p.minutes || 0),
       firstSeen: p.firstSeen || null,
@@ -946,7 +1610,7 @@ const server = http.createServer(async (req, res) => {
       daysCount: p.daysCount || 0,
       distKm: Math.round(p.distKm || 0),
       areas: (p.cells || []).length,
-      achievements: evaluateAchievements(key, p, achievementContext(key))
+      achievements: evaluateAchievements(key, p, achievementContext(srv, key))
     });
     return;
   }
@@ -961,21 +1625,23 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/status') {
-    const status = await getStatus();
+    const srv = serverFromParams(searchParams);
+    const status = await getStatus(srv);
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store'
     });
-    res.end(JSON.stringify(status));
+    res.end(JSON.stringify({ ...status, server: publicServerInfo(srv) }));
     return;
   }
 
   if (pathname === '/api/stats') {
+    const srv = serverFromParams(searchParams);
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store'
     });
-    res.end(JSON.stringify(config.statsEnabled ? buildStatsResponse() : { enabled: false }));
+    res.end(JSON.stringify(config.statsEnabled ? buildStatsResponse(srv) : { enabled: false }));
     return;
   }
 
@@ -985,26 +1651,30 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { enabled: false });
       return;
     }
-    const players = await getMapPlayers();
+    const srv = serverFromParams(searchParams);
+    const players = await getMapPlayers(srv);
     sendJson(res, 200, {
       enabled: true,
       online: players !== null,
       players: players || [],
-      bases: basesData.bases,
-      basesUpdatedAt: basesData.updatedAt,
-      calibration: config.map.calibration
+      bases: srv.basesData.bases,
+      basesUpdatedAt: srv.basesData.updatedAt,
+      calibration: config.map.calibration,
+      server: publicServerInfo(srv),
+      servers: SERVERS.map(publicServerInfo)
     });
     return;
   }
 
   if (pathname === '/api/achievements') {
+    const srv = serverFromParams(searchParams);
     const enabled = config.statsEnabled && config.achievements.enabled && config.showPlayerList;
     const rawName = (searchParams.get('player') || '').trim().slice(0, 32);
     if (!enabled || !rawName) {
       sendJson(res, 200, { enabled });
       return;
     }
-    const key = Object.keys(stats.players).find(
+    const key = Object.keys(srv.stats.players).find(
       (k) => k.toLowerCase() === rawName.toLowerCase()
     );
     if (!key) {
@@ -1015,7 +1685,7 @@ const server = http.createServer(async (req, res) => {
       enabled: true,
       found: true,
       player: key,
-      achievements: evaluateAchievements(key, stats.players[key], achievementContext(key))
+      achievements: evaluateAchievements(key, srv.stats.players[key], achievementContext(srv, key))
     });
     return;
   }
@@ -1040,7 +1710,7 @@ const server = http.createServer(async (req, res) => {
 // Beim Beenden ungespeicherte Daten sichern (Statistik + Besucher-Zähler)
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
-    saveStats(true);
+    for (const srv of SERVERS) saveStats(srv, true);
     saveVisits(true);
     process.exit(0);
   });
@@ -1048,9 +1718,11 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 server.listen(config.port, config.host, () => {
   console.log(`Palworld-Webseite läuft auf http://${config.host}:${config.port}`);
-  console.log(`Palworld REST-API: ${config.palworldApiUrl}`);
-  if (!config.palworldAdminPassword) {
-    console.warn('[Hinweis] Kein Admin-Passwort gesetzt – Live-Status wird "offline" anzeigen.');
-    console.warn('          config.json anlegen (siehe config.example.json) oder PALWORLD_ADMIN_PASSWORD setzen.');
+  for (const srv of SERVERS) {
+    console.log(`Server "${srv.id}" (${srv.name} ${srv.shortName}): ` +
+      (srv.apiUrl ? `REST-API ${srv.apiUrl}` : 'KEINE API-URL – nur Platzhalter'));
+    if (srv.apiUrl && !srv.adminPassword) {
+      console.warn(`[Hinweis] Kein Admin-Passwort für "${srv.id}" – Live-Status wird "offline" anzeigen.`);
+    }
   }
 });

@@ -1,11 +1,11 @@
 # PalHeim – Palworld Server Webseite
 
-Eine moderne Webseite für deinen Palworld Dedicated Server auf Hetzner Cloud –
+Eine moderne Webseite für deinen Palworld Dedicated Server auf eigener Hardware –
 mit **Live-Serverstatus** (Spielerzahl, Version, Uptime, Spielerliste) über die
 offizielle Palworld REST-API.
 
 **Kein Framework, kein Build-Schritt, keine npm-Abhängigkeiten** – nur Node.js.
-Dadurch ist das Deployment auf dem Hetzner-Server in wenigen Minuten erledigt.
+Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 
 ## Features
 
@@ -47,7 +47,7 @@ gesehen – bewusst keine IPs oder Account-IDs).
 
 ## Voraussetzungen
 
-1. **Palworld Dedicated Server** läuft bereits auf dem Hetzner-Server
+1. **Palworld Dedicated Server** läuft bereits auf deinem Server
 2. **REST-API aktivieren** – in der `PalWorldSettings.ini` innerhalb von `OptionSettings=(...)`:
 
    ```ini
@@ -79,7 +79,7 @@ andere funktioniert trotzdem.
 
 ## Schnellinstallation (ein Befehl)
 
-Auf dem Hetzner-Server als root ausführen – installiert alles automatisch
+Auf dem Web-Server als root ausführen – installiert alles automatisch
 (Node.js, nginx, Benutzer, systemd-Service) und erkennt einen lokal laufenden
 Palworld-Server samt Admin-Passwort:
 
@@ -118,10 +118,10 @@ sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Ac
 
 Voraussetzung: Der A-Record von `palheim.de` (und optional `www.palheim.de`)
 zeigt auf die Server-IP, und Port **80** und **443** sind in der Firewall offen
-(Hetzner Cloud Firewall bzw. `ufw`). Das Skript ist idempotent – ein erneuter
+(Firewall deines Hosters bzw. `ufw`). Das Skript ist idempotent – ein erneuter
 Aufruf erneuert nichts, solange das Zertifikat gültig ist.
 
-## Manuelles Deployment auf Hetzner Cloud
+## Manuelles Deployment
 
 ```bash
 # 1. Code auf den Server holen
@@ -161,10 +161,64 @@ sudo bash deploy/enable-https.sh
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d palheim.de -d www.palheim.de --redirect
 
-# 8. Firewall (Hetzner Cloud Firewall oder ufw)
+# 8. Firewall (Hoster-Firewall oder ufw)
 #    Offen:  80/tcp, 443/tcp (Web), 8211/udp (Palworld), SSH
 #    Zu:     3000/tcp und 8212/tcp von außen NICHT erreichbar machen
 ```
+
+## Zweiter Server (Mehrserver-Betrieb)
+
+Die Webseite kann mehrere Palworld-Server gleichzeitig anzeigen: Die
+Startseite bekommt dann „Unsere Server"-Karten, und Status, Statistiken,
+Live-Karte, Erfolge und die Admin-Seite bekommen Umschalt-Tabs – jeder
+Server mit eigener Farbe. In der `config.json` einfach eine `servers`-Liste
+ergänzen (der erste Eintrag ist der Standard-Server und erbt fehlende Werte
+aus den klassischen Feldern, bestehende Daten bleiben erhalten):
+
+```json
+"servers": [
+  {
+    "id": "pve",
+    "name": "PalHeim",
+    "shortName": "PvE",
+    "mode": "PvE · Koop",
+    "description": "Der Klassiker: gemeinsam bauen und erkunden – ohne Wipes.",
+    "facts": ["3× EP", "2× Fangrate", "Keine Todesstrafe"],
+    "address": "pve.palheim.de:8211"
+  },
+  {
+    "id": "pve2",
+    "name": "PalHeim",
+    "shortName": "Classic",
+    "mode": "PvE · Vanilla-nah",
+    "description": "Die Herausforderung: gleiche Community, knappere Raten.",
+    "facts": ["1× EP", "1× Fangrate", "Volle Härte"],
+    "color": "#2e7d35",
+    "colorDeep": "#1d5423",
+    "address": "classic.palheim.de:8211",
+    "palworldApiUrl": "http://10.88.0.3:8212",
+    "palworldAdminPassword": "ADMINPASSWORT-VOM-ZWEITEN-SERVER",
+    "uploadSecret": "EIGENES-UPLOAD-SECRET-FUER-SERVER-2"
+  }
+]
+```
+
+`facts` sind freie Chips auf der Server-Karte – ideal, um die
+unterschiedlichen Raten der Server nebeneinander zu zeigen. `mode`,
+Farben und Namen sind ebenfalls frei (nichts ist auf PvP festgelegt).
+
+- Pro Server einstellbar: `palworldApiUrl`, `palworldAdminPassword`,
+  `address`, `color`/`colorDeep` (Standard: Blau für den ersten, Glutrot
+  für den zweiten), `statsFile`, `basesFile`, `uploadSecret`
+- Daten liegen getrennt: `data/stats-<id>.json`, `data/bases-<id>.json`
+  (der erste Server behält `data/stats.json`/`data/bases.json`)
+- Alle APIs verstehen `?server=<id>`; `/api/servers` liefert alle Server
+  mit Live-Status
+- Basen-Upload pro Server: `upload-bases.py … --server pvp` mit dem
+  jeweiligen `uploadSecret`
+- Votes (palserver.de) bleiben an den ersten Server gebunden
+- Läuft der zweite Palworld-Server auf einer weiteren Maschine, braucht er
+  einen eigenen WireGuard-Zugang (nächster Abschnitt), z. B. als 10.88.0.3
 
 ## Palworld auf separatem Server? → WireGuard-Tunnel
 
@@ -207,7 +261,7 @@ curl -s -u admin:DEIN-ADMIN-PASSWORT http://10.88.0.2:8212/v1/api/info
 ```
 
 Firewall: Auf dem Palworld-Server muss **UDP 51821** eingehend offen sein
-(Hetzner Cloud Firewall bzw. ufw – das Skript richtet ufw automatisch ein).
+(Hoster-Firewall bzw. ufw – das Skript richtet ufw automatisch ein).
 Port 8212 dagegen **nicht** öffentlich öffnen.
 
 ### Updates einspielen
@@ -237,6 +291,7 @@ sudo systemctl restart palworld-web
 | `banner.text` | – | Banner-Text (kurz halten; kein HTML) |
 | `banner.level` | `info` | Optik: `info` (blau), `event` (grün), `warn` (orange) |
 | `admin.broadcastSecret` | – | Passwort für die Broadcast-Seite; leer = deaktiviert |
+| `admin.password` | – | Passwort für die Admin-Seite `/admin`; leer = deaktiviert |
 | `visitorCounter` | `true` | Besucher-Zähler (Aufrufe + eindeutige Besucher) im Footer |
 | `support.enabled` | `false` | „Unterstützen"-Karte (z. B. Buy Me a Coffee) anzeigen? |
 | `support.url` | – | Link zur Spenden-Seite (nur ein Link, keine externen Skripte) |
@@ -248,8 +303,11 @@ Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 
 ### Wartungs-/Event-Banner
 
-Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") schaltest du in der
-`config.json` frei – Änderungen sind ohne Neustart nach wenigen Sekunden sichtbar:
+Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") pflegst du am bequemsten
+über die Admin-Seite (`/admin`, Karte „Seiten-Banner") – sofort wirksam,
+ohne Neustart. Alternativ statisch in der `config.json` (gilt nur, solange
+über die Admin-Seite noch nie ein Banner gespeichert wurde; danach hat
+`data/banner.json` Vorrang):
 
 ```json
 "banner": { "enabled": true, "text": "Wartung heute ab 20 Uhr", "level": "warn" }
@@ -257,6 +315,61 @@ Ein Hinweis-Banner (z. B. „Wartung heute 20 Uhr") schaltest du in der
 
 Besucher können das Banner wegklicken; eine neue/​geänderte Nachricht erscheint
 wieder.
+
+### Admin-Seite (`/admin`)
+
+`https://palheim.de/admin` ist das Cockpit fürs Server-Team – absichtlich
+nirgends verlinkt, auf `noindex` und per `robots.txt` ausgeschlossen.
+Aktiviert wird sie über ein eigenes Passwort in der `config.json`:
+
+```json
+"admin": {
+  "password": "LANGES-EIGENES-PASSWORT",
+  "name": "Action",
+  "users": { "Lisa": "lisas-langes-passwort", "Tom": "toms-langes-passwort" }
+}
+```
+
+- `password` + `name`: der **Hauptadmin** (darf alles; `name` erscheint im
+  Protokoll, Login mit leerem Namensfeld oder dem Namen)
+- `users`: beliebig viele **Unter-Admins** mit eigenem Namen und Passwort –
+  sie dürfen alles außer den Server neu starten. Jede Aktion wird im
+  Protokoll dem jeweiligen Namen zugeordnet
+
+Ohne gesetzte Passwörter ist die Seite (und alle `/api/admin/*`-Endpunkte
+außer dem Broadcast) komplett deaktiviert. Nicht das Palworld-`AdminPassword`
+wiederverwenden! Nach dem Login (Session-Cookie, 12 h gültig, Neustart des
+Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
+
+- **Live-Status**: online/offline, Spielerzahl, Server-FPS, Version
+- **Basen & Besucher**: Stand der Live-Karte und des Besucher-Zählers
+- **Seiten-Banner**: das Hinweis-Banner der Webseite (Wartung/Event/Info)
+  direkt ein-/ausschalten und den Text ändern – wirkt sofort, ohne Neustart.
+  Der Zustand liegt in `data/banner.json` und hat Vorrang vor dem
+  `banner`-Block der `config.json`
+- **In-Game-Ansage**: Nachricht an alle Online-Spieler senden
+- **Spielstand sichern**: Welt sofort speichern (vor Wartungen/Neustarts)
+- **Server neustarten** (nur Hauptadmin): mit wählbarer Vorwarnzeit
+  (10–600 s) und doppelter Bestätigung. Warnt die Spieler im Spiel,
+  speichert die Welt und fährt den Server per REST-API herunter – die
+  Docker-Restart-Policy startet ihn automatisch wieder (derselbe
+  Mechanismus wie beim nächtlichen Wartungs-Neustart, Downtime
+  ca. 1–2 Minuten)
+- **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
+  und „zuletzt gesehen" – Online-Spieler zuerst
+- **Kick & Bann**: bei Online-Spielern direkt aus der Liste (mit Grund, der
+  dem Spieler angezeigt wird). Beides geht nur bei Spielern, die gerade
+  online sind – nur dann liefert die REST-API ihre User-ID (die Website
+  speichert bewusst keine IDs). Über die Website ausgesprochene Banns
+  landen in `data/bans.json` und lassen sich auf der Seite wieder aufheben
+  („Entbannen")
+- **Ping-Spalte**: Live-Ping der Online-Spieler (wer laggt gerade?)
+- **Aktions-Protokoll**: was wurde über die Website ausgeführt (Kicks,
+  Banns, Neustarts, Ansagen, Banner, An-/Fehlanmeldungen) – neueste zuerst,
+  bewusst ohne IP-Adressen, max. 200 Einträge in `data/admin-log.json`
+- **Server-Einstellungen (read-only)**: aufklappbare Live-Ansicht von
+  `/v1/api/settings` – Raten, Schwierigkeit, Limits, wie der Server
+  gerade wirklich läuft
 
 ### Broadcast (In-Game-Ansage von der Website)
 

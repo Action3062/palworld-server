@@ -104,7 +104,8 @@
     } catch { /* egal */ }
 
     try {
-      const res = await fetch(`/api/achievements?player=${encodeURIComponent(name)}`, { cache: 'no-store' });
+      const res = await fetch(`/api/achievements?player=${encodeURIComponent(name)}` +
+        (window.PalServers ? window.PalServers.query('&') : ''), { cache: 'no-store' });
       const data = await res.json();
       if (!data.enabled) {
         showMessage('Erfolge sind derzeit deaktiviert.');
@@ -118,5 +119,9 @@
     }
   });
 
-  init();
+  if (window.PalServers) {
+    window.PalServers.ready.then(init);
+  } else {
+    init();
+  }
 })();

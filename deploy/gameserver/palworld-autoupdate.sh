@@ -26,7 +26,7 @@
 #   */30 * * * * /root/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
 #
 #   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern):
-#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Taeglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
 #   Mehrere Neustarts pro Tag (Zeiten an die Spielerlast anpassen);
 #   --min-gap 4 sorgt dafuer, dass nach Update-/anderen Neustarts
@@ -218,7 +218,7 @@ if [ "$API_OK" = "true" ]; then
     mapfile -t WARNS < <(printf '%s\n' "${WARN_MINUTES[@]}" | sort -rn)
     for i in "${!WARNS[@]}"; do
       M="${WARNS[$i]}"
-      # Ingame-Messages bewusst ohne Umlaute (Anzeige-Sicherheit)
+      # Umlaute in Ansagen sind okay (UTF-8 über die REST-API)
       announce "${ANNOUNCE_REASON}: Neustart in ${M} Minuten! Bitte Fortschritt sichern."
       log "Ingame-Warnung gesendet: Neustart in ${M} min."
       NEXT_IDX=$((i + 1))
