@@ -40,6 +40,9 @@ BACKUP_DIR=""
 SAVED_DIR=""
 LIVE_BACKUP_KEEP=12
 LIVE_BACKUP_SAVE_WAIT=15
+# So lange (Sekunden) auf ein laufendes Update/Neustart warten, statt sofort
+# zu ueberspringen. Deckt die 10-min-Spielerwarnung eines Neustarts ab.
+BACKUP_LOCK_WAIT=900
 DISCORD_WEBHOOK=""
 LOCKFILE="/var/lock/palworld-autoupdate.lock"   # Lock des Update-Skripts
 
@@ -81,11 +84,14 @@ flock -n 9 || exit 0
 
 # --- Update-Lock fuer die gesamte Backup-Dauer halten --------------------------
 # Anders als Watchdog/Announce (kurzer Probe-Check) darf hier waehrend des
-# Kopierens kein Update/Neustart dazwischenfunken. Ist das Update-Skript
-# gerade aktiv, faellt dieses Backup still aus - der naechste Lauf kommt.
+# Kopierens kein Update/Neustart dazwischenfunken. Laeuft gerade ein
+# Neustart (inkl. 10-min-Spielerwarnung), wird bis zu BACKUP_LOCK_WAIT
+# Sekunden gewartet und DANACH gesichert (frisch gestarteter Stand = ideal),
+# statt den Lauf sofort ausfallen zu lassen. Erst wenn wirklich etwas haengt,
+# wird nach dem Timeout uebersprungen.
 exec 8>"$LOCKFILE"
-if ! flock -n 8; then
-  log "Update-/Restart-Skript aktiv, ueberspringe diesen Backup-Lauf."
+if ! flock -w "$BACKUP_LOCK_WAIT" 8; then
+  log "Update-/Restart-Skript laeuft seit ueber ${BACKUP_LOCK_WAIT}s, ueberspringe diesen Backup-Lauf."
   exit 0
 fi
 
