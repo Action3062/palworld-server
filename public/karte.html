@@ -83,6 +83,7 @@
           Mausrad zum Zoomen, Ziehen zum Verschieben, Doppelklick setzt die Ansicht zurück.
           Über die Legende lassen sich Spieler, Basen und Namen ein- und ausblenden.
         </p>
+        <div class="server-tabs" data-server-tabs hidden></div>
 
         <div class="map-card reveal">
           <div class="map-card__head">
@@ -148,6 +149,7 @@
     document.getElementById('year').textContent = new Date().getFullYear();
     document.querySelectorAll('.reveal').forEach((n) => n.classList.add('is-visible'));
   </script>
+  <script src="/js/server-select.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/banner.js"></script>
   <script src="/js/visits.js"></script>

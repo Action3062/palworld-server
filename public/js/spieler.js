@@ -125,7 +125,8 @@
     if (!name) { showNotFound(); return; }
     document.title = `${name} – PalHeim`;
     try {
-      const res = await fetch(`/api/player?name=${encodeURIComponent(name)}`, { cache: 'no-store' });
+      const res = await fetch(`/api/player?name=${encodeURIComponent(name)}` +
+        (window.PalServers ? window.PalServers.query('&') : ''), { cache: 'no-store' });
       const data = await res.json();
       if (!data.enabled) { showNotFound('Spielerprofile sind derzeit deaktiviert.'); return; }
       if (!data.found) { showNotFound(); return; }
@@ -135,5 +136,10 @@
     }
   }
 
-  load();
+  // Im Mehrserver-Betrieb erst die Server-Auswahl laden (?server=…), dann das Profil
+  if (window.PalServers) {
+    window.PalServers.ready.then(load);
+  } else {
+    load();
+  }
 })();

@@ -240,11 +240,25 @@
   <main>
 
     <!-- ===================== LIVE-STATUS ===================== -->
+    <!-- ============ UNSERE SERVER (nur im Mehrserver-Betrieb sichtbar) ============ -->
+    <section class="section" id="unsere-server" hidden>
+      <div class="container">
+        <span class="section__label">Live</span>
+        <h2 class="section__title">Unsere Server</h2>
+        <p class="section__intro">
+          Jeder Server hat seine eigene Farbe – Status, Statistiken und Karte
+          lassen sich unten jeweils umschalten.
+        </p>
+        <div class="servers-grid" id="serverCards"></div>
+      </div>
+    </section>
+
     <section class="section" id="status">
       <div class="container">
         <span class="section__label">Live</span>
         <h2 class="section__title">Server-Status</h2>
         <p class="section__intro">Direkt vom Server – aktualisiert sich automatisch alle 30&nbsp;Sekunden.</p>
+        <div class="server-tabs" data-server-tabs hidden></div>
 
         <div class="status-grid reveal">
           <article class="stat-card">
@@ -297,6 +311,7 @@
         <p class="section__intro">
           Seit dem Start gesammelt – direkt von unserem Server.
         </p>
+        <div class="server-tabs" data-server-tabs hidden></div>
 
         <div class="status-grid reveal">
           <article class="stat-card">
@@ -708,6 +723,7 @@
     </div>
   </footer>
 
+  <script src="/js/server-select.js"></script>
   <script src="/js/banner.js"></script>
   <script src="/js/visits.js"></script>
   <script src="/js/main.js"></script>

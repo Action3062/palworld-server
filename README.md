@@ -166,6 +166,52 @@ sudo certbot --nginx -d palheim.de -d www.palheim.de --redirect
 #    Zu:     3000/tcp und 8212/tcp von außen NICHT erreichbar machen
 ```
 
+## Zweiter Server (Mehrserver-Betrieb)
+
+Die Webseite kann mehrere Palworld-Server gleichzeitig anzeigen: Die
+Startseite bekommt dann „Unsere Server"-Karten, und Status, Statistiken,
+Live-Karte, Erfolge und die Admin-Seite bekommen Umschalt-Tabs – jeder
+Server mit eigener Farbe. In der `config.json` einfach eine `servers`-Liste
+ergänzen (der erste Eintrag ist der Standard-Server und erbt fehlende Werte
+aus den klassischen Feldern, bestehende Daten bleiben erhalten):
+
+```json
+"servers": [
+  {
+    "id": "pve",
+    "name": "PalHeim",
+    "shortName": "PvE",
+    "mode": "PvE · Koop",
+    "description": "Gemeinsam bauen und erkunden – ohne Wipes.",
+    "address": "pve.palheim.de:8211"
+  },
+  {
+    "id": "pvp",
+    "name": "PalHeim",
+    "shortName": "PvP",
+    "mode": "PvP · Hardcore",
+    "description": "Spieler gegen Spieler – wer baut, verteidigt.",
+    "address": "pvp.palheim.de:8211",
+    "palworldApiUrl": "http://10.88.0.3:8212",
+    "palworldAdminPassword": "ADMINPASSWORT-VOM-PVP-SERVER",
+    "uploadSecret": "EIGENES-UPLOAD-SECRET-FUER-PVP"
+  }
+]
+```
+
+- Pro Server einstellbar: `palworldApiUrl`, `palworldAdminPassword`,
+  `address`, `color`/`colorDeep` (Standard: Blau für den ersten, Glutrot
+  für den zweiten), `statsFile`, `basesFile`, `uploadSecret`
+- Daten liegen getrennt: `data/stats-<id>.json`, `data/bases-<id>.json`
+  (der erste Server behält `data/stats.json`/`data/bases.json`)
+- Alle APIs verstehen `?server=<id>`; `/api/servers` liefert alle Server
+  mit Live-Status
+- Basen-Upload pro Server: `upload-bases.py … --server pvp` mit dem
+  jeweiligen `uploadSecret`
+- Votes (palserver.de) bleiben an den ersten Server gebunden
+- Läuft der zweite Palworld-Server auf einer weiteren Maschine, braucht er
+  einen eigenen WireGuard-Zugang (nächster Abschnitt), z. B. als 10.88.0.3
+
 ## Palworld auf separatem Server? → WireGuard-Tunnel
 
 Läuft der Palworld-Server auf einer **anderen Maschine** als die Webseite,

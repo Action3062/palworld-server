@@ -433,7 +433,8 @@
 
   async function refresh() {
     try {
-      const res = await fetch('/api/map', { cache: 'no-store' });
+      const q = window.PalServers ? window.PalServers.query() : '';
+      const res = await fetch(`/api/map${q}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
@@ -475,6 +476,17 @@
     resizeTimer = setTimeout(render, 250);
   });
 
-  refresh();
-  setInterval(refresh, REFRESH_INTERVAL);
+  if (window.PalServers) {
+    window.PalServers.ready.then(() => {
+      window.PalServers.onChange(() => {
+        status.textContent = 'Server wird gewechselt …';
+        refresh();
+      });
+      refresh();
+      setInterval(refresh, REFRESH_INTERVAL);
+    });
+  } else {
+    refresh();
+    setInterval(refresh, REFRESH_INTERVAL);
+  }
 })();

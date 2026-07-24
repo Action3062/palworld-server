@@ -48,10 +48,43 @@
   let lastPlayers = [];   // für die Kick/Bann-Buttons (Name über Index statt HTML)
   let lastBans = [];
   let bannerFormTouched = false;   // Auto-Refresh soll Eingaben nicht überschreiben
+  let admServer = '';              // ausgewählter Server (Mehrserver-Betrieb)
+  let admServers = [];             // bekannte Server aus der Übersicht
+
+  const srvQuery = () => (admServer ? `?server=${encodeURIComponent(admServer)}` : '');
+  const srvName = () => {
+    const s = admServers.find((x) => x.id === admServer);
+    return s ? `${s.name} ${s.shortName}` : 'Server';
+  };
+
+  function renderServerTabs(data) {
+    const box = $('admServerTabs');
+    admServers = data.servers || [];
+    admServer = (data.server && data.server.id) || admServer;
+    if (admServers.length < 2) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = '';
+    for (const s of admServers) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'server-tab' + (s.id === admServer ? ' is-active' : '');
+      b.style.setProperty('--sc', s.color);
+      b.textContent = s.shortName || s.id;
+      b.addEventListener('click', () => {
+        if (s.id === admServer) return;
+        admServer = s.id;
+        settingsLoaded = false;   // Einstellungen gelten pro Server
+        $('admSettingsBox').open = false;
+        loadOverview();
+      });
+      box.appendChild(b);
+    }
+  }
 
   function renderOverview(data) {
     lastPlayers = data.players || [];
     lastBans = data.bans || [];
+    renderServerTabs(data);
     const st = data.status || {};
     const online = st.online === true;
     const statusEl = $('admStatus');
@@ -104,7 +137,8 @@
 
     const banRows = lastBans.map((b, i) => `
       <tr>
-        <td>${esc(b.name || b.userid)}</td>
+        <td>${esc(b.name || b.userid)}${admServers.length > 1 && b.server
+          ? ` <small>[${esc(b.server)}]</small>` : ''}</td>
         <td>${esc(b.reason || '–')}</td>
         <td>${b.at ? new Date(b.at).toLocaleDateString('de-DE') : '–'}</td>
         <td class="adm-actions"><button class="btn btn--tiny" data-unban="${i}">Entbannen</button></td>
@@ -149,7 +183,7 @@
       const reason = window.prompt(`Grund für den Kick von „${p.name}" (wird dem Spieler angezeigt):`,
         'Bitte beachte die Serverregeln.');
       if (reason === null) return;
-      playerAction('/api/admin/kick', { name: p.name, message: reason },
+      playerAction('/api/admin/kick', { name: p.name, message: reason, server: admServer },
         `„${p.name}" wirklich vom Server kicken?`);
     } else if (ban) {
       const p = lastPlayers[Number(ban.dataset.ban)];
@@ -157,12 +191,12 @@
       const reason = window.prompt(`Grund für den BANN von „${p.name}" (wird dem Spieler angezeigt):`,
         'Verstoß gegen die Serverregeln.');
       if (reason === null) return;
-      playerAction('/api/admin/ban', { name: p.name, message: reason },
+      playerAction('/api/admin/ban', { name: p.name, message: reason, server: admServer },
         `„${p.name}" wirklich DAUERHAFT bannen?\n\nEntbannen geht später über die Liste unten.`);
     } else if (unban) {
       const b = lastBans[Number(unban.dataset.unban)];
       if (!b) return;
-      playerAction('/api/admin/unban', { userid: b.userid },
+      playerAction('/api/admin/unban', { userid: b.userid, server: b.server || '' },
         `Bann von „${b.name || b.userid}" wirklich aufheben?`);
     }
   });
@@ -170,7 +204,7 @@
   async function loadOverview() {
     let res;
     try {
-      res = await fetch('/api/admin/overview', { cache: 'no-store' });
+      res = await fetch(`/api/admin/overview${srvQuery()}`, { cache: 'no-store' });
     } catch {
       return; // Netzwerkfehler: nächster Refresh versucht es erneut
     }
@@ -269,7 +303,7 @@
       const res = await fetch('/api/admin/announce', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msgEl.value.trim() })
+        body: JSON.stringify({ message: msgEl.value.trim(), server: admServer })
       });
       const data = await res.json().catch(() => ({}));
       setMsg($('admAnnounceMsg'), data.message || (res.ok ? 'Gesendet.' : 'Fehler.'), res.ok);
@@ -287,7 +321,11 @@
     const btn = $('admSaveBtn');
     btn.disabled = true;
     try {
-      const res = await fetch('/api/admin/save', { method: 'POST' });
+      const res = await fetch('/api/admin/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ server: admServer })
+      });
       const data = await res.json().catch(() => ({}));
       setMsg($('admSaveMsg'), data.message || (res.ok ? 'Gespeichert.' : 'Fehler.'), res.ok);
       if (res.status === 401) { show(loginView); stopRefresh(); }
@@ -307,8 +345,9 @@
       setMsg($('admRestartMsg'), 'Bitte eine Zahl zwischen 10 und 600 angeben.', false);
       return;
     }
+    const which = admServers.length > 1 ? ` (${srvName()})` : '';
     const sure = window.confirm(
-      `Spielserver WIRKLICH neu starten?\n\n` +
+      `Spielserver${which} WIRKLICH neu starten?\n\n` +
       `• Alle Spieler werden im Spiel gewarnt\n` +
       `• Die Welt wird gespeichert\n` +
       `• Shutdown in ${wait} Sekunden, danach startet Docker den Server neu\n` +
@@ -321,7 +360,7 @@
       const res = await fetch('/api/admin/restart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ waitSeconds: wait })
+        body: JSON.stringify({ waitSeconds: wait, server: admServer })
       });
       const data = await res.json().catch(() => ({}));
       setMsg($('admRestartMsg'), data.message || (res.ok ? 'Neustart eingeleitet.' : 'Fehler.'), res.ok);
@@ -339,7 +378,7 @@
     if (!e.target.open || settingsLoaded) return;
     settingsLoaded = true;
     try {
-      const res = await fetch('/api/admin/settings', { cache: 'no-store' });
+      const res = await fetch(`/api/admin/settings${srvQuery()}`, { cache: 'no-store' });
       if (res.status === 401) { show(loginView); stopRefresh(); return; }
       const data = await res.json().catch(() => null);
       if (!res.ok || !data || !data.settings) {

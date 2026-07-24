@@ -77,7 +77,8 @@
         const li = document.createElement('li');
         const nameLink = document.createElement('a');
         nameLink.className = 'player-list__link';
-        nameLink.href = `/spieler/${encodeURIComponent(p.name)}`;
+        nameLink.href = `/spieler/${encodeURIComponent(p.name)}` +
+          (window.PalServers ? window.PalServers.query() : '');
         nameLink.textContent = p.name;
         li.appendChild(nameLink);
         const details = [];
@@ -115,7 +116,8 @@
 
   async function refreshStatus() {
     try {
-      const res = await fetch('/api/status', { cache: 'no-store' });
+      const q = window.PalServers ? window.PalServers.query() : '';
+      const res = await fetch(`/api/status${q}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.online) {
@@ -134,8 +136,86 @@
     }
   }
 
-  refreshStatus();
-  setInterval(refreshStatus, REFRESH_INTERVAL);
+  // -------------------------------------------------------------
+  // Server-Karten (nur im Mehrserver-Betrieb sichtbar)
+  // -------------------------------------------------------------
+
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  async function refreshServerCards() {
+    const section = document.getElementById('unsere-server');
+    const grid = document.getElementById('serverCards');
+    if (!section || !grid || !window.PalServers || !window.PalServers.multi()) return;
+    try {
+      const res = await fetch('/api/servers', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      section.hidden = false;
+      grid.innerHTML = (data.servers || []).map((s) => {
+        const cur = s.players ? s.players.current : null;
+        const max = s.players ? s.players.max : null;
+        const pct = cur != null && max ? Math.min(100, Math.round((cur / max) * 100)) : 0;
+        return `<article class="server-card reveal is-visible" style="--sc:${escHtml(s.color)};--sc-deep:${escHtml(s.colorDeep)}">
+          <div class="server-card__head">
+            <span class="server-card__name">${escHtml(s.name)}</span>
+            ${s.mode ? `<span class="server-card__badge">${escHtml(s.mode)}</span>` : ''}
+            <span class="server-card__live ${s.online ? 'is-on' : 'is-off'}">
+              <span class="server-card__dot"></span>${s.online ? 'Online' : 'Offline'}</span>
+          </div>
+          ${s.description ? `<p class="server-card__desc">${escHtml(s.description)}</p>` : ''}
+          <div class="server-card__players">${s.online && cur != null
+            ? `<b>${cur} / ${max ?? '?'}</b><span>Spieler online</span>`
+            : '<span>Gerade nicht erreichbar</span>'}</div>
+          <div class="server-card__bar"><i style="width:${pct}%"></i></div>
+          <div class="server-card__join">
+            ${s.address ? `<button type="button" class="server-card__addr" data-copy="${escHtml(s.address)}"
+               title="Adresse kopieren">${escHtml(s.address)}</button>` : ''}
+            <button type="button" class="btn btn--small" data-select-server="${escHtml(s.id)}">Anzeigen ↓</button>
+          </div>
+        </article>`;
+      }).join('');
+    } catch { /* nächster Versuch beim Intervall */ }
+  }
+
+  document.addEventListener('click', async (e) => {
+    const sel = e.target.closest('[data-select-server]');
+    if (sel && window.PalServers) {
+      window.PalServers.select(sel.dataset.selectServer);
+      const status = document.getElementById('status');
+      if (status) status.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    const addr = e.target.closest('.server-card__addr[data-copy]');
+    if (addr) {
+      try {
+        await navigator.clipboard.writeText(addr.dataset.copy);
+        flashCopied(addr, 'Kopiert ✓');
+      } catch { /* Clipboard nicht verfügbar */ }
+    }
+  });
+
+  // Start: erst die Server-Liste laden, dann Status anzeigen – so gilt die
+  // gemerkte/verlinkte Server-Auswahl schon beim allerersten Abruf
+  const startStatus = () => {
+    refreshStatus();
+    setInterval(refreshStatus, REFRESH_INTERVAL);
+  };
+  if (window.PalServers) {
+    window.PalServers.ready.then(() => {
+      window.PalServers.onChange(() => refreshStatus());
+      if (window.PalServers.multi()) {
+        refreshServerCards();
+        setInterval(refreshServerCards, REFRESH_INTERVAL);
+      }
+      startStatus();
+    });
+  } else {
+    startStatus();
+  }
 
   // -------------------------------------------------------------
   // Adresse kopieren
