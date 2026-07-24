@@ -170,7 +170,14 @@ function readTextSmart(file) {
     ? buf.subarray(3)
     : buf;
   const utf8 = body.toString('utf8');
-  if (!utf8.includes('�')) return { text: utf8, encoding: 'utf8' };
+  // Gültiges UTF-8 lässt sich verlustfrei zurück-kodieren. Diese Prüfung ist
+  // sicherer als „enthält Ersatzzeichen?": Eine sonst gültige UTF-8-Datei, die
+  // ein echtes U+FFFD-Zeichen enthält (z. B. weil kaputter Text von der Seite
+  // zurückkopiert wurde), bliebe sonst fälschlich Windows-1252 und ALLE Umlaute
+  // würden zerstört.
+  if (Buffer.compare(Buffer.from(utf8, 'utf8'), body) === 0) {
+    return { text: utf8, encoding: 'utf8' };
+  }
   try {
     return { text: new TextDecoder('windows-1252').decode(body), encoding: 'windows-1252' };
   } catch {
@@ -908,7 +915,8 @@ function saveBans() {
 const bannerFile = path.join(__dirname, 'data/banner.json');
 let bannerOverride = null; // null = kein Override, config.json gilt
 try {
-  const raw = JSON.parse(fs.readFileSync(bannerFile, 'utf8'));
+  // readTextSmart, falls die Datei von Hand (evtl. Windows-1252) editiert wurde
+  const raw = JSON.parse(readTextSmart(bannerFile).text);
   if (raw && typeof raw === 'object' && 'enabled' in raw) bannerOverride = raw;
 } catch { /* kein Override gesetzt */ }
 
