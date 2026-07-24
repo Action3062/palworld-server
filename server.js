@@ -127,7 +127,7 @@ const DEFAULTS = {
       mode: 'announce',
       rcon: { host: '127.0.0.1', port: 25575, password: '' },
       commands: [],
-      announce: '{name} hat fuer den Server gevotet - danke!'
+      announce: '{name} hat für den Server gevotet – danke!'
     },
     // Belohnung nur, wenn der Spieler gerade online ist
     requireOnline: true,
@@ -1270,7 +1270,8 @@ const server = http.createServer(async (req, res) => {
       let wait = Math.round(Number(body.waitSeconds));
       if (!Number.isFinite(wait)) wait = 60;
       wait = Math.min(600, Math.max(10, wait));
-      // In-Game-Ansagen bewusst ohne Umlaute (Anzeige-Sicherheit)
+      // Umlaute sind in In-Game-Ansagen okay (UTF-8 über die REST-API; die
+      // Erfolgs-Ansagen laufen seit jeher mit ü/ö ohne Probleme)
       const message = String(body.message || '').trim().slice(0, 150) ||
         `Server-Neustart in ${wait} Sekunden! Bitte Fortschritt sichern.`;
       const srv = serverFromId(body.server);
