@@ -150,12 +150,46 @@ function deepMerge(base, override) {
   return out;
 }
 
+// Liest eine Textdatei als UTF-8. Wurde sie versehentlich als Windows-1252/
+// Latin-1 gespeichert (typisch für manche Windows-Editoren), enthält der
+// UTF-8-Decode Ersatzzeichen (U+FFFD) – dann werden die Rohbytes stattdessen
+// als Windows-1252 dekodiert, sodass Umlaute (ä ö ü ß, auch – „ " €) korrekt
+// ankommen. Eine UTF-8-BOM am Dateianfang wird entfernt (sonst scheitert
+// JSON.parse daran).
+function readTextSmart(file) {
+  const buf = fs.readFileSync(file);
+  // UTF-16 (Windows-Notepad speichert als „Unicode" = UTF-16 LE mit BOM)
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+    return { text: buf.subarray(2).toString('utf16le'), encoding: 'utf-16le' };
+  }
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    return { text: new TextDecoder('utf-16be').decode(buf.subarray(2)), encoding: 'utf-16be' };
+  }
+  // UTF-8-BOM entfernen (sonst scheitert JSON.parse daran)
+  const body = (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF)
+    ? buf.subarray(3)
+    : buf;
+  const utf8 = body.toString('utf8');
+  if (!utf8.includes('�')) return { text: utf8, encoding: 'utf8' };
+  try {
+    return { text: new TextDecoder('windows-1252').decode(body), encoding: 'windows-1252' };
+  } catch {
+    return { text: body.toString('latin1'), encoding: 'latin1' };
+  }
+}
+
 function loadConfig() {
   const cfg = { ...DEFAULTS };
   const file = path.join(__dirname, 'config.json');
   if (fs.existsSync(file)) {
     try {
-      const loaded = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const { text, encoding } = readTextSmart(file);
+      if (encoding !== 'utf8') {
+        console.warn(`[config] Achtung: config.json ist als ${encoding} gespeichert, ` +
+          'nicht als UTF-8. Umlaute wurden automatisch umgewandelt – bitte die ' +
+          'Datei bei Gelegenheit als UTF-8 speichern.');
+      }
+      const loaded = JSON.parse(text);
       Object.assign(cfg, loaded);
       cfg.votes = deepMerge(DEFAULTS.votes, loaded.votes);
       cfg.achievements = deepMerge(DEFAULTS.achievements, loaded.achievements);
