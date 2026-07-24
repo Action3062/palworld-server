@@ -54,10 +54,6 @@
   }
 
   function renderOnline(data) {
-    el.statusDot.classList.add('is-online');
-    el.statusDot.classList.remove('is-offline');
-    el.statusText.textContent = `Server online · ${data.players.current}/${data.players.max} Spieler`;
-
     el.status.textContent = 'Online';
     el.status.classList.add('is-online');
     el.status.classList.remove('is-offline');
@@ -98,10 +94,6 @@
   }
 
   function renderOffline() {
-    el.statusDot.classList.add('is-offline');
-    el.statusDot.classList.remove('is-online');
-    el.statusText.textContent = 'Server offline';
-
     el.status.textContent = 'Offline';
     el.status.classList.add('is-offline');
     el.status.classList.remove('is-online');
@@ -146,16 +138,40 @@
     return d.innerHTML;
   }
 
-  async function refreshServerCards() {
-    const section = document.getElementById('unsere-server');
-    const grid = document.getElementById('serverCards');
-    if (!section || !grid || !window.PalServers || !window.PalServers.multi()) return;
+  // Kopf-Pille oben + (im Mehrserver-Betrieb) die Server-Karten – beide
+  // speisen sich aus /api/servers, also nur EIN Abruf.
+  async function refreshHeader() {
+    let servers = null;
     try {
       const res = await fetch('/api/servers', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      section.hidden = false;
-      grid.innerHTML = (data.servers || []).map((s) => {
+      if (res.ok) servers = (await res.json()).servers || [];
+    } catch { /* Pille/Karten behalten letzten Stand */ }
+    if (!servers) return;
+
+    // Kopf-Pille: online, sobald mind. ein Server läuft; Zahl = Summe aller
+    // Online-Spieler über alle Server
+    const anyOnline = servers.some((s) => s.online);
+    let total = 0;
+    for (const s of servers) {
+      if (s.online && s.players && Number.isFinite(s.players.current)) {
+        total += s.players.current;
+      }
+    }
+    el.statusDot.classList.toggle('is-online', anyOnline);
+    el.statusDot.classList.toggle('is-offline', !anyOnline);
+    el.statusText.textContent = anyOnline
+      ? `Server online · ${total} Spieler`
+      : 'Server offline';
+
+    if (window.PalServers && window.PalServers.multi()) renderServerCards(servers);
+  }
+
+  function renderServerCards(servers) {
+    const section = document.getElementById('unsere-server');
+    const grid = document.getElementById('serverCards');
+    if (!section || !grid) return;
+    section.hidden = false;
+    grid.innerHTML = servers.map((s) => {
         const cur = s.players ? s.players.current : null;
         const max = s.players ? s.players.max : null;
         const pct = cur != null && max ? Math.min(100, Math.round((cur / max) * 100)) : 0;
@@ -180,8 +196,7 @@
             <button type="button" class="btn btn--small" data-select-server="${escHtml(s.id)}">Anzeigen ↓</button>
           </div>
         </article>`;
-      }).join('');
-    } catch { /* nächster Versuch beim Intervall */ }
+    }).join('');
   }
 
   document.addEventListener('click', async (e) => {
@@ -202,18 +217,18 @@
   });
 
   // Start: erst die Server-Liste laden, dann Status anzeigen – so gilt die
-  // gemerkte/verlinkte Server-Auswahl schon beim allerersten Abruf
+  // gemerkte/verlinkte Server-Auswahl schon beim allerersten Abruf.
+  // refreshHeader() versorgt die Kopf-Pille (Summe aller Server) und läuft in
+  // beiden Betriebsarten; refreshStatus() füllt die Status-Kachel des gewählten
+  // Servers.
   const startStatus = () => {
+    refreshHeader();
     refreshStatus();
-    setInterval(refreshStatus, REFRESH_INTERVAL);
+    setInterval(() => { refreshHeader(); refreshStatus(); }, REFRESH_INTERVAL);
   };
   if (window.PalServers) {
     window.PalServers.ready.then(() => {
       window.PalServers.onChange(() => refreshStatus());
-      if (window.PalServers.multi()) {
-        refreshServerCards();
-        setInterval(refreshServerCards, REFRESH_INTERVAL);
-      }
       startStatus();
     });
   } else {
