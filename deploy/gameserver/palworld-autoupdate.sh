@@ -12,9 +12,11 @@
 #   --if-empty         Nur handeln, wenn 0 Spieler online sind (sonst exit 0)
 #   --once-daily       Hoechstens EIN erfolgreicher Neustart pro Tag: wurde
 #                      heute schon (durch Update oder Force-Restart) neu
-#                      gestartet, beendet sich der Lauf still. Damit lassen
-#                      sich mehrere naechtliche Versuche planen, ohne dass
-#                      der Server mehrfach neu startet.
+#                      gestartet, beendet sich der Lauf still.
+#   --min-gap H        Neustart nur, wenn der letzte erfolgreiche Neustart
+#                      laenger als H Stunden her ist (fuer mehrere geplante
+#                      Neustarts pro Tag; verhindert z. B., dass kurz nach
+#                      einem Update-Neustart gleich wieder neu gestartet wird)
 #   --reason "Text"    Eigener Grund fuer die Ingame-Ankuendigung
 #
 # Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
@@ -23,12 +25,13 @@
 # Cron-Beispiele:
 #   */30 * * * * /root/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
 #
-#   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern, einmal/Tag):
-#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --once-daily --reason "Taeglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern):
+#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Taeglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
-#   Alternative: mehrere sanfte Versuche nur bei leerem Server:
-#   5 3 * * *    /root/palworld/palworld-autoupdate.sh --force-restart --if-empty --once-daily >> /var/log/palworld-update.log 2>&1
-#   5 4 * * *    /root/palworld/palworld-autoupdate.sh --force-restart --if-empty --once-daily >> /var/log/palworld-update.log 2>&1
+#   Mehrere Neustarts pro Tag (Zeiten an die Spielerlast anpassen);
+#   --min-gap 4 sorgt dafuer, dass nach Update-/anderen Neustarts
+#   mindestens 4 h Ruhe ist, bevor der naechste geplante greift:
+#   55 10 * * *  /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -64,19 +67,22 @@ SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"
 MODE="update"
 IF_EMPTY=false
 ONCE_DAILY=false
+MIN_GAP_HOURS=0
 REASON=""
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --force-restart) MODE="restart" ;;
     --if-empty)      IF_EMPTY=true ;;
     --once-daily)    ONCE_DAILY=true ;;
+    --min-gap)       MIN_GAP_HOURS="${2:-0}"; shift ;;
     --reason)        REASON="${2:-}"; shift ;;
     -h|--help)       usage; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; usage; exit 2 ;;
   esac
   shift
 done
+[[ "$MIN_GAP_HOURS" =~ ^[0-9]+$ ]] || { echo "Ungueltiger Wert fuer --min-gap: ${MIN_GAP_HOURS}" >&2; exit 2; }
 
 log() { echo "[$(date '+%F %T')] $*"; }
 dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
@@ -91,10 +97,20 @@ notify_discord() {
 exec 9>"$LOCKFILE"
 flock -n 9 || { log "Skript laeuft bereits, Abbruch."; exit 0; }
 
-# --- --once-daily: heute schon neu gestartet? -------------------------------------
-if [ "$MODE" = "restart" ] && [ "$ONCE_DAILY" = "true" ]; then
-  if [ "$(cat "$RESTART_MARKER" 2>/dev/null || true)" = "$(date +%F)" ]; then
+# --- Marker des letzten Neustarts pruefen (--once-daily / --min-gap) --------------
+# Der Marker enthaelt die Unix-Zeit des letzten erfolgreichen Neustarts.
+# (Aeltere Marker im Datumsformat werden ignoriert = zaehlen als "kein Marker".)
+if [ "$MODE" = "restart" ]; then
+  LAST_RESTART=$(cat "$RESTART_MARKER" 2>/dev/null || true)
+  [[ "$LAST_RESTART" =~ ^[0-9]{9,}$ ]] || LAST_RESTART=0
+  if [ "$ONCE_DAILY" = "true" ] && [ "$LAST_RESTART" -gt 0 ] && \
+     [ "$(date -d "@${LAST_RESTART}" +%F)" = "$(date +%F)" ]; then
     log "Heute wurde bereits neu gestartet, ueberspringe (--once-daily)."
+    exit 0
+  fi
+  if [ "$MIN_GAP_HOURS" -gt 0 ] && [ "$LAST_RESTART" -gt 0 ] && \
+     [ $(( $(date +%s) - LAST_RESTART )) -lt $(( MIN_GAP_HOURS * 3600 )) ]; then
+    log "Letzter Neustart ist weniger als ${MIN_GAP_HOURS} h her, ueberspringe (--min-gap)."
     exit 0
   fi
 fi
@@ -275,9 +291,9 @@ fi
 log "Starte Container mit ${IMAGE_REPO}:${TARGET_TAG} ..."
 dc up -d "$SERVICE"
 
-# Erfolgreichen Neustart fuer --once-daily vermerken (gilt auch fuer Updates:
-# ein Update-Neustart ersetzt den geplanten Neustart derselben Nacht)
-date +%F > "$RESTART_MARKER" 2>/dev/null || true
+# Erfolgreichen Neustart vermerken (fuer --once-daily / --min-gap; gilt auch
+# fuer Updates: ein Update-Neustart ersetzt den naechsten geplanten Neustart)
+date +%s > "$RESTART_MARKER" 2>/dev/null || true
 
 sleep 10
 NEW_CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
