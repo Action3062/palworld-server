@@ -87,10 +87,16 @@ done
 log() { echo "[$(date '+%F %T')] $*"; }
 dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
 
+# Discord-Benachrichtigung als farbiges Embed.
+#   notify_discord <Titel (mit Emoji)> <Text> [Farbe]
+DC_GREEN=3066993; DC_BLUE=3447003; DC_ORANGE=15105570; DC_RED=15158332
 notify_discord() {
   [ -n "$DISCORD_WEBHOOK" ] || return 0
+  local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
   curl -fsS -m 10 -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg c "$1" '{content:$c}')" "$DISCORD_WEBHOOK" >/dev/null || true
+    -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
+      '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
+    "$DISCORD_WEBHOOK" >/dev/null || true
 }
 
 # --- Doppelstart verhindern (Watchdog prueft dieses Lock ebenfalls) --------------
@@ -245,7 +251,7 @@ else
     log "FEHLER: REST-API nicht erreichbar (${API})."
     log "RESTAPIEnabled=True, RESTAPIPort=${REST_PORT} und AdminPassword in PalWorldSettings.ini setzen,"
     log "oder ALLOW_RESTART_WITHOUT_API=true konfigurieren."
-    notify_discord "Palworld: Aktion (${MODE}) angefordert, aber REST-API nicht erreichbar. Bitte manuell pruefen."
+    notify_discord "🔴 Aktion fehlgeschlagen" "Aktion \`${MODE}\` angefordert, aber die REST-API antwortet nicht. Bitte manuell prüfen." "$DC_RED"
     exit 1
   fi
 fi
@@ -300,7 +306,7 @@ NEW_CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
 RUNNING_IMAGE=$([ -n "$NEW_CID" ] && docker inspect -f '{{.Config.Image}}' "$NEW_CID" || echo "unbekannt")
 log "Fertig. Laufendes Image: ${RUNNING_IMAGE}"
 if [ "$MODE" = "update" ]; then
-  notify_discord "Palworld-Server aktualisiert: ${CURRENT_TAG} -> ${TARGET_TAG}"
+  notify_discord "⬆️ Update installiert" "Palworld \`${CURRENT_TAG}\` → \`${TARGET_TAG}\`" "$DC_BLUE"
 else
-  notify_discord "Palworld-Server neu gestartet (geplanter Neustart, ${CURRENT_TAG})."
+  notify_discord "🔄 Server neu gestartet" "**${ANNOUNCE_REASON}** · ${PLAYERS} Spieler waren online · Version \`${CURRENT_TAG}\`" "$DC_GREEN"
 fi

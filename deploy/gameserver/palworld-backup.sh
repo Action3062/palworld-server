@@ -54,17 +54,23 @@ BACKUP_LOCK="/var/lock/palworld-backup.lock"
 log() { echo "[$(date '+%F %T')] $*"; }
 dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
 
+# Discord-Benachrichtigung als farbiges Embed.
+#   notify_discord <Titel (mit Emoji)> <Text> [Farbe]
+DC_GREEN=3066993; DC_BLUE=3447003; DC_ORANGE=15105570; DC_RED=15158332
 notify_discord() {
   [ -n "$DISCORD_WEBHOOK" ] || return 0
+  local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
   curl -fsS -m 10 -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg c "$1" '{content:$c}')" "$DISCORD_WEBHOOK" >/dev/null || true
+    -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
+      '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
+    "$DISCORD_WEBHOOK" >/dev/null || true
 }
 
 STAGING=""
 cleanup() { if [ -n "$STAGING" ]; then rm -rf "$STAGING"; fi; }
 on_error() {
   log "FEHLER: Live-Backup fehlgeschlagen."
-  notify_discord "Palworld: Live-Backup fehlgeschlagen - bitte /var/log/palworld-backup.log pruefen."
+  notify_discord "🔴 Live-Backup fehlgeschlagen" "Bitte ins Log schauen: \`/var/log/palworld-backup.log\`" "$DC_RED"
 }
 trap cleanup EXIT
 trap on_error ERR
