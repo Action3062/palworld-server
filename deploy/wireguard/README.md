@@ -151,6 +151,12 @@ In `/opt/palworld-web/config.json` zeigt jeder Server auf seine Tunnel-IP:
 
 Danach `systemctl restart palworld-web`.
 
+## Gameserver zu Hause?
+
+Steht ein Gameserver im Heimnetz ohne Portfreigabe, übernimmt ein kleiner
+V-Server die öffentliche Adresse und reicht den Spieler-Traffic durch einen
+zweiten Tunnel weiter → [`front-server.md`](front-server.md).
+
 > Das interaktive Skript `setup-wg.sh` in diesem Ordner stammt aus dem
 > früheren Aufbau (Web-Server wählt sich beim Gameserver ein) und passt
 > nicht mehr zur obigen Topologie. Für den Hub-Aufbau die Configs oben
