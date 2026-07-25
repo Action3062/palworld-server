@@ -251,7 +251,14 @@ def upload(url: str, secret: str, bases: list, server: str = "") -> None:
         url,
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Upload-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Upload-Secret": secret,
+            # Eigener User-Agent: Der Python-Standard ("Python-urllib/…") wird von
+            # Schutzdiensten wie Cloudflare gern als Bot geblockt (HTTP 403).
+            "User-Agent": "PalHeim-BaseUploader/1.0 (+https://palheim.de)",
+            "Accept": "application/json",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as res:
@@ -259,19 +266,46 @@ def upload(url: str, secret: str, bases: list, server: str = "") -> None:
     except urllib.error.HTTPError as err:
         # Klartext statt Traceback – die Webseite schickt einen Grund mit
         detail = ""
+        raw = b""
         try:
-            payload = json.loads(err.read().decode("utf-8", "replace"))
+            raw = err.read()
+            payload = json.loads(raw.decode("utf-8", "replace"))
             detail = str(payload.get("message") or "")
         except Exception:  # noqa: BLE001 – Body ist optional
             pass
 
+        # Wer hat geantwortet? Ein Fehler OHNE JSON-Grund kommt nicht von der
+        # Webseite selbst, sondern von einem Dienst davor (nginx, Cloudflare …).
+        headers = getattr(err, "headers", None)
+        via = ""
+        if headers is not None:
+            server_hdr = headers.get("Server") or ""
+            cf_ray = headers.get("CF-Ray") or headers.get("cf-ray") or ""
+            if cf_ray:
+                via = f"Cloudflare (CF-Ray {cf_ray})"
+            elif server_hdr:
+                via = server_hdr
+        if not detail:
+            print(f"\n[Hinweis] Die Antwort enthielt keinen Grund der Webseite"
+                  f"{' – sie kam von: ' + via if via else ''}.")
+            print("          Die Webseite selbst schickt bei Fehlern immer eine "
+                  "Klartext-Meldung mit.")
+            print("          Es blockiert also vermutlich ein Dienst DAVOR "
+                  "(Reverse-Proxy/Schutzdienst).")
+
         hints = {
-            403: ("Das Upload-Secret wurde abgelehnt.\n"
-                  "  1. Stimmt --secret exakt mit map.uploadSecret in der config.json überein?\n"
-                  "     (Secret in der Shell in EINFACHE Anführungszeichen setzen, damit\n"
-                  "      Zeichen wie $ ! ` nicht von der Shell verändert werden.)\n"
-                  "  2. Secret gerade geändert? Dann auf dem Web-Server:\n"
-                  "     systemctl restart palworld-web   (config.json wird nur beim Start gelesen)"),
+            403: ("Zugriff verweigert.\n"
+                  "  Kam die Meldung von der Webseite (Zeile 'Server meldet' oben)?\n"
+                  "  -> Dann stimmt das Upload-Secret nicht:\n"
+                  "     1. --secret exakt gegen map.uploadSecret in der config.json prüfen\n"
+                  "        (Secret in EINFACHE Anführungszeichen setzen, damit die Shell\n"
+                  "         Zeichen wie $ ! ` nicht verändert).\n"
+                  "     2. Secret gerade geändert? systemctl restart palworld-web\n"
+                  "        (die config.json wird nur beim Start gelesen).\n"
+                  "  Kam KEIN Grund von der Webseite?\n"
+                  "  -> Dann blockt ein Dienst davor (Cloudflare/WAF/nginx). Lösung:\n"
+                  "     die Webseite direkt über den WireGuard-Tunnel ansprechen, z. B.\n"
+                  "     --url 'http://10.88.0.1/api/map/bases'"),
             404: ("Der Upload-Endpunkt hat die Anfrage abgelehnt.\n"
                   "  Mögliche Gründe: Live-Karte deaktiviert (map.enabled), kein uploadSecret\n"
                   "  gesetzt, unbekannte --server-ID – oder die URL zeigt nicht auf\n"
