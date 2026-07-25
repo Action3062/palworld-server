@@ -192,10 +192,10 @@ aus den klassischen Feldern, bestehende Daten bleiben erhalten):
     "shortName": "Classic",
     "mode": "PvE · Vanilla-nah",
     "description": "Die Herausforderung: gleiche Community, knappere Raten.",
-    "facts": ["1× EP", "1× Fangrate", "Volle Härte"],
+    "facts": ["3× EP", "3× Drop-Rate"],
     "color": "#2e7d35",
     "colorDeep": "#1d5423",
-    "address": "classic.palheim.de:8211",
+    "address": "pvee.palheim.de:8211",
     "palworldApiUrl": "http://10.88.0.3:8212",
     "palworldAdminPassword": "ADMINPASSWORT-VOM-ZWEITEN-SERVER",
     "uploadSecret": "EIGENES-UPLOAD-SECRET-FUER-SERVER-2"
