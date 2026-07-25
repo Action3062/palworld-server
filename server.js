@@ -1087,8 +1087,11 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Basen-Upload für die Live-Karte (POST) ----
   if (req.method === 'POST' && pathname === '/api/map/bases') {
+    // Fehlerantworten mit Klartext-Grund – sonst ist ein fehlgeschlagener
+    // Cronjob-Upload aus der Ferne kaum zu diagnostizieren. Das Secret selbst
+    // wird dabei natürlich nie zurückgegeben.
     if (!config.map.enabled) {
-      res.writeHead(404).end();
+      sendJson(res, 404, { ok: false, message: 'Live-Karte ist deaktiviert (map.enabled = false).' });
       return;
     }
     const secret = searchParams.get('secret') || req.headers['x-upload-secret'] || '';
@@ -1098,12 +1101,31 @@ const server = http.createServer(async (req, res) => {
     const srv = requested
       ? SERVERS.find((s) => s.id === requested)
       : SERVERS.find((s) => s.uploadSecret && s.uploadSecret === secret);
-    if (!srv || !srv.uploadSecret) {
-      res.writeHead(404).end();
+    if (!srv) {
+      sendJson(res, 404, {
+        ok: false,
+        message: requested
+          ? `Unbekannte Server-ID „${requested.slice(0, 24)}". Bekannt: ${SERVERS.map((s) => s.id).join(', ')}.`
+          : 'Kein Server mit diesem Upload-Secret gefunden – Secret prüfen ' +
+            '(oder Ziel-Server per ?server=<id> angeben).'
+      });
+      return;
+    }
+    if (!srv.uploadSecret) {
+      sendJson(res, 404, {
+        ok: false,
+        message: `Für Server „${srv.id}" ist kein uploadSecret in der config.json gesetzt.`
+      });
       return;
     }
     if (secret !== srv.uploadSecret) {
-      res.writeHead(403).end();
+      sendJson(res, 403, {
+        ok: false,
+        message: 'Upload-Secret stimmt nicht. Prüfe den --secret-Wert gegen ' +
+          'map.uploadSecret in der config.json – und starte den Web-Dienst neu, ' +
+          'falls du das Secret gerade geändert hast (die config.json wird nur ' +
+          'beim Start gelesen).'
+      });
       return;
     }
     try {

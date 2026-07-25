@@ -38,6 +38,7 @@ import glob
 import io
 import json
 import sys
+import urllib.error
 import urllib.request
 
 try:
@@ -252,8 +253,44 @@ def upload(url: str, secret: str, bases: list, server: str = "") -> None:
         method="POST",
         headers={"Content-Type": "application/json", "X-Upload-Secret": secret},
     )
-    with urllib.request.urlopen(req, timeout=30) as res:
-        print(f"Upload: HTTP {res.status} – {res.read().decode()}")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            print(f"Upload: HTTP {res.status} – {res.read().decode()}")
+    except urllib.error.HTTPError as err:
+        # Klartext statt Traceback – die Webseite schickt einen Grund mit
+        detail = ""
+        try:
+            payload = json.loads(err.read().decode("utf-8", "replace"))
+            detail = str(payload.get("message") or "")
+        except Exception:  # noqa: BLE001 – Body ist optional
+            pass
+
+        hints = {
+            403: ("Das Upload-Secret wurde abgelehnt.\n"
+                  "  1. Stimmt --secret exakt mit map.uploadSecret in der config.json überein?\n"
+                  "     (Secret in der Shell in EINFACHE Anführungszeichen setzen, damit\n"
+                  "      Zeichen wie $ ! ` nicht von der Shell verändert werden.)\n"
+                  "  2. Secret gerade geändert? Dann auf dem Web-Server:\n"
+                  "     systemctl restart palworld-web   (config.json wird nur beim Start gelesen)"),
+            404: ("Der Upload-Endpunkt hat die Anfrage abgelehnt.\n"
+                  "  Mögliche Gründe: Live-Karte deaktiviert (map.enabled), kein uploadSecret\n"
+                  "  gesetzt, unbekannte --server-ID – oder die URL zeigt nicht auf\n"
+                  "  /api/map/bases (bzw. auf die falsche Seite)."),
+            413: "Der Upload war zu groß – bitte melden, dann wird das Limit angehoben.",
+        }
+        print(f"\nFEHLER: Upload fehlgeschlagen (HTTP {err.code}).")
+        if detail:
+            print(f"  Server meldet: {detail}")
+        hint = hints.get(err.code)
+        if hint:
+            print(f"  {hint}")
+        print(f"  Ziel-URL war: {url}")
+        sys.exit(1)
+    except urllib.error.URLError as err:
+        print(f"\nFEHLER: Webseite nicht erreichbar ({err.reason}).")
+        print(f"  Ziel-URL war: {url}")
+        print("  Läuft der Web-Dienst, und ist die URL von diesem Server aus erreichbar?")
+        sys.exit(1)
 
 
 def main() -> None:
