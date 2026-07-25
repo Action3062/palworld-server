@@ -143,7 +143,8 @@ fi
 echo
 echo "REST-API des neuen Servers testen:"
 if command -v curl >/dev/null; then
-  CODE=$(curl -sS -o /dev/null -m 5 -w '%{http_code}' "http://${PEER_IP}:${API_PORT}/v1/api/info" 2>/dev/null || echo "000")
+  CODE=$(curl -sS -o /dev/null -m 5 -w '%{http_code}' "http://${PEER_IP}:${API_PORT}/v1/api/info" 2>/dev/null)
+  CODE="${CODE:-000}"
   case "$CODE" in
     401) c_green "  Port ${API_PORT} erreichbar (401 = API antwortet, Passwort nötig – genau richtig)." ;;
     200) c_green "  Port ${API_PORT} erreichbar und offen." ;;
