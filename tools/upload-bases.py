@@ -37,6 +37,7 @@ import contextlib
 import glob
 import io
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -148,11 +149,15 @@ patch_guild_name_fallback()
 
 
 def find_sav(pattern: str) -> str:
-    matches = sorted(glob.glob(pattern))
+    matches = glob.glob(os.path.expanduser(pattern))
     if not matches:
         sys.exit(f"Keine Level.sav unter '{pattern}' gefunden.")
+    # Bei mehreren Welt-Ordnern den ZULETZT GESPEICHERTEN nehmen – der
+    # alphabetisch erste wäre oft ein alter, verwaister Spielstand.
+    matches.sort(key=os.path.getmtime, reverse=True)
     if len(matches) > 1:
-        print(f"Hinweis: {len(matches)} Treffer, nehme {matches[0]}")
+        print(f"Hinweis: {len(matches)} Spielstände gefunden, "
+              f"nehme den zuletzt gespeicherten: {matches[0]}")
     return matches[0]
 
 

@@ -500,11 +500,15 @@ patch_decode_bytes()
 
 # --- Spielstand laden ----------------------------------------------------
 def find_sav(pattern):
-    matches = sorted(glob.glob(os.path.expanduser(pattern)))
+    matches = glob.glob(os.path.expanduser(pattern))
     if not matches:
         sys.exit(f"Keine Level.sav unter '{pattern}' gefunden.")
+    # Bei mehreren Welt-Ordnern den ZULETZT GESPEICHERTEN nehmen – der
+    # alphabetisch erste wäre oft ein alter, verwaister Spielstand.
+    matches.sort(key=os.path.getmtime, reverse=True)
     if len(matches) > 1:
-        print(f"Hinweis: {len(matches)} Treffer, nehme {matches[0]}")
+        print(f"Hinweis: {len(matches)} Spielstände gefunden, "
+              f"nehme den zuletzt gespeicherten: {matches[0]}")
     return matches[0]
 
 
