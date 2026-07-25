@@ -130,8 +130,40 @@ if [ "$ROLE" = "game" ]; then
   fi
   if [ "$FW_CHECKED" = false ]; then
     if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | grep -q 'chain input'; then
-      c_yellow "  nftables ist im Einsatz – bitte prüfen, ob TCP ${API_PORT} auf ${WG_IF} erlaubt ist:"
-      c_yellow "    nft list ruleset | head -40"
+      FW_CHECKED=true
+      NFT_RULES=$(nft list ruleset 2>/dev/null)
+      # Wird der API-Port überhaupt gesperrt?
+      if echo "$NFT_RULES" | grep -qE "tcp dport ${API_PORT} (drop|reject)"; then
+        # Ist das Tunnel-Interface freigegeben? (Klassiker: hier steht noch der
+        # Name eines anderen Interfaces, z. B. wg0 statt wg-palweb)
+        if echo "$NFT_RULES" | grep -E 'iifname' | grep -q "\"${WG_IF}\""; then
+          ok "nftables sperrt Port ${API_PORT}, gibt ${WG_IF} aber frei."
+        else
+          fail "nftables sperrt TCP ${API_PORT} – und ${WG_IF} ist NICHT freigegeben."
+          ACCEPTED=$(echo "$NFT_RULES" | grep -E 'iifname.*accept' | head -3 | sed 's/^[[:space:]]*/    /')
+          if [ -n "$ACCEPTED" ]; then
+            info "Freigegeben sind aktuell nur:"
+            echo "$ACCEPTED"
+            info "Steht dort ein anderer Interface-Name (z. B. \"wg0\"), muss er auf"
+            info "\"${WG_IF}\" geändert werden – sonst greift die Freigabe nie."
+          fi
+          info "Korrigierte Regel setzen:"
+          info "    nft delete table inet palworld"
+          info "    nft -f /etc/nftables.conf     (nach dem Anpassen der Datei)"
+        fi
+      else
+        ok "nftables sperrt Port ${API_PORT} nicht."
+      fi
+      # Spielport: bei nativen Servern greift die INPUT-Kette wirklich –
+      # anders als bei Docker, wo veröffentlichte Ports daran vorbeilaufen.
+      if [ "$IN_DOCKER" = false ] && echo "$NFT_RULES" | grep -qE "udp dport 8211 (drop|reject)"; then
+        if ! echo "$NFT_RULES" | grep -E 'iifname' | grep -q '"eth0"\|"ens'; then
+          c_red "  ACHTUNG: nftables verwirft UDP 8211 – das ist der SPIELPORT."
+          c_red "  Auf einem nativ installierten Server können sich damit keine Spieler"
+          c_red "  verbinden. (Bei Docker lief diese Regel ins Leere, deshalb fällt es"
+          c_red "  erst jetzt auf.) Regel entfernen, wenn der Server öffentlich sein soll."
+        fi
+      fi
     elif command -v iptables >/dev/null 2>&1 &&
          [ "$(iptables -L INPUT -n 2>/dev/null | grep -c '^\(ACCEPT\|DROP\|REJECT\)')" -gt 0 ]; then
       c_yellow "  iptables-Regeln vorhanden – bitte prüfen, ob TCP ${API_PORT} auf ${WG_IF} erlaubt ist:"
