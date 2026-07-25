@@ -71,10 +71,18 @@ if [ "$ROLE" = "game" ]; then
     *) c_yellow "  REST-API antwortet mit HTTP ${CODE} – ungewöhnlich, aber sie läuft." ;;
   esac
 
+  # Läuft der Server im Container oder direkt auf dem System? Die Ursachen bei
+  # einem nicht erreichbaren Port sind völlig unterschiedlich.
+  IN_DOCKER=false
+  if command -v docker >/dev/null 2>&1 &&
+     docker ps --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi 'pal'; then
+    IN_DOCKER=true
+  fi
+
   step "2/3 – Ist der Port auf der Tunnel-IP erreichbar?"
   if tcp_open "$MY_WG_IP" "$API_PORT"; then
     ok "${MY_WG_IP}:${API_PORT} nimmt Verbindungen an."
-  else
+  elif [ "$IN_DOCKER" = true ]; then
     fail "${MY_WG_IP}:${API_PORT} ist NICHT erreichbar – der Container veröffentlicht den Port nicht."
     info "In der docker-compose.yml eintragen und den Container NEU ERSTELLEN:"
     info "   ports:"
@@ -83,19 +91,39 @@ if [ "$ROLE" = "game" ]; then
     info "(Nachträglich lassen sich Ports an einem laufenden Container nicht öffnen.)"
     info "Wichtig: Das Tunnel-Interface muss VOR dem Container starten, sonst"
     info "kann Docker die Adresse ${MY_WG_IP} nicht binden."
+  else
+    fail "${MY_WG_IP}:${API_PORT} ist nicht erreichbar (Server läuft direkt auf dem System)."
+    info "Ohne Container hängt das allein an der REST-API selbst:"
+    info "  • Ist sie aktiv? (Schritt 1 oben)"
+    info "  • Worauf lauscht der Prozess wirklich?"
+    info "      ss -tlnp | grep -i palserver"
+    info "    Steht dort NUR der RCON-Port, fehlt RESTAPIEnabled=True."
+    info "  • Blockt eine lokale Firewall den Tunnel?"
+    info "      ufw allow in on ${WG_IF} to any port ${API_PORT} proto tcp"
   fi
-  echo "  Aktuell veröffentlichte Ports:"
-  if command -v docker >/dev/null 2>&1; then
+
+  if [ "$IN_DOCKER" = true ]; then
+    echo "  Aktuell veröffentlichte Container-Ports:"
     docker ps --format '    {{.Names}}: {{.Ports}}' 2>/dev/null | head -5 || true
+  else
+    echo "  Offene TCP-Ports des Palworld-Prozesses:"
+    ss -tlnp 2>/dev/null | grep -i 'palserver' | awk '{print "    " $4}' | head -5 ||
+      echo "    (keine gefunden – läuft der Server gerade?)"
   fi
 
   step "3/3 – Sicherheit"
-  if ss -tlnp 2>/dev/null | grep -q "0\.0\.0\.0:${API_PORT}\|\*:${API_PORT}"; then
-    c_yellow "  ACHTUNG: Port ${API_PORT} lauscht auf ALLEN Schnittstellen –"
-    c_yellow "  die REST-API wäre damit aus dem Internet erreichbar."
-    c_yellow "  Besser an die Tunnel-IP binden (siehe oben) oder in der Firewall sperren."
+  PUBLIC_PORTS=$(ss -tlnp 2>/dev/null | grep -i 'palserver' |
+    awk '$4 ~ /^(0\.0\.0\.0|\*|\[::\]):/ {split($4, a, ":"); print a[length(a)]}' | sort -u)
+  if [ -n "$PUBLIC_PORTS" ]; then
+    c_yellow "  ACHTUNG: Diese Palworld-Ports lauschen auf ALLEN Schnittstellen:"
+    for p in $PUBLIC_PORTS; do c_yellow "    • ${p}/tcp"; done
+    c_yellow "  REST-API und RCON gehören nicht ins offene Internet – beide schützen"
+    c_yellow "  nur das Admin-Passwort. Empfehlung (ufw oder Hoster-Firewall):"
+    c_yellow "    ufw allow in on ${WG_IF} to any port ${API_PORT} proto tcp"
+    c_yellow "    ufw deny ${API_PORT}/tcp"
+    c_yellow "  Der Spiel-Port (8211/udp) bleibt selbstverständlich offen."
   else
-    ok "REST-API ist nicht öffentlich gebunden."
+    ok "Keine Palworld-Verwaltungsports öffentlich gebunden."
   fi
 
   echo
