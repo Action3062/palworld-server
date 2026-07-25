@@ -145,7 +145,73 @@ Die bestehende Regel `POSTROUTING -o %i -j MASQUERADE` betrifft nur Traffic,
 der *in* den Tunnel geht. Diese hier betrifft Traffic, der *aus* dem Tunnel
 ins Internet weiterläuft.
 
-### Schritt 2a – Palworld läuft in Docker
+### Schritt 2a – Palworld läuft nativ (Standardfall)
+
+Zuerst den Benutzer feststellen, unter dem Palworld läuft:
+
+```bash
+ps -eo user:20,cmd | grep -i palserver | grep -v grep
+```
+
+Läuft er als **`root`**, muss vorher ein eigener Benutzer her – sonst würde die
+Markierung auch die Pakete von WireGuard selbst treffen und eine Routing-
+Schleife bauen. Alternativ nach cgroup statt nach User markieren (siehe unten).
+
+Dann `/etc/wireguard/wg-front.conf` auf dem Gameserver:
+
+```ini
+[Interface]
+Address = 10.20.0.1/24
+PrivateKey = PRIVATER-KEY-GAMESERVER-2
+Table = off
+MTU = 1380
+
+PostUp   = sysctl -q -w net.ipv4.conf.all.src_valid_mark=1
+PostUp   = ip route add default dev %i table 200
+PostUp   = ip rule add fwmark 0x200 lookup 200 priority 110
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 10.0.0.0/8     -j RETURN
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 172.16.0.0/12  -j RETURN
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 192.168.0.0/16 -j RETURN
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -j MARK --set-mark 0x200
+PostUp   = iptables -t nat -A POSTROUTING -o %i -m mark --mark 0x200 -j MASQUERADE
+
+PostDown = iptables -t nat -D POSTROUTING -o %i -m mark --mark 0x200 -j MASQUERADE
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -j MARK --set-mark 0x200
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 192.168.0.0/16 -j RETURN
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 172.16.0.0/12  -j RETURN
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 10.0.0.0/8     -j RETURN
+PostDown = ip rule del fwmark 0x200 lookup 200 priority 110
+PostDown = ip route flush table 200
+
+[Peer]
+PublicKey = PUBLIC-KEY-V-SERVER
+AllowedIPs = 0.0.0.0/0
+Endpoint = V-SERVER-IP:51820
+PersistentKeepalive = 25
+```
+
+`palworld` in allen Zeilen durch den tatsächlichen Benutzernamen ersetzen.
+
+**Die MASQUERADE-Zeile ist nicht optional.** Bei lokal erzeugten Paketen wählt
+der Kernel die Quell-IP schon vor der Markierung aus – nach dem Umrouten
+stünde dort weiterhin die LAN-Adresse (z. B. `192.168.1.50`). Die Pakete kämen
+mit dieser Absenderadresse am V-Server an, wo die Regel
+`POSTROUTING -s 10.20.0.0/24` nicht greift, und würden verworfen. Das
+MASQUERADE setzt den Absender auf `10.20.0.1`, bevor das Paket in den Tunnel
+geht. Die Antworten auf eingehenden Spieler-Traffic sind nicht markiert und
+bleiben unberührt.
+
+Läuft Palworld als `root` und ein eigener Benutzer ist keine Option, statt der
+vier `--uid-owner`-Zeilen nach cgroup markieren (Unit-Name anpassen):
+
+```ini
+PostUp = iptables -t mangle -A OUTPUT -m cgroup --path system.slice/palworld-server.service -d 10.0.0.0/8 -j RETURN
+PostUp = iptables -t mangle -A OUTPUT -m cgroup --path system.slice/palworld-server.service -d 172.16.0.0/12 -j RETURN
+PostUp = iptables -t mangle -A OUTPUT -m cgroup --path system.slice/palworld-server.service -d 192.168.0.0/16 -j RETURN
+PostUp = iptables -t mangle -A OUTPUT -m cgroup --path system.slice/palworld-server.service -j MARK --set-mark 0x200
+```
+
+### Schritt 2b – Palworld läuft in Docker
 
 Der Container braucht ein festes Subnetz. In der `docker-compose.yml`:
 
@@ -192,30 +258,8 @@ Endpoint = V-SERVER-IP:51820
 PersistentKeepalive = 25
 ```
 
-### Schritt 2b – Palworld läuft nativ unter eigenem User
-
-Statt der `ip rule from …`-Zeilen wird nach User markiert:
-
-```ini
-PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 10.0.0.0/8     -j RETURN
-PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 172.16.0.0/12  -j RETURN
-PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 192.168.0.0/16 -j RETURN
-PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -j MARK --set-mark 0x200
-PostUp   = ip rule add fwmark 0x200 lookup 200 priority 110
-
-PostDown = ip rule del fwmark 0x200 lookup 200 priority 110
-PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -j MARK --set-mark 0x200
-PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 192.168.0.0/16 -j RETURN
-PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 172.16.0.0/12  -j RETURN
-PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 10.0.0.0/8     -j RETURN
-```
-
-Der `Table = off`-Eintrag, `MTU`, die `default`-Route in Tabelle 200,
-`src_valid_mark` und `AllowedIPs = 0.0.0.0/0` bleiben wie unter 2a.
-
-Läuft Palworld als `root`, funktioniert `--uid-owner` nicht sinnvoll – dann
-entweder einen eigenen Systembenutzer anlegen oder nach cgroup markieren:
-`-m cgroup --path system.slice/palworld-server.service`.
+Bei Docker entfällt die MASQUERADE-Zeile aus 2a: Der Container-Traffic wird
+weitergeleitet statt lokal erzeugt, Docker setzt den Absender ohnehin selbst.
 
 ### Warum die drei RETURN-/`to`-Ausnahmen wichtig sind
 
