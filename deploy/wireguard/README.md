@@ -22,8 +22,16 @@ Ein vorhandenes `wg0` (z. B. der Tunnel zum Front-Server) bleibt unangetastet.
 | Rolle | Tunnel-IP | ListenPort | Endpoint beim Peer |
 |---|---|---|---|
 | Web-Server | 10.88.0.1/24 | 51821 | – (lernt die Peers aus dem Handshake) |
-| Palworld-Server 1 (PvE) | 10.88.0.2/24 | – | `WEB-SERVER-IP:51821` |
-| Palworld-Server 2 (Classic) | 10.88.0.3/24 | – | `WEB-SERVER-IP:51821` |
+| Palworld-Server 1 (PvE) | 10.88.0.2/24 | – | `palheim.de:51821` |
+| Palworld-Server 2 (Classic) | 10.88.0.3/24 | – | `palheim.de:51821` |
+
+Wichtig: Auf den Gameservern darf **kein `ListenPort`** stehen – sonst warten
+beide Seiten aufeinander und es kommt nie ein Handshake zustande. Der
+`Endpoint` gehört ausschließlich auf die Gameserver.
+
+Der Endpoint `palheim.de` funktioniert nur, wenn der A-Record direkt auf den
+Web-Server zeigt (kein Proxy/CDN davor – WireGuard ist UDP). Prüfen mit
+`dig +short palheim.de`; im Zweifel dort die öffentliche IP eintragen.
 
 ## Firewall
 
@@ -80,7 +88,7 @@ PrivateKey = PRIVATER-KEY-SERVER-1
 # Web-Server
 PublicKey = PUBLIC-KEY-WEB-SERVER
 AllowedIPs = 10.88.0.1/32
-Endpoint = WEB-SERVER-IP:51821
+Endpoint = palheim.de:51821
 PersistentKeepalive = 25
 ```
 
@@ -95,7 +103,7 @@ PrivateKey = PRIVATER-KEY-SERVER-2
 # Web-Server
 PublicKey = PUBLIC-KEY-WEB-SERVER
 AllowedIPs = 10.88.0.1/32
-Endpoint = WEB-SERVER-IP:51821
+Endpoint = palheim.de:51821
 PersistentKeepalive = 25
 ```
 
