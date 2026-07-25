@@ -220,6 +220,29 @@ Farben und Namen sind ebenfalls frei (nichts ist auf PvP festgelegt).
 - Läuft der zweite Palworld-Server auf einer weiteren Maschine, braucht er
   einen eigenen WireGuard-Zugang (nächster Abschnitt), z. B. als 10.88.0.3
 
+### Weiteren Spielserver an den Tunnel hängen
+
+1. **Auf dem neuen Spielserver** (legt dessen Tunnel-Seite an, zeigt am Ende
+   seinen Public Key):
+
+   ```bash
+   API_WG_IP=10.88.0.3 bash setup-wg.sh api
+   ```
+
+2. **Auf dem Web-Server** – ergänzt den Peer, ohne den ersten Server zu
+   verlieren (`setup-wg.sh web` würde die Datei neu schreiben!):
+
+   ```bash
+   sudo bash deploy/wireguard/add-peer.sh 10.88.0.3 <PUBLIC-KEY-SERVER-2> <öffentliche-IP-Server-2>
+   ```
+
+   Das Skript legt vorher eine Sicherung an, prüft nach dem Neustart die
+   Verbindung und testet, ob die REST-API über den Tunnel antwortet.
+
+3. Auf dem neuen Spielserver `RESTAPIEnabled=True` setzen und den REST-Port im
+   Docker-Container veröffentlichen (`ports: ["10.88.0.3:8212:8212"]`, Container
+   danach **neu erstellen** – nachträglich lassen sich Ports nicht öffnen).
+
 ## Palworld auf separatem Server? → WireGuard-Tunnel
 
 Läuft der Palworld-Server auf einer **anderen Maschine** als die Webseite,
