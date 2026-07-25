@@ -285,6 +285,35 @@ function buildServers() {
 const SERVERS = buildServers();
 const DEFAULT_SERVER = SERVERS[0];
 
+// Beim Mehrserver-Betrieb müssen die Server sauber voneinander getrennt sein:
+// gleiche IDs, Secrets, API-Adressen oder Datendateien führen sonst dazu, dass
+// Daten beim falschen Server landen – und das fällt im Betrieb kaum auf.
+// Deshalb einmal beim Start laut prüfen.
+function validateServers(servers) {
+  if (servers.length < 2) return;
+  const problems = [];
+  const seen = { id: new Map(), uploadSecret: new Map(), apiUrl: new Map(), statsFile: new Map(), basesFile: new Map() };
+  const labels = {
+    id: 'dieselbe Server-ID',
+    uploadSecret: 'dasselbe uploadSecret (Basen-Upload landet sonst beim falschen Server – bitte je Server ein eigenes Secret setzen oder immer --server angeben)',
+    apiUrl: 'dieselbe palworldApiUrl (beide zeigen auf dieselbe Spielinstanz)',
+    statsFile: 'dieselbe Statistik-Datei (Werte würden sich vermischen)',
+    basesFile: 'dieselbe Basen-Datei (Karten-Daten würden sich überschreiben)'
+  };
+  for (const srv of servers) {
+    for (const key of Object.keys(seen)) {
+      const value = srv[key];
+      if (!value) continue;
+      const other = seen[key].get(value);
+      if (other) problems.push(`„${other}" und „${srv.id}" nutzen ${labels[key]}.`);
+      else seen[key].set(value, srv.id);
+    }
+  }
+  for (const p of problems) console.warn(`[config] ACHTUNG: ${p}`);
+}
+
+validateServers(SERVERS);
+
 function serverFromParams(searchParams) {
   const id = (searchParams.get('server') || '').trim();
   return SERVERS.find((s) => s.id === id) || DEFAULT_SERVER;
