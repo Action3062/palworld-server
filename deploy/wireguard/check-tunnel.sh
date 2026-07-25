@@ -111,7 +111,37 @@ if [ "$ROLE" = "game" ]; then
       echo "    (keine gefunden – läuft der Server gerade?)"
   fi
 
-  step "3/3 – Sicherheit"
+  step "3/4 – Lässt die Firewall den Tunnel durch?"
+  # Wichtig: Der lokale Test oben läuft über loopback und sagt daher NICHTS
+  # darüber aus, ob Pakete AUS dem Tunnel angenommen werden.
+  FW_CHECKED=false
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    FW_CHECKED=true
+    if ufw status 2>/dev/null | grep -E "${API_PORT}" | grep -q "${WG_IF}"; then
+      ok "ufw erlaubt Port ${API_PORT} über ${WG_IF}."
+    else
+      fail "ufw ist aktiv, aber KEINE Regel erlaubt Port ${API_PORT} über ${WG_IF}."
+      info "Das ist die typische Ursache, wenn ping funktioniert, der Port aber nicht:"
+      info "   ufw allow in on ${WG_IF} to any port ${API_PORT} proto tcp"
+      echo
+      echo "  Aktuelle ufw-Regeln:"
+      ufw status 2>/dev/null | sed -n '1,12p' | sed 's/^/    /'
+    fi
+  fi
+  if [ "$FW_CHECKED" = false ]; then
+    if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | grep -q 'chain input'; then
+      c_yellow "  nftables ist im Einsatz – bitte prüfen, ob TCP ${API_PORT} auf ${WG_IF} erlaubt ist:"
+      c_yellow "    nft list ruleset | head -40"
+    elif command -v iptables >/dev/null 2>&1 &&
+         [ "$(iptables -L INPUT -n 2>/dev/null | grep -c '^\(ACCEPT\|DROP\|REJECT\)')" -gt 0 ]; then
+      c_yellow "  iptables-Regeln vorhanden – bitte prüfen, ob TCP ${API_PORT} auf ${WG_IF} erlaubt ist:"
+      c_yellow "    iptables -L INPUT -n -v | head -30"
+    else
+      ok "Keine aktive Host-Firewall gefunden."
+    fi
+  fi
+
+  step "4/4 – Sicherheit"
   PUBLIC_PORTS=$(ss -tlnp 2>/dev/null | grep -i 'palserver' |
     awk '$4 ~ /^(0\.0\.0\.0|\*|\[::\]):/ {split($4, a, ":"); print a[length(a)]}' | sort -u)
   if [ -n "$PUBLIC_PORTS" ]; then
@@ -200,7 +230,15 @@ if tcp_open "$PEER_IP" "$API_PORT"; then
   echo "   danach:  systemctl restart palworld-web"
 else
   fail "Port ${API_PORT} auf ${PEER_IP} ist nicht erreichbar."
-  info "Der Tunnel steht evtl., aber der Spielserver veröffentlicht den Port nicht."
-  info "Auf dem SPIELSERVER prüfen:"
-  info "   bash check-tunnel.sh          (zeigt genau, woran es dort liegt)"
+  if ping -c1 -W2 "$PEER_IP" >/dev/null 2>&1; then
+    info "Der Tunnel selbst funktioniert (ping kommt an) – blockiert wird gezielt TCP."
+    info "Häufigste Ursache: die Firewall auf dem SPIELSERVER lässt den Tunnel nicht durch."
+    info "Dort ausführen:"
+    info "   ufw allow in on ${WG_IF} to any port ${API_PORT} proto tcp"
+    info "Seltener: die REST-API ist dort gar nicht aktiv, oder ein Container"
+    info "veröffentlicht den Port nicht."
+  else
+    info "Auch ping schlägt fehl – zuerst den Tunnel in Ordnung bringen (Schritte 2–3)."
+  fi
+  info "Vollständige Prüfung auf dem SPIELSERVER:  bash check-tunnel.sh"
 fi
