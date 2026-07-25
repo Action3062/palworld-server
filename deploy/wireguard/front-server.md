@@ -46,12 +46,14 @@ PrivateKey = PRIVATER-KEY-V-SERVER
 PostUp   = sysctl -q -w net.ipv4.ip_forward=1
 PostUp   = iptables -t nat -A PREROUTING -p udp --dport 8211 -j DNAT --to-destination 10.20.0.1
 PostUp   = iptables -t nat -A PREROUTING -p udp --dport 27015 -j DNAT --to-destination 10.20.0.1
+PostUp   = iptables -t nat -A PREROUTING -p tcp --dport 37851 -j DNAT --to-destination 10.20.0.1
 PostUp   = iptables -t nat -A POSTROUTING -o %i -j MASQUERADE
 PostUp   = iptables -A FORWARD -i %i -j ACCEPT
 PostUp   = iptables -A FORWARD -o %i -j ACCEPT
 
 PostDown = iptables -t nat -D PREROUTING -p udp --dport 8211 -j DNAT --to-destination 10.20.0.1
 PostDown = iptables -t nat -D PREROUTING -p udp --dport 27015 -j DNAT --to-destination 10.20.0.1
+PostDown = iptables -t nat -D PREROUTING -p tcp --dport 37851 -j DNAT --to-destination 10.20.0.1
 PostDown = iptables -t nat -D POSTROUTING -o %i -j MASQUERADE
 PostDown = iptables -D FORWARD -i %i -j ACCEPT
 PostDown = iptables -D FORWARD -o %i -j ACCEPT
@@ -94,8 +96,8 @@ Kein `ListenPort` – der Gameserver ruft an, er wird nicht angerufen.
 | 51820 | UDP | **ja** | WireGuard-Tunnel |
 | 8211 | UDP | **ja** | Palworld Spiel-Port |
 | 27015 | UDP | optional | Steam-Serverbrowser |
+| 37851 | TCP | nur bei Bedarf | RCON – siehe Warnung unten |
 | 8212 | TCP | **nein** | REST-API – läuft über `wg-palweb` |
-| 25575 | TCP | **nein** | RCON – niemals öffentlich |
 
 Auf dem V-Server:
 
@@ -103,8 +105,35 @@ Auf dem V-Server:
 ufw allow 51820/udp comment "WireGuard Front-Tunnel"
 ufw allow 8211/udp  comment "Palworld"
 ufw allow 27015/udp comment "Steam Query"
+ufw allow 37851/tcp comment "Palworld RCON"
 ufw route allow in on eth0 out on wg-front
 ```
+
+### RCON öffentlich erreichbar machen
+
+RCON überträgt das Passwort **im Klartext** und kennt keinen Bruteforce-Schutz.
+Ein weltweit offener Port wird binnen Stunden gescannt. Besser ist es, die
+Weiterleitung auf bekannte Quell-IPs zu beschränken – dazu die DNAT-Regel im
+`PostUp` des V-Servers um `-s` ergänzen:
+
+```ini
+PostUp   = iptables -t nat -A PREROUTING -p tcp --dport 37851 -s DEINE-IP/32 -j DNAT --to-destination 10.20.0.1
+PostDown = iptables -t nat -D PREROUTING -p tcp --dport 37851 -s DEINE-IP/32 -j DNAT --to-destination 10.20.0.1
+```
+
+Die Beschränkung gehört in die DNAT-Regel, nicht in ufw: weitergeleitete Pakete
+laufen nicht durch die `INPUT`-Kette, ufw-Regeln greifen dort also nicht.
+
+Auf dem Gameserver muss RCON aktiv sein und auf dem passenden Port lauschen –
+in `PalWorldSettings.ini`: `RCONEnabled=True` und `RCONPort=37851`. Ist dort
+`ufw` aktiv, zusätzlich:
+
+```bash
+ufw allow in on wg-front to any port 37851 proto tcp comment "RCON via Tunnel"
+```
+
+Für die Webseite selbst wird der offene Port **nicht** gebraucht – deren
+RCON-Zugriff (Vote-Belohnungen) läuft über `wg-palweb` auf `10.88.0.3`.
 
 Läuft `ufw` mit der Standardeinstellung `DEFAULT_FORWARD_POLICY="DROP"`, muss
 diese in `/etc/default/ufw` auf `ACCEPT` stehen (oder die `ufw route`-Regel
