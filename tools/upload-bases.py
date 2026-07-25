@@ -224,6 +224,12 @@ def guild_names(world) -> dict:
     return names
 
 
+# Anzeigename, wenn sich zu einer Basis keine Gilde ermitteln ließ
+UNKNOWN_GUILD = "Unbekannte Gilde"
+# Diesen Namen vergibt Palworld selbst, solange eine Gilde nie umbenannt wurde
+GAME_UNNAMED = "Unnamed Guild"
+
+
 def base_camps(world, guilds: dict) -> list:
     bases = []
     try:
@@ -237,7 +243,7 @@ def base_camps(world, guilds: dict) -> list:
             t = raw["transform"]["translation"]
             group_id = str(raw.get("group_id_belong_to", ""))
             bases.append({
-                "guild": guilds.get(group_id, "Unbekannte Gilde"),
+                "guild": guilds.get(group_id, UNKNOWN_GUILD),
                 "x": round(float(t["x"])),
                 "y": round(float(t["y"])),
             })
@@ -344,7 +350,21 @@ def main() -> None:
     world = load_world(find_sav(args.sav))
     guilds = guild_names(world)
     bases = base_camps(world, guilds)
-    print(f"{len(bases)} Basen gefunden ({len(guilds)} Gilden).")
+    # Zwei völlig verschiedene Ursachen sauber auseinanderhalten:
+    #  (a) Gildennamen konnten nicht gelesen werden  -> echtes Problem
+    #  (b) die Gilden heißen im Spiel wirklich "Unnamed Guild" (nie umbenannt)
+    resolved = sum(1 for b in bases if b["guild"] != UNKNOWN_GUILD)
+    unnamed = sum(1 for b in bases if b["guild"] == GAME_UNNAMED)
+    print(f"{len(bases)} Basen gefunden, {len(guilds)} Gilden mit Namen gelesen.")
+    print(f"  Basen mit Gildennamen: {resolved}  |  ohne Zuordnung: {len(bases) - resolved}")
+    if unnamed:
+        print(f"  Davon {unnamed} Basen in Gilden, die im Spiel nie umbenannt wurden –")
+        print(f"  die heißen dort wörtlich „{GAME_UNNAMED}\" (kein Fehler).")
+    if not guilds:
+        print("  ACHTUNG: Es wurde KEIN einziger Gildenname gelesen.")
+        print("  Vermutlich konnte der Gilden-Teil des Spielstands nicht dekodiert")
+        print("  werden. Die Zeilen „Parse Spielstand (…)\" weiter oben zeigen, welcher")
+        print("  Weg griff – gewünscht ist „Basislager + Gilden\".")
     for b in bases[:5]:
         print(f"  z. B. {b['guild']}: x={b['x']}, y={b['y']}")
 
