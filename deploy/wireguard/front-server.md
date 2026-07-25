@@ -153,8 +153,16 @@ nc -zvu V-SERVER-IP 8211
 - **Spieler-IPs:** Durch das MASQUERADE sieht der Gameserver alle Spieler als
   `10.20.0.2`. Für Bans nach IP ist das relevant – Bans nach Steam-ID
   funktionieren normal weiter.
-- **Autostart:** `systemctl is-enabled wg-quick@wg-front` prüfen. Zieht sich
-  der Gameserver zu Hause seine Adresse per DHCP, lohnt zusätzlich ein
-  Drop-in mit `Restart=on-failure` / `RestartSec=10` (siehe `README.md`).
+- **Autostart:** `systemctl enable --now wg-quick@wg-front` genügt, der Tunnel
+  kommt nach einem Reboot von allein hoch – mit `systemctl is-enabled
+  wg-quick@wg-front` prüfbar. Ein DNS-Problem beim Booten wie bei
+  `wg-palweb` gibt es hier nicht, weil der Endpoint eine feste IP ist.
+- **ufw-Eingriffe löschen die Weiterleitung:** Die `iptables`-Regeln stehen im
+  `PostUp` und werden nur beim Start von `wg-quick` gesetzt. Nach jedem
+  `ufw enable` / `ufw disable` / `ufw reload` baut ufw seine Ketten neu auf –
+  der Tunnel steht dann zwar, aber die Spieler kommen nicht mehr durch.
+  Danach immer `systemctl restart wg-quick@wg-front`. Beim Booten stimmt die
+  Reihenfolge (ufw zuerst, dann wg-quick), das betrifft nur den laufenden
+  Betrieb.
 - Der Tunnel zur Webseite (`wg-palweb`, 10.88.0.3) bleibt davon völlig
   unberührt und läuft weiterhin direkt vom Heim-Gameserver zum Web-Server.
