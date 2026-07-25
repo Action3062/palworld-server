@@ -121,6 +121,136 @@ chmod 600 /etc/wireguard/wg-front.conf
 systemctl enable --now wg-quick@wg-front
 ```
 
+## Ausgehenden Palworld-Traffic durch den Tunnel zwingen
+
+Der **eingehende Spieler-Traffic läuft bereits vollständig durch den Tunnel** –
+durch das MASQUERADE auf dem V-Server sieht Palworld jedes Spielerpaket als von
+`10.20.0.2` kommend und antwortet zwangsläufig dorthin. Dafür ist nichts zu tun.
+
+Nicht durch den Tunnel geht dagegen der **ausgehende** Traffic von Palworld:
+die Registrierung bei Epic Online Services / Steam für die Serverliste. Die
+läuft über die Heimleitung und verrät die private IP. Wer das nicht will,
+braucht Policy Routing.
+
+### Schritt 1 – V-Server: Rückweg ins Internet erlauben
+
+In `/etc/wireguard/wg-front.conf` auf dem V-Server ergänzen:
+
+```ini
+PostUp   = iptables -t nat -A POSTROUTING -s 10.20.0.0/24 ! -o %i -j MASQUERADE
+PostDown = iptables -t nat -D POSTROUTING -s 10.20.0.0/24 ! -o %i -j MASQUERADE
+```
+
+Die bestehende Regel `POSTROUTING -o %i -j MASQUERADE` betrifft nur Traffic,
+der *in* den Tunnel geht. Diese hier betrifft Traffic, der *aus* dem Tunnel
+ins Internet weiterläuft.
+
+### Schritt 2a – Palworld läuft in Docker
+
+Der Container braucht ein festes Subnetz. In der `docker-compose.yml`:
+
+```yaml
+networks:
+  palworld:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+```
+
+Das aktuelle Subnetz auslesen:
+
+```bash
+docker network inspect <netzname> -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+Dann in `/etc/wireguard/wg-front.conf` auf dem Gameserver:
+
+```ini
+[Interface]
+Address = 10.20.0.1/24
+PrivateKey = PRIVATER-KEY-GAMESERVER-2
+Table = off
+MTU = 1380
+
+PostUp   = sysctl -q -w net.ipv4.conf.all.src_valid_mark=1
+PostUp   = ip route add default dev %i table 200
+PostUp   = ip rule add from 172.30.0.0/24 to 10.0.0.0/8     lookup main priority 100
+PostUp   = ip rule add from 172.30.0.0/24 to 172.16.0.0/12  lookup main priority 101
+PostUp   = ip rule add from 172.30.0.0/24 to 192.168.0.0/16 lookup main priority 102
+PostUp   = ip rule add from 172.30.0.0/24                   lookup 200 priority 110
+
+PostDown = ip rule del from 172.30.0.0/24                   lookup 200 priority 110
+PostDown = ip rule del from 172.30.0.0/24 to 192.168.0.0/16 lookup main priority 102
+PostDown = ip rule del from 172.30.0.0/24 to 172.16.0.0/12  lookup main priority 101
+PostDown = ip rule del from 172.30.0.0/24 to 10.0.0.0/8     lookup main priority 100
+PostDown = ip route flush table 200
+
+[Peer]
+PublicKey = PUBLIC-KEY-V-SERVER
+AllowedIPs = 0.0.0.0/0
+Endpoint = V-SERVER-IP:51820
+PersistentKeepalive = 25
+```
+
+### Schritt 2b – Palworld läuft nativ unter eigenem User
+
+Statt der `ip rule from …`-Zeilen wird nach User markiert:
+
+```ini
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 10.0.0.0/8     -j RETURN
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 172.16.0.0/12  -j RETURN
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -d 192.168.0.0/16 -j RETURN
+PostUp   = iptables -t mangle -A OUTPUT -m owner --uid-owner palworld -j MARK --set-mark 0x200
+PostUp   = ip rule add fwmark 0x200 lookup 200 priority 110
+
+PostDown = ip rule del fwmark 0x200 lookup 200 priority 110
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -j MARK --set-mark 0x200
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 192.168.0.0/16 -j RETURN
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 172.16.0.0/12  -j RETURN
+PostDown = iptables -t mangle -D OUTPUT -m owner --uid-owner palworld -d 10.0.0.0/8     -j RETURN
+```
+
+Der `Table = off`-Eintrag, `MTU`, die `default`-Route in Tabelle 200,
+`src_valid_mark` und `AllowedIPs = 0.0.0.0/0` bleiben wie unter 2a.
+
+Läuft Palworld als `root`, funktioniert `--uid-owner` nicht sinnvoll – dann
+entweder einen eigenen Systembenutzer anlegen oder nach cgroup markieren:
+`-m cgroup --path system.slice/palworld-server.service`.
+
+### Warum die drei RETURN-/`to`-Ausnahmen wichtig sind
+
+Ohne sie würde auch die Antwort an den Web-Server (`10.88.0.1`, REST-API über
+`wg-palweb`) in den Front-Tunnel geraten und dort verworfen – die Webseite
+würde den Server als offline anzeigen. Die Ausnahmen schicken alles, was an
+private Netze geht, weiter über die normale Routing-Tabelle; nur öffentliche
+Ziele wandern in den Tunnel.
+
+### Prüfen
+
+```bash
+# Docker:
+docker compose exec palworld-server curl -s https://ifconfig.me
+# nativ:
+sudo -u palworld curl -s https://ifconfig.me
+```
+
+Muss die **öffentliche IP des V-Servers** ausgeben. Zum Vergleich auf dem Host
+selbst `curl -s https://ifconfig.me` – das zeigt weiterhin die Heim-IP, denn
+nur Palworld wird umgeleitet.
+
+Danach gegenprüfen, dass die Webseite den Server weiterhin sieht:
+
+```bash
+# auf dem Web-Server
+curl -s -u admin:ADMIN-PASSWORT http://10.88.0.3:8212/v1/api/info
+```
+
+### Nebenwirkung: Updates
+
+SteamCMD-Updates laufen damit ebenfalls über den V-Server. Bei einem
+Traffic-Limit dort entweder eine Ausnahme für die Steam-Netze ergänzen oder
+den Update-Lauf kurz ohne Tunnel fahren.
+
 ## DNS und Palworld-Einstellungen
 
 - `classic.palheim.de` als A-Record auf die **öffentliche IP des V-Servers**
