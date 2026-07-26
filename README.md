@@ -468,6 +468,45 @@ python3 -m venv /opt/paltools
 Das `uploadSecret` wird in der `config.json` der Webseite unter `map`
 gesetzt; ohne Secret ist der Upload-Endpunkt deaktiviert.
 
+### Meteoriten-Events auf der Karte?
+
+Naheliegende Frage: Wenn die Basen aus dem Spielstand kommen, warum nicht
+auch die Meteoriten-Events? Für Basen ist der Weg klar (`BaseCampSaveData`
+→ `transform.translation`), für Meteoriten ist dagegen **nicht dokumentiert**,
+ob der Spielstand überhaupt etwas speichert. Bekannt ist nur
+`SupplySaveData` (Versorgungskisten: `LastSupplyTime`, `LastLotteryTime`,
+`SupplyInfos`). Die REST-API (`/v1/api/info`, `/v1/api/metrics`,
+`/v1/api/players`) und RCON kennen ohnehin keine Events.
+
+Statt zu raten, klärt `tools/scan-events.py` das an eurem eigenen Spielstand:
+
+```bash
+curl -fsSLo /root/scan-events.py \
+  https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/meteoriten-events-map-4g1kaj/tools/scan-events.py
+# 1) ohne aktives Event
+/opt/paltools/bin/python3 /root/scan-events.py \
+  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" --parse --json /tmp/vorher.json
+# 2) während ein Meteorit auf der Karte liegt – vorher speichern lassen!
+/opt/paltools/bin/python3 /root/scan-events.py \
+  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" --parse --json /tmp/waehrend.json
+# 3) vergleichen
+diff /tmp/vorher.json /tmp/waehrend.json
+```
+
+Das Skript ist read-only und arbeitet zweistufig: ein **Roh-Scan** (Sekunden)
+durchsucht die entpackten Save-Bytes nach `Meteor`, `Supply`, `Lottery` &
+Co. und listet die gefundenen Namen auf – taucht „Meteor" nirgends auf,
+steht es auch nicht im Spielstand. Mit `--parse` (1–2 Minuten) kommen die
+Top-Level-Blöcke von `worldSaveData` sowie alle Koordinaten der
+Event-nahen Blöcke dazu, direkt in In-Game-Kartenkoordinaten umgerechnet.
+
+Findet der Vergleich einen Block mit Koordinaten, lässt sich daraus ein
+Karten-Layer bauen (Upload analog zu den Basen, dann aber im
+Minutentakt statt alle 30 Minuten). Findet er nichts, bleiben als
+Alternativen ein **Melde-Marker** auf der Karte (Spieler meldet den
+Fundort, Marker läuft nach X Minuten ab) oder ein **Countdown** auf Basis
+des Event-Intervalls (Standard 180 Minuten).
+
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 
 Spieler voten auf der Serverliste und holen sich auf der Webseite eine
