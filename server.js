@@ -542,6 +542,11 @@ async function pollStats(srv) {
         if (p.level != null) rec.level = p.level;
         rec.minutes += minutes;
 
+        // User-ID merken – damit lässt sich der Spieler später auch
+        // offline bannen (die Bannliste des Servers arbeitet mit IDs)
+        const uid = p.userId || p.userid;
+        if (uid) rec.userId = String(uid);
+
         // Zusatzdaten für Erfolge
         if (!srv.prevOnline.has(p.name)) rec.sessions = (rec.sessions || 0) + 1;
         if (rec.lastDay !== today) {
@@ -906,8 +911,8 @@ function adminCookie(req, token, maxAgeSeconds) {
 }
 
 // Kick/Bann brauchen die User-ID – die liefert die REST-API nur für Spieler,
-// die GERADE online sind (die Website-Statistik speichert bewusst keine IDs).
-// Deshalb hier immer frisch abfragen, ohne Cache.
+// die GERADE online sind. Für Offline-Banns greift der Handler unten auf die
+// in der Statistik gemerkte ID zurück. Hier immer frisch abfragen, ohne Cache.
 async function findOnlinePlayer(srv, name) {
   const data = await palworldGet(srv, '/v1/api/players');
   const wanted = String(name || '').trim().toLowerCase();
@@ -1409,11 +1414,26 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
         return;
       }
-      const userid = player && (player.userId || player.userid);
+      let userid = player && (player.userId || player.userid);
+      const wasOnline = Boolean(userid);
+      // Offline-Bann: auf die ID zurückgreifen, die die Statistik sich beim
+      // letzten Online-Besuch gemerkt hat (Kick ergibt offline keinen Sinn)
+      if (!userid && isBan) {
+        const wanted = name.toLowerCase();
+        const known = Object.entries(srv.stats.players)
+          .find(([n, p]) => n.toLowerCase() === wanted && p.userId);
+        if (known) {
+          userid = known[1].userId;
+          player = { name: known[0] };
+        }
+      }
       if (!userid) {
         sendJson(res, 404, {
           ok: false,
-          message: `„${name}" ist gerade nicht online – Kick/Bann geht nur bei Online-Spielern.`
+          message: isBan
+            ? `„${name}" ist offline und die Website hat noch keine ID gespeichert – ` +
+              'der Bann geht erst, wenn der Spieler einmal online gesehen wurde.'
+            : `„${name}" ist gerade nicht online – Kick geht nur bei Online-Spielern.`
         });
         return;
       }
@@ -1427,10 +1447,15 @@ const server = http.createServer(async (req, res) => {
         saveBans();
       }
       adminLog(isBan ? 'Bann' : 'Kick',
-        `[${srv.id}] „${player.name}" – Grund: ${reason.slice(0, 80)}`, session.user);
+        `[${srv.id}] „${player.name}"${wasOnline ? '' : ' (offline)'} – Grund: ${reason.slice(0, 80)}`,
+        session.user);
       sendJson(res, 200, {
         ok: true,
-        message: isBan ? `„${player.name}" wurde gebannt.` : `„${player.name}" wurde gekickt.`
+        message: isBan
+          ? (wasOnline
+            ? `„${player.name}" wurde gebannt.`
+            : `„${player.name}" wurde offline gebannt – greift beim nächsten Verbindungsversuch.`)
+          : `„${player.name}" wurde gekickt.`
       });
     } catch {
       sendJson(res, 502, { ok: false, message: 'Aktion fehlgeschlagen – Spielserver nicht erreichbar?' });
@@ -1559,7 +1584,10 @@ const server = http.createServer(async (req, res) => {
         firstSeen: p.firstSeen || null,
         lastSeen: p.lastSeen || null,
         online: onlinePings.has(name),
-        ping: onlinePings.get(name) ?? null
+        ping: onlinePings.get(name) ?? null,
+        // ID bleibt serverseitig – das Frontend braucht nur zu wissen,
+        // ob ein Offline-Bann möglich wäre
+        hasId: Boolean(p.userId)
       }))
       .sort((a, b) => Number(b.online) - Number(a.online) ||
         String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));

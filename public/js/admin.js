@@ -119,7 +119,9 @@
         <td class="adm-actions">${p.online
           ? `<button class="btn btn--tiny" data-kick="${i}">Kick</button>
              <button class="btn btn--tiny btn--danger" data-ban="${i}">Bann</button>`
-          : ''}</td>
+          : (p.hasId
+            ? `<button class="btn btn--tiny btn--danger" data-ban="${i}">Bann</button>`
+            : '')}</td>
       </tr>`).join('');
     $('admPlayerRows').innerHTML =
       rows || '<tr><td colspan="7">Noch keine Spieler-Daten.</td></tr>';
@@ -191,8 +193,11 @@
       const reason = window.prompt(`Grund für den BANN von „${p.name}" (wird dem Spieler angezeigt):`,
         'Verstoß gegen die Serverregeln.');
       if (reason === null) return;
+      const offlineHint = p.online
+        ? ''
+        : '\n\nDer Spieler ist gerade offline – der Bann greift beim nächsten Verbindungsversuch.';
       playerAction('/api/admin/ban', { name: p.name, message: reason, server: admServer },
-        `„${p.name}" wirklich DAUERHAFT bannen?\n\nEntbannen geht später über die Liste unten.`);
+        `„${p.name}" wirklich DAUERHAFT bannen?${offlineHint}\n\nEntbannen geht später über die Liste unten.`);
     } else if (unban) {
       const b = lastBans[Number(unban.dataset.unban)];
       if (!b) return;
