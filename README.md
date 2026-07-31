@@ -13,8 +13,8 @@ Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 - 👥 **Spielerliste**: zeigt, wer gerade online ist (abschaltbar per Config)
 - 📊 **Statistiken**: Verlauf von Spielerzahl **und Server-FPS** (24 h / 7 Tage)
   als interaktives Chart, Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit,
-  In-Game-Tage und Ranglisten in acht Kategorien (Level, Spielzeit, Paldeck,
-  Turmbosse, 💀 Hall of Shame u. a.) – gesammelt vom eigenen Backend
+  In-Game-Tage und Ranglisten in sechs Kategorien (Spielzeit, Paldeck,
+  💀 Hall of Shame, Angeln u. a.) – gesammelt vom eigenen Backend
 - 📈 **Verfügbarkeit & Ausfälle**: Uptime der letzten 24 h / 7 Tage plus eine
   Chronik der letzten Ausfälle – direkt aus den Messpunkten berechnet
 - 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
@@ -472,10 +472,11 @@ gesetzt; ohne Secret ist der Upload-Endpunkt deaktiviert.
 
 ## Ranglisten
 
-Die Startseite zeigt unter „Statistiken" Ranglisten in acht Kategorien:
-Level (bei Gleichstand entscheiden die Erfahrungspunkte), Spielzeit,
-Paldeck-Arten, Turmbosse, geschlachtete Pals (💀 Hall of Shame), geangelte
-Fische, Dungeons und Raidbosse.
+Die Startseite zeigt unter „Statistiken" Ranglisten in sechs Kategorien:
+Spielzeit, Paldeck-Arten, geschlachtete Pals (💀 Hall of Shame), geangelte
+Fische, Dungeons und Raidbosse. Level und Turmbosse werden bewusst nicht
+gelistet – beides ist gecapt und wäre bald überall gleich; bei Gleichständen
+sortieren die mit hochgeladenen Erfahrungspunkte fein.
 
 Die Spielzeit misst die Website selbst; alle anderen Werte stehen nur im
 Spielstand. Dafür läuft auf dem **Palworld-Server** ein zweiter Uploader

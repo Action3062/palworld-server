@@ -38,17 +38,14 @@
 
   // Kategorien: Tab-Beschriftung, Spaltenkopf, Wert-Formatierung.
   // "extra" ergänzt eine zweite Wertspalte (z. B. EP beim Level).
+  // Level und Turmbosse sind bewusst NICHT dabei: beides ist gecapt
+  // (Level 80, alle Türme) – da sähe die Liste bald überall gleich aus.
   const CATS = [
-    { key: 'level', tab: 'Level', intro: 'Wer hat das höchste Level? Bei Gleichstand entscheiden die Erfahrungspunkte.',
-      col: 'Level', fmt: (r) => `Lv. ${r.value}`,
-      extra: { col: 'Erfahrung', fmt: (r) => `${nf.format(r.exp)} EP` } },
     { key: 'playtime', tab: 'Spielzeit', intro: 'Wer verbringt die meiste Zeit auf dem Server? (Gemessen von der Website, seit Statistik-Start.)',
       col: 'Spielzeit', fmt: (r) => formatHours(r.value) },
     { key: 'paldeck', tab: 'Paldeck', intro: 'Wer hat die meisten Pal-Arten im Paldeck freigeschaltet?',
       col: 'Arten', fmt: (r) => nf.format(r.value),
       extra: { col: 'Pals gefangen', fmt: (r) => nf.format(r.caught || 0) } },
-    { key: 'towers', tab: 'Turmbosse', intro: 'Wer hat die meisten verschiedenen Turmbosse bezwungen?',
-      col: 'Türme', fmt: (r) => nf.format(r.value) },
     { key: 'butcher', tab: '💀 Schlachter', intro: 'Hall of Shame: Wer hat die meisten Pals über die Klinge springen lassen? 💀',
       col: 'Geschlachtet', fmt: (r) => nf.format(r.value) },
     { key: 'fishing', tab: '🎣 Angler', intro: 'Wer hat die meisten Fische aus dem Wasser gezogen?',
@@ -60,7 +57,7 @@
   ];
 
   let data = null;
-  let active = 'level';
+  let active = 'playtime';
 
   // ---- Tabs einmalig aufbauen
   for (const cat of CATS) {

@@ -1742,14 +1742,6 @@ const server = http.createServer(async (req, res) => {
         for (const f of extra) row[f] = p[f] || 0;
         return row;
       });
-    // Level-Liste: bei Gleichstand entscheiden die Erfahrungspunkte
-    const level = players
-      .filter((p) => (p.level || 0) > 0)
-      .sort((a, b) => (b.level || 0) - (a.level || 0) ||
-        (b.exp || 0) - (a.exp || 0) ||
-        a.name.localeCompare(b.name, 'de'))
-      .slice(0, TOP)
-      .map((p) => ({ name: p.name, value: p.level || 0, exp: p.exp || 0 }));
     const playtime = Object.entries(srv.stats.players)
       .map(([name, p]) => ({ name, value: Math.round(p.minutes || 0) }))
       .filter((p) => p.value > 0)
@@ -1760,11 +1752,13 @@ const server = http.createServer(async (req, res) => {
       server: srv.id,
       updatedAt: srv.rankingsData.updatedAt,
       playersTotal: players.length,
+      // Level und Turmbosse werden zwar mit hochgeladen, aber nicht
+      // gelistet – beides ist gecapt (Level 80, alle Türme besiegt) und
+      // wäre nach ein paar Wochen überall gleich. Die EP dienen weiter
+      // als Feinsortierung bei Gleichständen.
       categories: {
-        level,
         playtime,
         paldeck: top('paldeck', ['caught']),
-        towers: top('towers'),
         butcher: top('butcher'),
         fishing: top('fishing'),
         dungeons: top('dungeons'),
