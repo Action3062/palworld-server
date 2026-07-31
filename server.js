@@ -77,7 +77,9 @@ const DEFAULTS = {
     enabled: false,
     url: '',
     // Optionaler eigener Text auf der Karte
-    text: 'Serverkosten? Deckt zum Glück die Community. Wenn du magst, spendier dem Admin einen Kaffee – freiwillig, ohne Extras.'
+    text: 'Serverkosten? Deckt zum Glück die Community. Wenn du magst, spendier dem Admin einen Kaffee – freiwillig, ohne Extras.',
+    // Beschriftung des Buttons – z. B. '❤️ Auf Ko-fi unterstützen'
+    label: '☕ Buy me a coffee'
   },
   // Live-Karte (Spieler-Positionen aus der REST-API, Basen via Uploader)
   map: {
@@ -1638,7 +1640,9 @@ const server = http.createServer(async (req, res) => {
     const s = config.support;
     sendJson(res, 200, {
       banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null,
-      support: s && s.enabled && s.url ? { url: s.url, text: s.text || '' } : null,
+      support: s && s.enabled && s.url
+        ? { url: s.url, text: s.text || '', label: s.label || '' }
+        : null,
       servers: SERVERS.map(publicServerInfo)
     });
     return;

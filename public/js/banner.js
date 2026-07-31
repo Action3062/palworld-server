@@ -14,7 +14,9 @@
       // --- Support-Karte (nur ein Link, keine externen Skripte)
       const card = document.getElementById('supportCard');
       if (card && data && data.support && data.support.url) {
-        document.getElementById('supportLink').href = data.support.url;
+        const link = document.getElementById('supportLink');
+        link.href = data.support.url;
+        if (data.support.label) link.textContent = data.support.label;
         if (data.support.text) {
           document.getElementById('supportText').textContent = data.support.text;
         }

@@ -316,9 +316,10 @@ sudo systemctl restart palworld-web
 | `admin.broadcastSecret` | – | Passwort für die Broadcast-Seite; leer = deaktiviert |
 | `admin.password` | – | Passwort für die Admin-Seite `/admin`; leer = deaktiviert |
 | `visitorCounter` | `true` | Besucher-Zähler (Aufrufe + eindeutige Besucher) im Footer |
-| `support.enabled` | `false` | „Unterstützen"-Karte (z. B. Buy Me a Coffee) anzeigen? |
+| `support.enabled` | `false` | „Unterstützen"-Karte (z. B. Ko-fi, Buy Me a Coffee) anzeigen? |
 | `support.url` | – | Link zur Spenden-Seite (nur ein Link, keine externen Skripte) |
 | `support.text` | (Vorgabe) | Optionaler eigener Text auf der Karte |
+| `support.label` | `☕ Buy me a coffee` | Beschriftung des Buttons, z. B. `❤️ Auf Ko-fi unterstützen` |
 
 Alternativ per Umgebungsvariablen: `PORT`, `HOST`, `PALWORLD_API_URL`,
 `PALWORLD_ADMIN_PASSWORD`, `CACHE_SECONDS`, `SHOW_PLAYER_LIST`, `STATS_ENABLED`,
