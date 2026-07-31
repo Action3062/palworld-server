@@ -269,6 +269,8 @@ function buildServers() {
         s.basesFile || (i === 0
           ? ((config.map && config.map.basesFile) || 'data/bases.json')
           : `data/bases-${id}.json`)),
+      rankingsFile: path.join(__dirname,
+        s.rankingsFile || (i === 0 ? 'data/rankings.json' : `data/rankings-${id}.json`)),
       uploadSecret: s.uploadSecret ??
         (i === 0 ? ((config.map && config.map.uploadSecret) || '') : ''),
       // Laufzeit-Zustand (pro Server)
@@ -279,6 +281,7 @@ function buildServers() {
       prevOnline: new Set(),
       prevPos: new Map(),
       basesData: { bases: [], updatedAt: null },
+      rankingsData: { players: [], updatedAt: null },
       mapPlayersCache: { players: null, at: 0 }
     };
   });
@@ -294,13 +297,14 @@ const DEFAULT_SERVER = SERVERS[0];
 function validateServers(servers) {
   if (servers.length < 2) return;
   const problems = [];
-  const seen = { id: new Map(), uploadSecret: new Map(), apiUrl: new Map(), statsFile: new Map(), basesFile: new Map() };
+  const seen = { id: new Map(), uploadSecret: new Map(), apiUrl: new Map(), statsFile: new Map(), basesFile: new Map(), rankingsFile: new Map() };
   const labels = {
     id: 'dieselbe Server-ID',
     uploadSecret: 'dasselbe uploadSecret (Basen-Upload landet sonst beim falschen Server – bitte je Server ein eigenes Secret setzen oder immer --server angeben)',
     apiUrl: 'dieselbe palworldApiUrl (beide zeigen auf dieselbe Spielinstanz)',
     statsFile: 'dieselbe Statistik-Datei (Werte würden sich vermischen)',
-    basesFile: 'dieselbe Basen-Datei (Karten-Daten würden sich überschreiben)'
+    basesFile: 'dieselbe Basen-Datei (Karten-Daten würden sich überschreiben)',
+    rankingsFile: 'dieselbe Ranglisten-Datei (Daten würden sich überschreiben)'
   };
   for (const srv of servers) {
     for (const key of Object.keys(seen)) {
@@ -761,6 +765,36 @@ function saveBases(srv) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Ranglisten
+// ---------------------------------------------------------------------------
+// Level/EP und die Spielstand-Zähler (Paldeck, Turmbosse, …) stehen nur im
+// Spielstand – tools/upload-rankings.py auf dem Palworld-Server lädt sie
+// regelmäßig hierher hoch (POST /api/rankings/upload). Die Spielzeit kommt
+// dagegen aus der eigenen Website-Statistik.
+
+for (const srv of SERVERS) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(srv.rankingsFile, 'utf8'));
+    if (Array.isArray(raw.players)) srv.rankingsData = raw;
+  } catch { /* noch keine Ranglisten-Daten für diesen Server */ }
+}
+
+function saveRankings(srv) {
+  try {
+    fs.mkdirSync(path.dirname(srv.rankingsFile), { recursive: true });
+    const tmp = `${srv.rankingsFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(srv.rankingsData));
+    fs.renameSync(tmp, srv.rankingsFile);
+  } catch (err) {
+    console.error(`[rankings:${srv.id}] Speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
+// Numerische Ranglisten-Felder aus dem Upload (alles außer name)
+const RANKING_FIELDS = ['level', 'exp', 'paldeck', 'caught', 'towers',
+  'butcher', 'fishing', 'dungeons', 'raids'];
+
 // Positions-Cache (eigener Abruf, /api/status enthält keine Koordinaten)
 async function getMapPlayers(srv) {
   const now = Date.now();
@@ -1179,6 +1213,62 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { ok: true, count: bases.length, server: srv.id });
     } catch {
       sendJson(res, 400, { ok: false });
+    }
+    return;
+  }
+
+  // ---- Ranglisten-Upload (POST, vom Palworld-Server via Cronjob) ----
+  if (req.method === 'POST' && pathname === '/api/rankings/upload') {
+    // Auth wie beim Basen-Upload: uploadSecret je Server, Klartext-Fehler
+    const secret = searchParams.get('secret') || req.headers['x-upload-secret'] || '';
+    const requested = (searchParams.get('server') || '').trim();
+    const srv = requested
+      ? SERVERS.find((s) => s.id === requested)
+      : SERVERS.find((s) => s.uploadSecret && s.uploadSecret === secret);
+    if (!srv) {
+      sendJson(res, 404, {
+        ok: false,
+        message: requested
+          ? `Unbekannte Server-ID „${requested.slice(0, 24)}". Bekannt: ${SERVERS.map((s) => s.id).join(', ')}.`
+          : 'Kein Server mit diesem Upload-Secret gefunden – Secret prüfen ' +
+            '(oder Ziel-Server per ?server=<id> angeben).'
+      });
+      return;
+    }
+    if (!srv.uploadSecret) {
+      sendJson(res, 404, {
+        ok: false,
+        message: `Für Server „${srv.id}" ist kein uploadSecret in der config.json gesetzt.`
+      });
+      return;
+    }
+    if (secret !== srv.uploadSecret) {
+      sendJson(res, 403, {
+        ok: false,
+        message: 'Upload-Secret stimmt nicht. Prüfe den --secret-Wert gegen ' +
+          'map.uploadSecret in der config.json – und starte den Web-Dienst neu, ' +
+          'falls du das Secret gerade geändert hast.'
+      });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req, 1048576);
+      const players = (Array.isArray(body.players) ? body.players : [])
+        .slice(0, 2000)
+        .filter((p) => p && String(p.name || '').trim())
+        .map((p) => {
+          const clean = { name: String(p.name).trim().slice(0, 32) };
+          for (const f of RANKING_FIELDS) {
+            const v = Math.round(Number(p[f]));
+            clean[f] = Number.isFinite(v) && v > 0 ? v : 0;
+          }
+          return clean;
+        });
+      srv.rankingsData = { players, updatedAt: new Date().toISOString() };
+      saveRankings(srv);
+      sendJson(res, 200, { ok: true, count: players.length, server: srv.id });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage (JSON zu groß oder kaputt?).' });
     }
     return;
   }
@@ -1630,6 +1720,57 @@ const server = http.createServer(async (req, res) => {
     } catch {
       sendJson(res, 502, { ok: false, message: 'Spielserver nicht erreichbar.' });
     }
+    return;
+  }
+
+  // Ranglisten (öffentlich): fertig sortierte Top-Listen je Kategorie.
+  // Spielstand-Kategorien aus dem Upload, Spielzeit aus der eigenen Statistik.
+  if (pathname === '/api/rankings') {
+    const srv = serverFromParams(searchParams);
+    const players = srv.rankingsData.players || [];
+    const TOP = 15;
+    // Nur Spieler mit Wert > 0 listen – wer z. B. nie geangelt hat, taucht
+    // in der Angel-Liste gar nicht erst auf
+    const top = (field, extra = []) => players
+      .filter((p) => (p[field] || 0) > 0)
+      .sort((a, b) => (b[field] || 0) - (a[field] || 0) ||
+        (b.exp || 0) - (a.exp || 0) ||
+        a.name.localeCompare(b.name, 'de'))
+      .slice(0, TOP)
+      .map((p) => {
+        const row = { name: p.name, value: p[field] || 0 };
+        for (const f of extra) row[f] = p[f] || 0;
+        return row;
+      });
+    // Level-Liste: bei Gleichstand entscheiden die Erfahrungspunkte
+    const level = players
+      .filter((p) => (p.level || 0) > 0)
+      .sort((a, b) => (b.level || 0) - (a.level || 0) ||
+        (b.exp || 0) - (a.exp || 0) ||
+        a.name.localeCompare(b.name, 'de'))
+      .slice(0, TOP)
+      .map((p) => ({ name: p.name, value: p.level || 0, exp: p.exp || 0 }));
+    const playtime = Object.entries(srv.stats.players)
+      .map(([name, p]) => ({ name, value: Math.round(p.minutes || 0) }))
+      .filter((p) => p.value > 0)
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'de'))
+      .slice(0, TOP);
+    sendJson(res, 200, {
+      ok: true,
+      server: srv.id,
+      updatedAt: srv.rankingsData.updatedAt,
+      playersTotal: players.length,
+      categories: {
+        level,
+        playtime,
+        paldeck: top('paldeck', ['caught']),
+        towers: top('towers'),
+        butcher: top('butcher'),
+        fishing: top('fishing'),
+        dungeons: top('dungeons'),
+        raids: top('raids')
+      }
+    });
     return;
   }
 

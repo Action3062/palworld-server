@@ -1,6 +1,7 @@
 /* PalHeim – Statistiken
-   Lädt /api/stats und rendert Kennzahlen, das Spielerzahl-Chart
-   (SVG, mit Crosshair-Tooltip und Tastatur-Navigation) und das Leaderboard. */
+   Lädt /api/stats und rendert Kennzahlen und das Spielerzahl-Chart
+   (SVG, mit Crosshair-Tooltip und Tastatur-Navigation).
+   Die Ranglisten rendert rankings.js aus /api/rankings. */
 
 (() => {
   'use strict';
@@ -22,8 +23,6 @@
     chart: document.getElementById('playersChart'),
     chartEmpty: document.getElementById('chartEmpty'),
     chartTitle: document.getElementById('chartTitle'),
-    leaderboardWrap: document.getElementById('leaderboardWrap'),
-    leaderboardBody: document.getElementById('leaderboardBody'),
     uptimeWrap: document.getElementById('uptimeWrap'),
     avail24: document.getElementById('avail24'),
     avail7: document.getElementById('avail7'),
@@ -60,18 +59,6 @@
 
   function formatDateShort(iso) {
     return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
-
-  function formatRelative(iso) {
-    const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-    if (diffMin < 10) return 'gerade eben';
-    if (diffMin < 60) return `vor ${diffMin} min`;
-    const h = Math.floor(diffMin / 60);
-    if (h < 24) return `vor ${h} h`;
-    const d = Math.floor(h / 24);
-    if (d === 1) return 'gestern';
-    if (d < 7) return `vor ${d} Tagen`;
-    return formatDateShort(iso);
   }
 
   function tickLabel(tSec) {
@@ -113,53 +100,6 @@
     el.uniquePlayers.textContent = nf.format(data.uniquePlayers);
     el.playtime.textContent = formatHours(data.totalPlaytimeMinutes);
     el.inGameDays.textContent = data.inGameDays != null ? nf.format(data.inGameDays) : '–';
-  }
-
-  function renderLeaderboard(data) {
-    const players = data.topPlayers || [];
-    if (players.length === 0) {
-      el.leaderboardWrap.hidden = true;
-      return;
-    }
-    el.leaderboardBody.textContent = '';
-    players.forEach((p, i) => {
-      const tr = document.createElement('tr');
-
-      const rank = document.createElement('td');
-      rank.className = 'num';
-      rank.textContent = i + 1;
-
-      const name = document.createElement('td');
-      name.className = 'leaderboard__name';
-      const nameLink = document.createElement('a');
-      nameLink.className = 'leaderboard__link';
-      nameLink.href = `/spieler/${encodeURIComponent(p.name)}` +
-        (window.PalServers ? window.PalServers.query() : '');
-      nameLink.textContent = p.name; // textContent: Spielernamen sind Fremddaten
-      name.appendChild(nameLink);
-
-      const level = document.createElement('td');
-      level.className = 'num';
-      level.textContent = p.level != null ? p.level : '–';
-
-      const time = document.createElement('td');
-      time.className = 'num';
-      time.textContent = formatHours(p.minutes);
-
-      const seen = document.createElement('td');
-      const online = Date.now() - new Date(p.lastSeen).getTime() < 5 * 60_000;
-      if (online) {
-        const dot = document.createElement('span');
-        dot.className = 'leaderboard__online';
-        seen.append(dot, 'jetzt online');
-      } else {
-        seen.textContent = formatRelative(p.lastSeen);
-      }
-
-      tr.append(rank, name, level, time, seen);
-      el.leaderboardBody.appendChild(tr);
-    });
-    el.leaderboardWrap.hidden = false;
   }
 
   function renderUptime(data) {
@@ -530,7 +470,6 @@
       }
       statsData = data;
       renderTiles(data);
-      renderLeaderboard(data);
       renderUptime(data);
       renderChart();
     } catch {

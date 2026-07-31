@@ -13,7 +13,8 @@ Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 - 👥 **Spielerliste**: zeigt, wer gerade online ist (abschaltbar per Config)
 - 📊 **Statistiken**: Verlauf von Spielerzahl **und Server-FPS** (24 h / 7 Tage)
   als interaktives Chart, Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit,
-  In-Game-Tage und ein Top-Spieler-Leaderboard – gesammelt vom eigenen Backend
+  In-Game-Tage und Ranglisten in acht Kategorien (Level, Spielzeit, Paldeck,
+  Turmbosse, 💀 Hall of Shame u. a.) – gesammelt vom eigenen Backend
 - 📈 **Verfügbarkeit & Ausfälle**: Uptime der letzten 24 h / 7 Tage plus eine
   Chronik der letzten Ausfälle – direkt aus den Messpunkten berechnet
 - 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
@@ -468,6 +469,32 @@ python3 -m venv /opt/paltools
 
 Das `uploadSecret` wird in der `config.json` der Webseite unter `map`
 gesetzt; ohne Secret ist der Upload-Endpunkt deaktiviert.
+
+## Ranglisten
+
+Die Startseite zeigt unter „Statistiken" Ranglisten in acht Kategorien:
+Level (bei Gleichstand entscheiden die Erfahrungspunkte), Spielzeit,
+Paldeck-Arten, Turmbosse, geschlachtete Pals (💀 Hall of Shame), geangelte
+Fische, Dungeons und Raidbosse.
+
+Die Spielzeit misst die Website selbst; alle anderen Werte stehen nur im
+Spielstand. Dafür läuft auf dem **Palworld-Server** ein zweiter Uploader
+(gleiches venv und gleiches `uploadSecret` wie der Basen-Uploader – er liest
+zusätzlich zur `Level.sav` auch die kleinen `Players/*.sav`):
+
+```bash
+# testen:
+/opt/paltools/bin/python3 tools/upload-rankings.py \
+  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
+  --url http://10.88.0.1/api/rankings/upload \
+  --secret DEIN-UPLOAD-SECRET --server pve --dry-run
+# als Cronjob 1x pro Stunde, zeitversetzt zum Basen-Upload (crontab -e):
+40 * * * * /opt/paltools/bin/python3 /pfad/zu/upload-rankings.py --sav "…" --url "…" --secret "…" --server pve
+```
+
+Endpunkte: `POST /api/rankings/upload` (Secret wie Basen-Upload),
+`GET /api/rankings?server=<id>` (öffentlich, fertig sortierte Top-15-Listen).
+Die Daten liegen pro Server in `data/rankings*.json`.
 
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 

@@ -379,22 +379,19 @@
           <ul class="uptime__list" id="outageList"></ul>
         </div>
 
-        <div class="leaderboard reveal" id="leaderboardWrap" hidden>
-          <h3 class="leaderboard__title">Top-Spieler</h3>
+        <div class="leaderboard reveal" id="rankingsWrap" hidden>
+          <h3 class="leaderboard__title">Ranglisten</h3>
+          <p class="rankings__intro" id="rankingsIntro"></p>
+          <div class="rankings-tabs" id="rankingsTabs" role="tablist" aria-label="Rangliste wählen"></div>
           <div class="leaderboard__scroll">
             <table class="leaderboard__table">
               <thead>
-                <tr>
-                  <th scope="col" class="num">#</th>
-                  <th scope="col">Spieler</th>
-                  <th scope="col" class="num">Level</th>
-                  <th scope="col" class="num">Spielzeit</th>
-                  <th scope="col">Zuletzt online</th>
-                </tr>
+                <tr id="rankingsHead"></tr>
               </thead>
-              <tbody id="leaderboardBody"></tbody>
+              <tbody id="rankingsBody"></tbody>
             </table>
           </div>
+          <p class="rankings__stand" id="rankingsStand"></p>
         </div>
 
         <div class="ach reveal" id="achWrap" hidden>
@@ -580,7 +577,7 @@
             (3× EP, 2× Fangrate, 2× Drop-Rate) beschleunigen den Fortschritt, ohne das Spiel
             langweilig zu machen. Auf der <a href="/karte">Live-Karte</a> siehst du jederzeit,
             wer gerade wo unterwegs ist und wo die Basen der Gilden stehen – und in den
-            <a href="#statistiken">Statistiken</a> Peaks, Spielzeiten und die Top-Spieler.
+            <a href="#statistiken">Statistiken</a> Peaks, Spielzeiten und die Ranglisten.
           </p>
           <p>
             Beitreten ist einfach: Palworld starten, unter „Multiplayer beitreten“ die Adresse
@@ -729,6 +726,7 @@
   <script src="/js/visits.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/stats.js"></script>
+  <script src="/js/rankings.js"></script>
   <script src="/js/vote.js"></script>
   <script src="/js/achievements.js"></script>
 </body>
