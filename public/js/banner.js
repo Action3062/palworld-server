@@ -11,6 +11,13 @@
   fetch('/api/site', { cache: 'no-store' })
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
+      // --- Ko-fi-Reiter in der Navigation (auf allen Seiten mit Menü)
+      const navSupport = document.getElementById('navSupport');
+      if (navSupport && data && data.support && data.support.url) {
+        navSupport.href = data.support.url;
+        navSupport.hidden = false;
+      }
+
       // --- Support-Karte (nur ein Link, keine externen Skripte)
       const card = document.getElementById('supportCard');
       if (card && data && data.support && data.support.url) {
