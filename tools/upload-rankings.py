@@ -110,35 +110,69 @@ def norm_uid(uid) -> str:
     return str(uid).replace("-", "").upper()
 
 
-def level_players(sav_path: str) -> dict:
-    """Level.sav → uid → {name, level, exp}"""
+def pal_entry(p) -> dict:
+    """Pal-Charakter → kompakte Team-Daten (Art, Level, IVs, Passives …)"""
+    species = str(unwrap(p.get("CharacterID"), "")).strip()
+    alpha = species.upper().startswith("BOSS_")
+    if alpha:
+        species = species[5:]
+    gender = "f" if str(unwrap(p.get("Gender"), "")).endswith("Female") else "m"
+    passives = (p.get("PassiveSkillList", {}).get("value", {}) or {}).get("values", []) or []
+    return {
+        "species": species.lower(),
+        "alpha": alpha,
+        "lucky": bool(unwrap(p.get("IsRarePal"), False)),
+        "nick": str(unwrap(p.get("NickName"), "")).strip()[:32],
+        "level": int(unwrap(p.get("Level"), 1) or 1),
+        "gender": gender,
+        "stars": max(0, min(4, int(unwrap(p.get("Rank"), 0) or 0))),
+        "ivs": [int(unwrap(p.get(k), 0) or 0)
+                for k in ("Talent_HP", "Talent_Shot", "Talent_Defense")],
+        "souls": [int(unwrap(p.get(k), 0) or 0)
+                  for k in ("Rank_HP", "Rank_Attack", "Rank_Defence")],
+        "passives": [str(x) for x in passives][:8],
+    }
+
+
+def level_players(sav_path: str):
+    """Level.sav → (uid → {name, level, exp},  Container-ID → [(SlotIndex, Pal)])"""
     print(f"Lese {sav_path} …")
     custom = {k: v for k, v in PALWORLD_CUSTOM_PROPERTIES.items()
               if "CharacterSaveParameterMap" in k}
-    print("Parse Spielstand (nur Spieler-Charaktere) …")
+    print("Parse Spielstand (Spieler + Pals) …")
     gvas = read_gvas(sav_path, custom)
     world = gvas.properties["worldSaveData"]["value"]
     chars = world.get("CharacterSaveParameterMap", {}).get("value", [])
 
     players = {}
+    containers = {}
     for entry in chars:
         try:
             key = entry["key"]
             p = entry["value"]["RawData"]["value"]["object"]["SaveParameter"]["value"]
-            if not unwrap(p.get("IsPlayer"), False):
+            if unwrap(p.get("IsPlayer"), False):
+                uid = norm_uid(unwrap(key.get("PlayerUId"), ""))
+                name = str(unwrap(p.get("NickName"), "")).strip()
+                if not uid or not name:
+                    continue
+                players[uid] = {
+                    "name": name[:32],
+                    "level": int(unwrap(p.get("Level"), 0) or 0),
+                    "exp": int(unwrap(p.get("Exp"), 0) or 0),
+                }
                 continue
-            uid = norm_uid(unwrap(key.get("PlayerUId"), ""))
-            name = str(unwrap(p.get("NickName"), "")).strip()
-            if not uid or not name:
+            # Pal: über seinen Container merken (Team-Zuordnung kommt später
+            # aus der OtomoCharacterContainerId der Spielerdatei)
+            slot = (p.get("SlotId") or {}).get("value", {})
+            cid = str(slot.get("ContainerId", {}).get("value", {})
+                      .get("ID", {}).get("value", ""))
+            if not cid:
                 continue
-            players[uid] = {
-                "name": name[:32],
-                "level": int(unwrap(p.get("Level"), 0) or 0),
-                "exp": int(unwrap(p.get("Exp"), 0) or 0),
-            }
+            idx = int(unwrap(slot.get("SlotIndex"), 0) or 0)
+            containers.setdefault(cid, []).append((idx, pal_entry(p)))
         except (KeyError, TypeError, ValueError):
             continue
-    return players
+    return players, containers
 
 
 def map_sum(rec: dict, key: str) -> int:
@@ -165,12 +199,14 @@ def int_value(rec: dict, key: str) -> int:
     return int(v) if isinstance(v, (int, float)) else 0
 
 
-def player_record(sav_path: str) -> dict:
-    """Players/<UID>.sav → Ranglisten-Zähler"""
+def player_record(sav_path: str) -> tuple:
+    """Players/<UID>.sav → (Ranglisten-Zähler, Otomo-Container-ID)"""
     gvas = read_gvas(sav_path, {})
     sd = gvas.properties.get("SaveData", {}).get("value", {})
+    otomo = str(sd.get("OtomoCharacterContainerId", {}).get("value", {})
+                .get("ID", {}).get("value", ""))
     rec = sd.get("RecordData", {}).get("value") or {}
-    return {
+    return otomo, {
         # Paldeck: wie viele Arten wurden freigeschaltet?
         "paldeck": map_true_count(rec, "PaldeckUnlockFlag"),
         # Gefangene Pals insgesamt (alle Arten aufsummiert)
@@ -191,7 +227,7 @@ def player_record(sav_path: str) -> dict:
 
 def collect(sav_pattern: str) -> list:
     level_sav = find_sav(sav_pattern)
-    players = level_players(level_sav)
+    players, containers = level_players(level_sav)
     print(f"{len(players)} Spieler in der Level.sav gefunden.")
 
     players_dir = os.path.join(os.path.dirname(level_sav), "Players")
@@ -199,7 +235,7 @@ def collect(sav_pattern: str) -> list:
     if not files:
         print(f"ACHTUNG: Keine Spieler-Dateien unter {players_dir} gefunden –\n"
               "  die Ranglisten enthalten dann nur Level/EP.")
-    matched = skipped = failed = 0
+    matched = skipped = failed = teams = 0
     for f in files:
         uid = os.path.splitext(os.path.basename(f))[0].upper()
         entry = players.get(uid)
@@ -207,13 +243,20 @@ def collect(sav_pattern: str) -> list:
             skipped += 1   # alte/verwaiste Datei ohne Charakter in der Welt
             continue
         try:
-            entry.update(player_record(f))
+            otomo, record = player_record(f)
+            entry.update(record)
+            # Ausgerüstetes Team: die Pals im Otomo-Container, nach Slot sortiert
+            team = sorted(containers.get(otomo, []), key=lambda t: t[0])[:5]
+            if team:
+                entry["team"] = [pal for _, pal in team]
+                teams += 1
             matched += 1
         except Exception as err:  # noqa: BLE001 – einzelne kaputte Datei überspringen
             failed += 1
             print(f"  Überspringe {os.path.basename(f)}: {err}")
     print(f"Spieler-Dateien: {matched} gelesen, {skipped} ohne Welt-Charakter übersprungen"
-          + (f", {failed} fehlerhaft" if failed else "") + ".")
+          + (f", {failed} fehlerhaft" if failed else "")
+          + f". Teams gefunden: {teams}.")
     return list(players.values())
 
 
@@ -286,6 +329,15 @@ def main() -> None:
         top("fishing", "Geangelt")
         top("dungeons", "Dungeons")
         top("raids", "Raidbosse")
+        with_team = [p for p in players if p.get("team")]
+        print(f"  Teams: {len(with_team)} Spieler mit ausgerüstetem Team")
+        for p in with_team[:2]:
+            print(f"    {p['name']}:")
+            for pal in p["team"]:
+                marks = ("👑" if pal["alpha"] else "") + ("✨" if pal["lucky"] else "")
+                print(f"      {pal['species']}{marks} Lv {pal['level']} "
+                      f"{'★' * pal['stars']} IVs={pal['ivs']} "
+                      f"Passives={pal['passives']}")
         return
 
     upload(args.url, args.secret, players, args.server)

@@ -497,6 +497,30 @@ Endpunkte: `POST /api/rankings/upload` (Secret wie Basen-Upload),
 `GET /api/rankings?server=<id>` (öffentlich, fertig sortierte Top-15-Listen).
 Die Daten liegen pro Server in `data/rankings*.json`.
 
+### Team-Anzeige auf Spielerprofilen
+
+Der Ranglisten-Uploader nimmt automatisch das **ausgerüstete Team** jedes
+Spielers mit (bis zu 5 Pals): Art, Spitzname, Level, Geschlecht, Alpha/Lucky,
+Kondensator-Sterne, Seelen-Stufen, IVs und Passive Skills. Die Profilseite
+(`/spieler/<Name>`) zeigt daraus Pal-Karten mit Icon, berechneten Kampfwerten
+(Community-Formel: Basiswerte × Level × IV, +5 % je Stern, +3 % je
+Seelen-Stufe), IV-Balken und Passiv-Chips.
+
+Auf der Admin-Seite lässt sich die Anzeige unter **🧩 Funktionen** jederzeit
+für alle Besucher an-/abschalten (gespeichert in `data/features.json`).
+
+Icons, Basiswerte und Passiv-Namen liegen lokal unter `public/assets/pals/`
+(keine externen Dienste). Das Paket wird mit `tools/build-paldata.py` aus
+einem Checkout von
+[PalworldSaveTools](https://github.com/deafdudecomputers/PalworldSaveTools)
+(MIT) generiert – die enthaltenen Icons sind Spiel-Assets von Pocketpair
+(nicht-kommerzielle Fan-Content-Nutzung). Nach großen Palworld-Updates
+einfach neu generieren:
+
+```bash
+python3 tools/build-paldata.py --source /pfad/zu/PalworldSaveTools/resources
+```
+
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 
 Spieler voten auf der Serverliste und holen sich auf der Webseite eine

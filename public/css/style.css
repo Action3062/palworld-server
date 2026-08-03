@@ -713,6 +713,92 @@ code {
 
 .leaderboard { margin-top: 34px; }
 
+/* Ausgerüstetes Team (Spielerprofil) */
+.palteam { margin-top: 34px; }
+.palteam__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+  gap: 14px;
+}
+.palteam__pal {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 13px 14px;
+  background: linear-gradient(180deg, #f7fbff, var(--surface));
+}
+.palteam__pal--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-style: dashed;
+  background: none;
+  min-height: 200px;
+}
+.palteam__head { display: flex; gap: 10px; align-items: center; }
+.palteam__icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--blue);
+  flex-shrink: 0;
+}
+.palteam__name { font-weight: 800; font-size: 1.02rem; line-height: 1.15; }
+.palteam__mark { font-size: 0.9rem; }
+.palteam__species { color: var(--text-muted); font-size: 0.78rem; font-weight: 700; min-height: 1em; }
+.palteam__badges { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.palteam__elem { width: 18px; height: 18px; }
+.palteam__lvl {
+  background: var(--blue-dark);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 1.5px 8px;
+  border-radius: 999px;
+}
+.palteam__g { font-weight: 800; font-size: 0.85rem; }
+.palteam__g--m { color: var(--blue-dark); }
+.palteam__g--f { color: #c2185b; }
+.palteam__stars { margin: 8px 0 6px; font-size: 0.9rem; color: #d9dee3; letter-spacing: 2px; }
+.palteam__stars .is-on { color: var(--accent); }
+.palteam__stars.is-none {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+.palteam__stats { display: flex; gap: 10px; font-weight: 800; font-size: 0.86rem; margin-bottom: 8px; }
+.palteam__iv { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.palteam__ivlabel { width: 30px; font-size: 0.68rem; font-weight: 800; color: var(--text-muted); }
+.palteam__ivbar {
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: #e3eef7;
+  overflow: hidden;
+}
+.palteam__ivfill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue), var(--blue-dark));
+}
+.palteam__ivval { width: 24px; text-align: right; font-size: 0.7rem; font-weight: 800; color: var(--text-muted); }
+.palteam__passives { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.palteam__pp { font-size: 0.7rem; font-weight: 800; padding: 2.5px 9px; border-radius: 999px; }
+.palteam__pp--gold { background: #fff3d6; color: #b8860b; border: 1px solid #ecd9a0; }
+.palteam__pp--pos { background: #e8f5e9; color: #2e7d35; border: 1px solid #c8e6c9; }
+.palteam__pp--neg { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c0; }
+.palteam__pp--none { background: #f0f4f8; color: var(--text-muted); border: 1px solid var(--border); }
+.palteam__stand { color: var(--text-muted); font-size: 0.85rem; margin-top: 10px; }
+@media (max-width: 700px) {
+  /* Mobil keine leeren Slots – die fressen nur Platz */
+  .palteam__pal--empty { display: none; }
+}
+
 /* Ranglisten: Kategorie-Tabs + Fußzeile */
 .rankings__intro {
   color: var(--text-muted);

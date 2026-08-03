@@ -148,6 +148,13 @@
     $('admBanRows').innerHTML = banRows;
     $('admBansBlock').hidden = lastBans.length === 0;
 
+    // Funktions-Schalter: Zustand vom Server übernehmen (außer der Nutzer
+    // hat das Häkchen gerade in der Hand)
+    const featTeam = $('admFeatTeam');
+    if (featTeam && data.features && document.activeElement !== featTeam) {
+      featTeam.checked = Boolean(data.features.teamView);
+    }
+
     // Banner-Formular nur beim ersten Laden vorbefüllen – nicht bei jedem
     // Auto-Refresh, sonst überschreibt er, was der Admin gerade tippt
     if (!bannerFormTouched && data.banner) {
@@ -267,6 +274,30 @@
     stopRefresh();
     show(loginView);
   });
+
+  // ---- Funktionen an-/abschalten ----
+  const featTeamBox = $('admFeatTeam');
+  if (featTeamBox) {
+    featTeamBox.addEventListener('change', async () => {
+      const enabled = featTeamBox.checked;
+      featTeamBox.disabled = true;
+      try {
+        const res = await fetch('/api/admin/feature', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'teamView', enabled })
+        });
+        const data = await res.json();
+        setMsg($('admFeatMsg'), data.message || (res.ok ? 'Gespeichert.' : 'Fehler.'), res.ok);
+        if (!res.ok) featTeamBox.checked = !enabled; // zurückdrehen
+      } catch {
+        setMsg($('admFeatMsg'), 'Netzwerkfehler – nicht gespeichert.', false);
+        featTeamBox.checked = !enabled;
+      } finally {
+        featTeamBox.disabled = false;
+      }
+    });
+  }
 
   // ---- Seiten-Banner ----
   for (const id of ['admBannerOn', 'admBannerText', 'admBannerLevel']) {

@@ -795,6 +795,67 @@ function saveRankings(srv) {
 const RANKING_FIELDS = ['level', 'exp', 'paldeck', 'caught', 'towers',
   'butcher', 'fishing', 'dungeons', 'raids'];
 
+// Ausgerüstetes Team aus dem Upload prüfen und auf sichere Werte stutzen
+function cleanTeam(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  const idRe = /^[a-z0-9_]+$/;
+  const clampInt = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
+  const triple = (arr, hi) => {
+    const out = (Array.isArray(arr) ? arr : []).slice(0, 3).map((v) => clampInt(v, 0, hi));
+    while (out.length < 3) out.push(0);
+    return out;
+  };
+  const team = [];
+  for (const t of raw.slice(0, 5)) {
+    if (!t || typeof t !== 'object') continue;
+    const species = String(t.species || '').toLowerCase().slice(0, 40);
+    if (!idRe.test(species)) continue;
+    team.push({
+      species,
+      alpha: Boolean(t.alpha),
+      lucky: Boolean(t.lucky),
+      nick: String(t.nick || '').slice(0, 32),
+      level: clampInt(t.level, 1, 100),
+      gender: t.gender === 'f' ? 'f' : 'm',
+      stars: clampInt(t.stars, 0, 4),
+      ivs: triple(t.ivs, 100),
+      souls: triple(t.souls, 60),
+      passives: (Array.isArray(t.passives) ? t.passives : []).slice(0, 8)
+        .map((s) => String(s).toLowerCase().slice(0, 64))
+        .filter((s) => idRe.test(s))
+    });
+  }
+  return team.length ? team : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Schaltbare Funktionen (von der Admin-Seite aus, data/features.json)
+// ---------------------------------------------------------------------------
+const FEATURE_LABELS = {
+  teamView: 'Team-Anzeige auf Spielerprofilen'
+};
+const featuresFile = path.join(__dirname, 'data/features.json');
+let features = { teamView: true };
+try {
+  const rawFeatures = JSON.parse(fs.readFileSync(featuresFile, 'utf8'));
+  if (rawFeatures && typeof rawFeatures === 'object') {
+    for (const key of Object.keys(features)) {
+      if (typeof rawFeatures[key] === 'boolean') features[key] = rawFeatures[key];
+    }
+  }
+} catch { /* Standardwerte gelten */ }
+
+function saveFeatures() {
+  try {
+    fs.mkdirSync(path.dirname(featuresFile), { recursive: true });
+    const tmp = `${featuresFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(features));
+    fs.renameSync(tmp, featuresFile);
+  } catch (err) {
+    console.error(`[admin] Funktionen speichern fehlgeschlagen: ${err.message}`);
+  }
+}
+
 // Positions-Cache (eigener Abruf, /api/status enthält keine Koordinaten)
 async function getMapPlayers(srv) {
   const now = Date.now();
@@ -1262,6 +1323,8 @@ const server = http.createServer(async (req, res) => {
             const v = Math.round(Number(p[f]));
             clean[f] = Number.isFinite(v) && v > 0 ? v : 0;
           }
+          const team = cleanTeam(p.team);
+          if (team) clean.team = team;
           return clean;
         });
       srv.rankingsData = { players, updatedAt: new Date().toISOString() };
@@ -1555,6 +1618,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Admin: Funktion an-/abschalten (POST, nur mit Login) ----
+  if (req.method === 'POST' && pathname === '/api/admin/feature') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const key = String(body.key || '');
+      if (!(key in features)) {
+        sendJson(res, 400, { ok: false, message: `Unbekannte Funktion „${key.slice(0, 32)}".` });
+        return;
+      }
+      features[key] = Boolean(body.enabled);
+      saveFeatures();
+      const label = FEATURE_LABELS[key] || key;
+      adminLog('Funktion', `„${label}" ${features[key] ? 'aktiviert' : 'deaktiviert'}`, session.user);
+      sendJson(res, 200, {
+        ok: true,
+        features,
+        message: `„${label}" ist jetzt ${features[key] ? 'aktiviert' : 'deaktiviert'}.`
+      });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+    }
+    return;
+  }
+
   // ---- Admin: Seiten-Banner setzen (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/banner') {
     const session = adminEnabled() && adminSessionFromReq(req);
@@ -1699,6 +1791,8 @@ const server = http.createServer(async (req, res) => {
         level: eb.level || 'info'
       },
       bases: { count: srv.basesData.bases.length, updatedAt: srv.basesData.updatedAt },
+      features,
+      featureLabels: FEATURE_LABELS,
       visits: config.visitorCounter ? visits : null
     });
     return;
@@ -1828,7 +1922,14 @@ const server = http.createServer(async (req, res) => {
       daysCount: p.daysCount || 0,
       distKm: Math.round(p.distKm || 0),
       areas: (p.cells || []).length,
-      achievements: evaluateAchievements(key, p, achievementContext(srv, key))
+      achievements: evaluateAchievements(key, p, achievementContext(srv, key)),
+      // Ausgerüstetes Team aus dem Ranglisten-Upload – nur wenn die
+      // Funktion auf der Admin-Seite aktiviert ist
+      team: features.teamView
+        ? ((srv.rankingsData.players || [])
+            .find((rp) => rp.name.toLowerCase() === key.toLowerCase()) || {}).team || null
+        : null,
+      teamUpdatedAt: features.teamView ? srv.rankingsData.updatedAt : null
     });
     return;
   }
