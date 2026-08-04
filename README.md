@@ -550,6 +550,18 @@ eigene Nachricht (unterschieden über `--name`). Die Nachrichten-ID merkt
 sich das Skript in `~/.palheim-discord-status.json`; wird die Nachricht im
 Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
 
+**Läuft der Server im Docker-Container?** Dann antwortet die REST-API oft
+nicht auf `127.0.0.1` – typischer Fehler:
+`Spielserver nicht erreichbar: <urlopen error [Errno 111] Connection refused>`.
+Das Skript sucht die API in dem Fall selbst am Container (Host-Netz,
+veröffentlichter Port, Container-IP), meldet die gefundene Adresse einmal im
+Log und merkt sie sich für die nächsten Läufe – `--api` kann man dann
+weglassen oder auf die gemeldete Adresse setzen. Steuerbar mit
+`--container <name>` (falls die Automatik den falschen Container erwischt),
+`--port 8212` (REST-Port im Container) und `--no-docker` (Suche aus).
+Kommt stattdessen `HTTP 401`, ist die API erreichbar und nur das
+`--password` passt nicht zum `AdminPassword` der `PalWorldSettings.ini`.
+
 ### Neustarts im selben Kanal (ohne Nachrichten-Spam)
 
 Früher hat jeder Neustart eine **neue** Nachricht gepostet – dadurch rutschte
