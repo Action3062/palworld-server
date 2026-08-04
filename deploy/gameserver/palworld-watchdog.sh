@@ -44,17 +44,26 @@ STATE_FILE="/run/palworld-watchdog.fails"
 log() { echo "[$(date '+%F %T')] $*"; }
 dc()  { docker compose --project-directory "$COMPOSE_DIR" "$@"; }
 
-# Discord-Benachrichtigung als farbiges Embed.
-#   notify_discord <Titel (mit Emoji)> <Text> [Farbe]
+# --- Discord ------------------------------------------------------------------
+# palworld-discord.sh pflegt EINE Neustart-Nachricht (bearbeiten statt neu
+# posten). Fehlt die Datei (aeltere Installation), bleibt es beim alten
+# Verhalten: eine neue Nachricht je Watchdog-Neustart.
 DC_GREEN=3066993; DC_BLUE=3447003; DC_ORANGE=15105570; DC_RED=15158332
-notify_discord() {
-  [ -n "$DISCORD_WEBHOOK" ] || return 0
-  local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
-  curl -fsS -m 10 -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
-      '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
-    "$DISCORD_WEBHOOK" >/dev/null || true
-}
+if [ -f "${SCRIPT_DIR}/palworld-discord.sh" ]; then
+  # shellcheck disable=SC1091
+  . "${SCRIPT_DIR}/palworld-discord.sh"
+else
+  DISCORD_RESTART_MESSAGE=false
+  notify_discord() {
+    [ -n "$DISCORD_WEBHOOK" ] || return 0
+    local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
+    curl -fsS -m 10 -H 'Content-Type: application/json' \
+      -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
+        '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
+      "$DISCORD_WEBHOOK" >/dev/null || true
+  }
+  discord_restart_event() { :; }
+fi
 
 reset_fails() {
   PREV=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
@@ -134,4 +143,9 @@ curl -fsS -m 8 -u "admin:${ADMIN_PASSWORD}" -H 'Content-Type: application/json' 
 dc restart -t 60 "$SERVICE"
 echo 0 > "$STATE_FILE"
 log "Neustart ausgefuehrt."
-notify_discord "⚠️ Watchdog: automatischer Neustart" "Die REST-API war ${WATCHDOG_FAILS_MAX}× in Folge nicht erreichbar – der Server wurde neu gestartet. Datenverlust höchstens bis zum letzten Autosave (alle 30 s)." "$DC_ORANGE"
+WD_TEXT="REST-API war ${WATCHDOG_FAILS_MAX}× in Folge nicht erreichbar. Datenverlust höchstens bis zum letzten Autosave (alle 30 s)."
+if [ "${DISCORD_RESTART_MESSAGE:-false}" = "true" ]; then
+  discord_restart_event ok watchdog "Automatischer Neustart durch den Watchdog" "$WD_TEXT"
+else
+  notify_discord "⚠️ Watchdog: automatischer Neustart" "Die ${WD_TEXT}" "$DC_ORANGE"
+fi

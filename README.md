@@ -550,6 +550,50 @@ eigene Nachricht (unterschieden über `--name`). Die Nachrichten-ID merkt
 sich das Skript in `~/.palheim-discord-status.json`; wird die Nachricht im
 Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
 
+### Neustarts im selben Kanal (ohne Nachrichten-Spam)
+
+Früher hat jeder Neustart eine **neue** Nachricht gepostet – dadurch rutschte
+die Status-Nachricht mit Spielern, FPS und CPU/RAM nach und nach nach oben aus
+dem Blick. Jetzt pflegen `palworld-autoupdate.sh` und `palworld-watchdog.sh`
+über `deploy/gameserver/palworld-discord.sh` **eine** Neustart-Nachricht, die
+bearbeitet statt neu gepostet wird:
+
+> 🔄 **Neustarts · Server 1 · PvE 4x** · 🟢 Server läuft.
+> **🕒 Letzter Neustart** – 4. Aug 2026, 05:05 · *vor 6 Std* · ⬆️ Update ·
+> `v0.6.1` → `v0.6.2` · 3 Spieler waren online
+> **⏭️ Nächster Neustart** – 4. Aug 2026, 17:05 · *in 6 Std*
+
+Die Zeiten gehen als Discord-Zeitstempel (`<t:…:R>`) raus – Discord rechnet
+sie im Client selbst um, „vor 6 Std“ bleibt also aktuell, ohne dass ein
+Cronjob die Nachricht ständig neu schreiben muss. Während eines Neustarts wird
+die Nachricht orange („Neustart läuft“), bei Fehlern rot.
+
+Damit das läuft, muss `palworld-discord.sh` neben den beiden Skripten liegen
+(gleiches Verzeichnis, meist `/root/palworld/`). Fehlt die Datei, bleibt alles
+beim alten Verhalten. Einstellungen in der `palworld-scripts.conf`:
+
+```bash
+DISCORD_WEBHOOK="https://discord.com/api/webhooks/…"  # derselbe Kanal wie oben
+DISCORD_SERVER_NAME="Server 1 · PvE 4x"    # Titelzusatz, optional
+RESTART_SCHEDULE="05:05 17:05"             # geplante Neustarts (lokale Zeit)
+# DISCORD_RESTART_MESSAGE=false            # zurück zum alten Verhalten
+# DISCORD_ALERT_NEW_MESSAGE=true           # Fehler zusätzlich als eigene Nachricht
+# DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
+```
+
+`RESTART_SCHEDULE` ist die Zeit, zu der der Server **wirklich** runtergeht,
+also Cron-Zeit + Vorwarnzeit (Cron `55 4 * * *` + 10 min Warnung → `05:05`).
+Ohne die Angabe zeigt die Nachricht „kein fester Termin“. Ein `--min-gap`
+wird berücksichtigt: liegt der nächste Termin zu dicht am letzten Neustart,
+wird gleich der übernächste angezeigt.
+
+Optional hält ein kleiner Cronjob den nächsten Termin frisch (nötig z. B.,
+wenn ein Lauf wegen `--if-empty` übersprungen wurde):
+
+```bash
+*/15 * * * * /root/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
+```
+
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 
 Spieler voten auf der Serverliste und holen sich auf der Webseite eine
