@@ -12,8 +12,8 @@
 #   ./palworld-upload.sh bases --dry-run
 #
 # Cron (versetzt zu Announce :15/:45 und Update-Check :00/:30):
-#   10 * * * * root /opt/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
-#   40 * * * * root /opt/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
+#   10 * * * * /etc/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
+#   40 * * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

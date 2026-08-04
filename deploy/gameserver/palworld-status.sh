@@ -8,7 +8,7 @@
 # und der Cron ist auf allen Gameservern identisch.
 #
 # Cron (alle 5 Minuten):
-#   */5 * * * * root /opt/palworld/palworld-status.sh >> /var/log/palworld-status.log 2>&1
+#   */5 * * * * /etc/palworld/palworld-status.sh >> /var/log/palworld-status.log 2>&1
 #
 # Zusaetzliche Argumente werden durchgereicht:
 #   ./palworld-status.sh --dry-run
