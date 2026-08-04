@@ -521,6 +521,35 @@ einfach neu generieren:
 python3 tools/build-paldata.py --source /pfad/zu/PalworldSaveTools/resources
 ```
 
+## Server-Status im Discord (tools/discord-status.py)
+
+Spiegelt den Live-Status jedes Servers als **eine sich selbst
+aktualisierende Nachricht** in einen Discord-Kanal (Embed wird bearbeitet,
+kein Nachrichten-Spam): Spieler, Version, In-Game-Tage, Server-FPS, Uptime,
+API-Latenz sowie **CPU und RAM** der Maschine und des PalServer-Prozesses
+(mit Balkenanzeige). Ist der Spielserver down, wird die Nachricht rot und
+zeigt weiterhin die Hardware – inklusive Hinweis, falls der Prozess gar
+nicht mehr läuft.
+
+Läuft auf dem **Palworld-Server** (nur Python-Standardbibliothek, kein
+venv nötig):
+
+```bash
+# 1. Discord: Kanal → Einstellungen → Integrationen → Webhook anlegen, URL kopieren
+# 2. Testen:
+python3 tools/discord-status.py \
+  --api http://127.0.0.1:8212 --password 'ADMINPASSWORT' \
+  --webhook 'https://discord.com/api/webhooks/…' \
+  --name 'Server 1 · PvE 4x' --address pve.palheim.de:8211
+# 3. Cron, alle 5 Minuten (crontab -e):
+*/5 * * * * python3 /root/palworld/discord-status.py --api … --password '…' --webhook '…' --name '…' --address … >> /var/log/discord-status.log 2>&1
+```
+
+Beide Server können denselben Webhook/Kanal nutzen – jeder pflegt seine
+eigene Nachricht (unterschieden über `--name`). Die Nachrichten-ID merkt
+sich das Skript in `~/.palheim-discord-status.json`; wird die Nachricht im
+Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
+
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 
 Spieler voten auf der Serverliste und holen sich auf der Webseite eine
