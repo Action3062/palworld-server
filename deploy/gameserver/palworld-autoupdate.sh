@@ -20,6 +20,9 @@
 #   --reason "Text"    Eigener Grund fuer die Ingame-Ankuendigung
 #   --discord-refresh  Nichts am Server tun, nur die Discord-Neustart-Nachricht
 #                      neu zeichnen (naechster Termin). Fuer einen Cronjob.
+#   --discord-restarted  Nichts am Server tun, nur "Neustart war gerade" in der
+#                      Discord-Nachricht vermerken (mit --reason). Fuer Server,
+#                      die noch mit einem eigenen Neustart-Skript laufen.
 #
 # Discord: Neustarts posten KEINE neuen Nachrichten mehr, sondern pflegen eine
 # einzige Nachricht im Kanal ("Letzter Neustart" / "Naechster Neustart"), damit
@@ -91,8 +94,9 @@ REASON=""
 usage() { awk 'NR>2 && /^# ={10,}/{exit} NR>2{sub(/^# ?/,""); print}' "$0"; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --force-restart)   MODE="restart" ;;
-    --discord-refresh) MODE="discord-refresh" ;;
+    --force-restart)     MODE="restart" ;;
+    --discord-refresh)   MODE="discord-refresh" ;;
+    --discord-restarted) MODE="discord-restarted" ;;
     --if-empty)        IF_EMPTY=true ;;
     --once-daily)      ONCE_DAILY=true ;;
     --min-gap)         MIN_GAP_HOURS="${2:-0}"; shift ;;
@@ -129,9 +133,14 @@ else
   discord_alert() { notify_discord "$1" "${2:-}" "$DC_RED"; }
 fi
 
-# --- Nur die Discord-Nachricht neu zeichnen --------------------------------------
+# --- Nur die Discord-Nachricht anfassen, den Server nicht ------------------------
 if [ "$MODE" = "discord-refresh" ]; then
   discord_restart_event refresh
+  exit 0
+fi
+if [ "$MODE" = "discord-restarted" ]; then
+  # Fremder Neustart (eigenes Skript, systemd, von Hand) wird nachgetragen
+  discord_restart_event ok restart "${REASON:-Neustart}" ""
   exit 0
 fi
 

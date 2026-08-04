@@ -1,0 +1,61 @@
+# =============================================================================
+# root-crontab Server 2 (native Instanz, Uebergangsstand)
+# =============================================================================
+# Installation:
+#   crontab -l > ~/crontab.backup-$(date +%F)     # vorher sichern
+#   crontab -e                                    # Inhalt hier einfuegen
+#   rm /etc/cron.d/palworld                       # WICHTIG: sonst laeuft alles doppelt!
+#   crontab -l                                    # pruefen
+#
+# Warum nicht identisch mit crontab-palworld.txt?
+# palworld-autoupdate.sh, -watchdog.sh und -backup.sh aus diesem Repo steuern
+# den Server ueber "docker compose". Server 2 laeuft nativ, deshalb bleiben
+# dort bis auf Weiteres die eigenen Skripte unter /home/scripts. Alles
+# Runtime-Unabhaengige (Discord-Status, Uploads) laeuft schon aus
+# /etc/palworld und liest /etc/palworld/palworld-scripts.conf.
+#
+# Zeiten bewusst eine Stunde versetzt zu Server 1 (05:05/10:05/18:05),
+# damit nie beide Welten gleichzeitig offline sind.
+# In der Conf entsprechend: RESTART_SCHEDULE="06:05 11:05 19:05"
+# =============================================================================
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# --- Server-Wartung (noch die eigenen Skripte dieser Maschine) ---------------
+# Update-Check
+*/30 *      * * * /home/scripts/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+
+# Geplante Neustarts: Warnung ab :55, Server geht ~10 min spaeter runter.
+# Der zweite Befehl traegt den Neustart in der Discord-Nachricht nach.
+# Sauberer waere die Zeile am Ende des eigenen Skripts (dann faellt sie bei
+# einem uebersprungenen Lauf korrekt aus) - siehe Hinweis unten.
+55   5,10,18 * * * /home/scripts/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1 && /etc/palworld/palworld-autoupdate.sh --discord-restarted --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+
+# Haenger-Erkennung
+*    *       * * * /home/scripts/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
+
+# Ingame-Ansagen
+15,45 *      * * * /home/scripts/palworld-announce.sh >> /var/log/palworld-announce.log 2>&1
+
+# Live-Backup: fehlt auf dieser Maschine noch. palworld-backup.sh aus dem Repo
+# braucht Docker - kommt mit der gemeinsamen Backup-Strategie.
+# 20 */6     * * * /etc/palworld/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
+
+# --- Runtime-unabhaengig, schon aus /etc/palworld ----------------------------
+# Discord: Status-Nachricht (Spieler/FPS/CPU) und Neustart-Nachricht
+*/5  *       * * * /etc/palworld/palworld-status.sh >> /var/log/palworld-status.log 2>&1
+*/15 *       * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
+
+# Uploads zur Webseite (Live-Karte und Ranglisten)
+10   *       * * * /etc/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
+40   *       * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
+
+# =============================================================================
+# Hinweis zum "&&" in der Neustart-Zeile:
+# Beendet sich das eigene Skript wegen --min-gap ohne Neustart mit Status 0,
+# wird trotzdem ein Neustart vermerkt. Besser: die Zeile
+#   /etc/palworld/palworld-autoupdate.sh --discord-restarted --reason "Wartungs-Neustart"
+# an die Stelle im eigenen Skript setzen, an der der Neustart wirklich
+# ausgefuehrt wurde - dann hier alles ab "&&" wieder entfernen.
+# =============================================================================

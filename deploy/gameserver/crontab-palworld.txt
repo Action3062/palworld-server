@@ -14,6 +14,10 @@
 # steht in /etc/palworld/palworld-scripts.conf (chmod 600) - deshalb steht
 # hier kein einziges Geheimnis mehr.
 #
+# Diese Vorlage setzt einen Server im Docker-Container voraus. Fuer eine
+# native Instanz siehe crontab-palworld-server2.txt (Uebergangsstand, bis die
+# Wartungs-Skripte eine Laufzeit-Umschaltung haben).
+#
 # Zeitraster, damit sich die Jobs nicht in die Quere kommen:
 #   :00/:30  Update-Check       :10  Basen-Upload       :15/:45  Ansagen
 #   :20      Live-Backup (6 h)  :40  Ranglisten-Upload  alle 5 min  Status
