@@ -25,6 +25,8 @@ SERVER_ADDRESS=""
 STATUS_API=""
 STATUS_CONTAINER=""
 STATUS_STATE=""
+STATUS_PORT=""                    # nur setzen, wenn die Docker-Suche einen
+                                  # anderen REST-Port als --api treffen soll
 # Standard: die .py-Werkzeuge liegen neben diesem Skript, der
 # Interpreter im venv. Beides ueber die Conf umstellbar.
 PALTOOLS_DIR="$SCRIPT_DIR"
@@ -57,6 +59,8 @@ ARGS=(--password "$ADMIN_PASSWORD" --webhook "$DISCORD_WEBHOOK"
 [ -n "$STATUS_API"       ] && ARGS+=(--api       "$STATUS_API")
 [ -n "$STATUS_CONTAINER" ] && ARGS+=(--container "$STATUS_CONTAINER")
 [ -n "$STATUS_STATE"     ] && ARGS+=(--state     "$STATUS_STATE")
-[ -n "${REST_PORT:-}"    ] && ARGS+=(--port      "$REST_PORT")
+# --port bewusst nur auf Wunsch: aeltere discord-status.py kennen die Option
+# nicht, und ohne Angabe leitet sie den Port ohnehin aus --api ab.
+[ -n "$STATUS_PORT"      ] && ARGS+=(--port      "$STATUS_PORT")
 
 exec "$PYTHON" "$SCRIPT" "${ARGS[@]}" "$@"

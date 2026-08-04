@@ -67,6 +67,7 @@ SERVER_ADDRESS="pve.palheim.de:8211"             # [SERVER] Join-Adresse
 # STATUS_API=""            # leer = automatisch suchen (Docker-Erkennung)
 # STATUS_CONTAINER=""      # nur noetig, wenn die Automatik danebengreift
 # STATUS_STATE="/var/lib/palworld/discord-status.json"
+# STATUS_PORT=8212         # nur fuer die Docker-Suche, wenn STATUS_API leer ist
 
 # --- Python-Werkzeuge (palworld-status.sh, palworld-upload.sh) ----------------
 # Standard: .py-Dateien neben den Skripten, Interpreter aus dem venv.
