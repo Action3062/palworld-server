@@ -22,6 +22,10 @@
 #   LIVE_BACKUP_KEEP=12        aufbewahrte Live-Backups (12 = 3 Tage bei 4/Tag)
 #   LIVE_BACKUP_SAVE_WAIT=15   Sekunden Wartezeit nach dem API-Save
 #
+# --dry-run zeigt nur, was passieren wuerde: Pfade, Groesse des Spielstands,
+# Name des Archivs, welche alten Backups die Rotation loeschen wuerde. Es wird
+# nichts gespeichert, nichts gepackt und nichts geloescht.
+#
 # Cron (alle 6 Stunden, bewusst versetzt zu Update :00/:30 und Announce :15/:45):
 #   20 */6 * * * /etc/palworld/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
 # =============================================================================
@@ -61,6 +65,13 @@ SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"
 
 BACKUP_LOCK="/var/lock/palworld-backup.lock"
 
+DRY_RUN=false
+case "${1:-}" in
+  --dry-run) DRY_RUN=true ;;
+  "")        ;;
+  *) echo "Aufruf: $(basename "$0") [--dry-run]" >&2; exit 2 ;;
+esac
+
 log() { echo "[$(date '+%F %T')] $*"; }
 dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
 
@@ -97,7 +108,15 @@ flock -n 9 || exit 0
 # statt den Lauf sofort ausfallen zu lassen. Erst wenn wirklich etwas haengt,
 # wird nach dem Timeout uebersprungen.
 exec 8>"$LOCKFILE"
-if ! flock -w "$BACKUP_LOCK_WAIT" 8; then
+if [ "$DRY_RUN" = "true" ]; then
+  # Nicht warten und nicht blockieren - nur berichten, wie die Lage ist
+  if flock -n 8; then
+    flock -u 8
+    log "[dry-run] Update-Lock ist frei, ein echter Lauf koennte sofort starten."
+  else
+    log "[dry-run] Update-/Restart-Skript laeuft gerade - ein echter Lauf wuerde bis zu ${BACKUP_LOCK_WAIT}s warten."
+  fi
+elif ! flock -w "$BACKUP_LOCK_WAIT" 8; then
   log "Update-/Restart-Skript laeuft seit ueber ${BACKUP_LOCK_WAIT}s, ueberspringe diesen Backup-Lauf."
   exit 0
 fi
@@ -107,7 +126,12 @@ if [ ! -d "$SAVED_DIR" ]; then
   log "FEHLER: Spielstand-Verzeichnis fehlt: ${SAVED_DIR}"
   exit 1
 fi
-mkdir -p "$BACKUP_DIR"
+if [ "$DRY_RUN" = "true" ]; then
+  log "[dry-run] Spielstand:  ${SAVED_DIR} ($(du -sh "$SAVED_DIR" 2>/dev/null | cut -f1))"
+  log "[dry-run] Backup-Ziel: ${BACKUP_DIR}$([ -d "$BACKUP_DIR" ] || echo ' (wird angelegt)')"
+else
+  mkdir -p "$BACKUP_DIR"
+fi
 
 # --- Welt speichern lassen (nur wenn der Server laeuft) --------------------------
 CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
@@ -125,18 +149,41 @@ if [ "$RUNNING" = "true" ]; then
     fi
   fi
   API="http://${REST_HOST}:${REST_PORT}/v1/api"
-  if curl -fsS -m 10 -u "admin:${ADMIN_PASSWORD}" -H 'Content-Type: application/json' \
+  if [ "$DRY_RUN" = "true" ]; then
+    if curl -fsS -m 10 -u "admin:${ADMIN_PASSWORD}" "${API}/info" >/dev/null 2>&1; then
+      log "[dry-run] REST-API erreichbar (${API}) - der Lauf wuerde erst speichern lassen."
+    else
+      log "[dry-run] REST-API NICHT erreichbar (${API}) - es wuerde der letzte Autosave-Stand gesichert."
+    fi
+  elif curl -fsS -m 10 -u "admin:${ADMIN_PASSWORD}" -H 'Content-Type: application/json' \
        -X POST -d '{}' "${API}/save" >/dev/null 2>&1; then
     sleep "$LIVE_BACKUP_SAVE_WAIT"   # dem Server Zeit geben, den Save zu schreiben
   else
     log "WARNUNG: API-Save fehlgeschlagen, sichere den letzten Autosave-Stand."
   fi
+else
+  [ "$DRY_RUN" = "true" ] && log "[dry-run] Server laeuft nicht (kein Container) - Sicherung ohne API-Save."
 fi
 
 # --- Unveraendert seit dem letzten Live-Backup? Dann sparen wir uns das ----------
 LATEST=$(ls -1t "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null | head -n1 || true)
 if [ -n "$LATEST" ] && [ -z "$(find "$SAVED_DIR" -type f -newer "$LATEST" -print -quit)" ]; then
   log "Spielstand unveraendert seit $(basename "$LATEST"), ueberspringe."
+  exit 0
+fi
+
+if [ "$DRY_RUN" = "true" ]; then
+  log "[dry-run] Wuerde anlegen: ${BACKUP_DIR}/palworld-live-$(date +%Y%m%d-%H%M%S).tar.gz"
+  COUNT=$(ls -1 "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null | wc -l)
+  log "[dry-run] Live-Backups vorhanden: ${COUNT}, aufbewahrt werden ${LIVE_BACKUP_KEEP}."
+  OLD=$(ls -1t "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null | tail -n +"$LIVE_BACKUP_KEEP" || true)
+  if [ -n "$OLD" ]; then
+    log "[dry-run] Die Rotation wuerde danach loeschen:"
+    printf '  %s\n' $OLD
+  else
+    log "[dry-run] Die Rotation wuerde nichts loeschen."
+  fi
+  log "[dry-run] Fertig - es wurde nichts veraendert."
   exit 0
 fi
 

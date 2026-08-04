@@ -575,6 +575,7 @@ nano /etc/palworld/palworld-scripts.conf    # Werte mit [SERVER] anpassen
 # Testlauf, bevor der Cron es tut:
 /etc/palworld/palworld-status.sh --dry-run
 /etc/palworld/palworld-upload.sh bases --dry-run
+/etc/palworld/palworld-backup.sh --dry-run
 /etc/palworld/palworld-autoupdate.sh --discord-refresh
 # Cron (Vorlage: deploy/gameserver/crontab-palworld.txt)
 crontab -l > ~/crontab.backup-$(date +%F)
