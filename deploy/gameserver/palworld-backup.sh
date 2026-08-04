@@ -91,6 +91,8 @@ STAGING=""
 cleanup() { if [ -n "$STAGING" ]; then rm -rf "$STAGING"; fi; }
 on_error() {
   log "FEHLER: Live-Backup fehlgeschlagen."
+  # Ein Trockenlauf meldet nichts nach Discord - er soll nur zeigen, nicht laermen
+  [ "$DRY_RUN" = "true" ] && return 0
   notify_discord "🔴 Live-Backup fehlgeschlagen" "Bitte ins Log schauen: \`/var/log/palworld-backup.log\`" "$DC_RED"
 }
 trap cleanup EXIT
@@ -174,9 +176,12 @@ fi
 
 if [ "$DRY_RUN" = "true" ]; then
   log "[dry-run] Wuerde anlegen: ${BACKUP_DIR}/palworld-live-$(date +%Y%m%d-%H%M%S).tar.gz"
-  COUNT=$(ls -1 "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null | wc -l)
+  # Achtung pipefail: ohne "|| true" reisst ein leeres/fehlendes BACKUP_DIR
+  # den ganzen Lauf mit in den ERR-Trap.
+  EXISTING=$(ls -1t "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null || true)
+  COUNT=$(printf '%s' "$EXISTING" | grep -c . || true)
   log "[dry-run] Live-Backups vorhanden: ${COUNT}, aufbewahrt werden ${LIVE_BACKUP_KEEP}."
-  OLD=$(ls -1t "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null | tail -n +"$LIVE_BACKUP_KEEP" || true)
+  OLD=$(printf '%s\n' "$EXISTING" | tail -n +"$LIVE_BACKUP_KEEP" | grep . || true)
   if [ -n "$OLD" ]; then
     log "[dry-run] Die Rotation wuerde danach loeschen:"
     printf '  %s\n' $OLD
