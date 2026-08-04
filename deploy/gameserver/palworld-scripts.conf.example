@@ -1,0 +1,80 @@
+# =============================================================================
+# palworld-scripts.conf - zentrale Konfiguration ALLER Gameserver-Skripte
+# =============================================================================
+# Kopieren nach <SKRIPT-VERZEICHNIS>/palworld-scripts.conf, z. B.:
+#   install -m 600 palworld-scripts.conf.example /opt/palworld/palworld-scripts.conf
+#
+# WICHTIG: chmod 600 - hier stehen AdminPassword, Webhook und Upload-Secret.
+# Alle Skripte suchen die Datei NEBEN sich (bzw. unter $PALWORLD_CONF).
+#
+# Idee: Alles, was sich zwischen den Servern unterscheidet, steht hier drin -
+# dann sind Skripte und Cron auf allen Gameservern identisch.
+# Werte mit [SERVER] sind pro Server verschieden.
+# =============================================================================
+
+# --- Der Spielserver selbst ---------------------------------------------------
+# Verzeichnis mit compose.yml und .env (NICHT zwingend das Skript-Verzeichnis!)
+COMPOSE_DIR="/root/palworld"
+# Name des Dienstes in der compose.yml (nicht der Container-Name)
+SERVICE="palworld"
+IMAGE_REPO="ghcr.io/pocketpairjp/palserver"
+
+# Spielstand und Backups (Standard: unterhalb von COMPOSE_DIR)
+SAVED_DIR="${COMPOSE_DIR}/Saved"
+BACKUP_DIR="${COMPOSE_DIR}/backups"
+
+# --- REST-API -----------------------------------------------------------------
+# AdminPassword aus der PalWorldSettings.ini (RESTAPIEnabled=True vorausgesetzt)
+ADMIN_PASSWORD="CHANGE_ME"                       # [SERVER]
+REST_PORT=8212
+# Leer lassen: die Skripte ermitteln die Adresse selbst am Container
+# (Host-Netz -> 127.0.0.1, sonst Container-IP).
+REST_HOST=""
+
+# --- Neustarts (palworld-autoupdate.sh) ---------------------------------------
+WARN_MINUTES=(10 5)          # Ingame-Vorwarnungen in Minuten vor dem Neustart
+FINAL_COUNTDOWN=60           # Sekunden zwischen letzter Warnung und Shutdown
+ALLOW_RESTART_WITHOUT_API=false
+BACKUP_KEEP=10               # Backups aus Update-/Neustart-Laeufen
+BACKUP_ON_FORCE_RESTART=false
+
+# --- Live-Backups (palworld-backup.sh) ----------------------------------------
+LIVE_BACKUP_KEEP=12          # 12 = 3 Tage bei 4 Laeufen pro Tag
+LIVE_BACKUP_SAVE_WAIT=15
+BACKUP_LOCK_WAIT=900
+
+# --- Watchdog (palworld-watchdog.sh) ------------------------------------------
+WATCHDOG_FAILS_MAX=3
+WATCHDOG_GRACE_SECONDS=300
+
+# --- Discord ------------------------------------------------------------------
+# Beide Server duerfen denselben Webhook/Kanal nutzen: jeder Host pflegt seine
+# eigenen Nachrichten (Status + Neustarts), erkennbar am Namen.
+DISCORD_WEBHOOK=""                               # [SERVER] (oder identisch)
+DISCORD_SERVER_NAME="Server 1 · PvE 4x"          # [SERVER] Titel/--name
+# Zeiten, zu denen der Server WIRKLICH runtergeht = Cron-Zeit + Vorwarnzeit.
+# Cron "55 4,9,17" + 10 min Warnung -> "05:05 10:05 18:05"
+RESTART_SCHEDULE="05:05 10:05 18:05"             # [SERVER]
+# DISCORD_RESTART_MESSAGE=false                  # zurueck zum Nachrichten-Spam
+# DISCORD_ALERT_NEW_MESSAGE=true                 # Fehler extra posten (Ping)
+# DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
+
+# --- Status-Nachricht (palworld-status.sh -> discord-status.py) ---------------
+SERVER_ADDRESS="pve.palheim.de:8211"             # [SERVER] Join-Adresse
+# STATUS_API=""            # leer = automatisch suchen (Docker-Erkennung)
+# STATUS_CONTAINER=""      # nur noetig, wenn die Automatik danebengreift
+# STATUS_STATE="/var/lib/palworld/discord-status.json"
+
+# --- Uploads zur Webseite (palworld-upload.sh) --------------------------------
+PALTOOLS_DIR="/opt/paltools"                     # venv aus install-paltools.sh
+SAV_GLOB="${SAVED_DIR}/SaveGames/0/*/Level.sav"
+UPLOAD_URL="https://palheim.de"                  # Basis-URL der Webseite
+UPLOAD_SECRET="CHANGE_ME"                        # uploadSecret aus config.json
+WEB_SERVER_ID="pve"                              # [SERVER] Server-ID der Webseite
+
+# --- Pfade (nur aendern, wenn zwei Server auf EINER Maschine laufen) ----------
+# Dann muessen diese drei pro Server unterschiedlich sein, sonst blockieren
+# sich die Instanzen gegenseitig bzw. ueberschreiben dieselbe Discord-Nachricht:
+# LOCKFILE="/var/lock/palworld-autoupdate.lock"
+# RESTART_MARKER="/run/palworld-restart-done"
+# DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
