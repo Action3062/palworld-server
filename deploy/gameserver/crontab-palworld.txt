@@ -1,0 +1,49 @@
+# =============================================================================
+# root-crontab der PalHeim-Gameserver  (Installation: crontab -e)
+# =============================================================================
+# Auf JEDEM Gameserver identisch - bis auf die Neustart-Zeile, die auf dem
+# zweiten Server bewusst versetzt laeuft (siehe unten).
+#
+# Uebernehmen:
+#   crontab -l > ~/crontab.backup-$(date +%F)     # vorher sichern!
+#   crontab -e                                    # Inhalt hier einfuegen
+# Pruefen:
+#   crontab -l
+#
+# Alles Serverspezifische (Passwoerter, Adressen, Pfade, Neustart-Zeiten)
+# steht in /etc/palworld/palworld-scripts.conf (chmod 600) - deshalb steht
+# hier kein einziges Geheimnis mehr.
+#
+# Zeitraster, damit sich die Jobs nicht in die Quere kommen:
+#   :00/:30  Update-Check       :10  Basen-Upload       :15/:45  Ansagen
+#   :20      Live-Backup (6 h)  :40  Ranglisten-Upload  alle 5 min  Status
+# =============================================================================
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# Update-Check (findet er nichts, endet er still)
+*/30 *     * * * /opt/paltools/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+
+# Geplante Neustarts: Warnung ab :55, Server geht ~10 min spaeter runter.
+# --min-gap 4 laesst einen Update-Neustart den naechsten geplanten ersetzen.
+# Die Zeiten MUESSEN zu RESTART_SCHEDULE in der Conf passen (dort + 10 min).
+# Server 2: auf "55 5,10,18" aendern, damit nie beide Welten zugleich offline sind.
+55   4,9,17 * * * /opt/paltools/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+
+# Haenger-Erkennung (Prozess laeuft, REST-API tot)
+*    *      * * * /opt/paltools/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
+
+# Ingame-Ansagen aus announcements.txt
+15,45 *     * * * /opt/paltools/palworld-announce.sh >> /var/log/palworld-announce.log 2>&1
+
+# Live-Backup alle 6 Stunden (ohne Neustart)
+20   */6    * * * /opt/paltools/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
+
+# Discord: Status-Nachricht (Spieler/FPS/CPU) und Neustart-Nachricht frisch halten
+*/5  *      * * * /opt/paltools/palworld-status.sh >> /var/log/palworld-status.log 2>&1
+*/15 *      * * * /opt/paltools/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
+
+# Uploads zur Webseite (Live-Karte und Ranglisten)
+10   *      * * * /opt/paltools/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
+40   *      * * * /opt/paltools/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1

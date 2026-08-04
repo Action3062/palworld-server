@@ -20,15 +20,23 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PALTOOLS_DIR="/opt/paltools"
+PALTOOLS_DIR="/opt/paltools"      # hier liegen die .py-Werkzeuge
+PALTOOLS_PYTHON=""                # leer = ${PALTOOLS_DIR}/bin/python3
 SAV_GLOB=""
 UPLOAD_URL=""
 UPLOAD_SECRET=""
 WEB_SERVER_ID=""
 
-CONF="${PALWORLD_CONF:-${SCRIPT_DIR}/palworld-scripts.conf}"
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
 # shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 
 fail() { echo "[$(date '+%F %T')] FEHLER: $*" >&2; exit 1; }
 
@@ -39,7 +47,7 @@ case "$WHAT" in
   *) echo "Aufruf: $(basename "$0") bases|rankings [weitere Optionen]" >&2; exit 2 ;;
 esac
 
-PYTHON="${PALTOOLS_DIR}/bin/python3"
+PYTHON="${PALTOOLS_PYTHON:-${PALTOOLS_DIR}/bin/python3}"
 [ -x "$PYTHON" ] || fail "paltools-venv fehlt: ${PYTHON} (install-paltools.sh ausfuehren)."
 [ -f "${PALTOOLS_DIR}/${SCRIPT}" ] || fail "${SCRIPT} fehlt in ${PALTOOLS_DIR}."
 [ -n "$SAV_GLOB" ]      || fail "SAV_GLOB ist nicht gesetzt (${CONF})."

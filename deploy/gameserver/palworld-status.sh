@@ -25,13 +25,21 @@ SERVER_ADDRESS=""
 STATUS_API=""
 STATUS_CONTAINER=""
 STATUS_STATE=""
-PALTOOLS_DIR="/opt/paltools"
+PALTOOLS_DIR="/opt/paltools"      # hier liegen die .py-Werkzeuge
+PALTOOLS_PYTHON=""                # leer = ${PALTOOLS_DIR}/bin/python3
 
-CONF="${PALWORLD_CONF:-${SCRIPT_DIR}/palworld-scripts.conf}"
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
 # shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 
-PYTHON="${PALTOOLS_DIR}/bin/python3"
+PYTHON="${PALTOOLS_PYTHON:-${PALTOOLS_DIR}/bin/python3}"
 [ -x "$PYTHON" ] || PYTHON="$(command -v python3 || true)"
 SCRIPT="${PALTOOLS_DIR}/discord-status.py"
 

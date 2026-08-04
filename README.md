@@ -524,12 +524,13 @@ python3 tools/build-paldata.py --source /pfad/zu/PalworldSaveTools/resources
 ## Gameserver: Verzeichnisstruktur und Cron
 
 Auf den Palworld-Maschinen (nicht auf dem Web-Server) laufen die Skripte aus
-`deploy/gameserver/`. Damit beide Server gleich aussehen und nichts doppelt
-gepflegt werden muss, gilt dieses Layout:
+`deploy/gameserver/` und `tools/`. Damit beide Server gleich aussehen, liegt
+alles in **einem** Verzeichnis – die Konfiguration bewusst außerhalb:
 
 ```
-/opt/palworld/                     # Wartungs-Skripte + Konfiguration (750)
-  palworld-scripts.conf            #   ALLE Einstellungen & Geheimnisse (600)
+/opt/paltools/                     # ALLE Skripte + das Python-venv
+  bin/python3, lib/…               #   venv (install-paltools.sh)
+  upload-bases.py  upload-rankings.py  base-report.py  discord-status.py
   palworld-autoupdate.sh           #   Update + geplante Neustarts
   palworld-watchdog.sh             #   Haenger-Erkennung, jede Minute
   palworld-backup.sh               #   Live-Backup ohne Neustart
@@ -538,61 +539,68 @@ gepflegt werden muss, gilt dieses Layout:
   palworld-status.sh               #   Wrapper → discord-status.py
   palworld-upload.sh               #   Wrapper → upload-bases/-rankings.py
   announcements.txt
-/opt/paltools/                     # Python-venv (install-paltools.sh)
-  bin/python3, discord-status.py, upload-bases.py, upload-rankings.py
-/root/palworld/  bzw.  /home/palworld/…   # compose.yml, .env, Saved/, backups/
-/etc/cron.d/palworld               # identisch auf allen Gameservern
+/etc/palworld/palworld-scripts.conf   # ALLE Einstellungen & Geheimnisse (600)
 /etc/logrotate.d/palworld
+/root/palworld/  bzw. /home/palworld/…   # compose.yml, .env, Saved/, backups/
 ```
 
-**Die Skripte müssen nicht im Compose-Verzeichnis liegen** – aber dann muss
-`COMPOSE_DIR` in der Conf gesetzt sein, denn der Standard ist das
+**Warum die Conf nicht in `/opt/paltools`?** Das ist ein Python-venv. Wird es
+nach einem Python-Upgrade neu angelegt (`rm -rf /opt/paltools` +
+`install-paltools.sh`), wären Passwörter und Webhook weg. Unter `/etc/palworld`
+überlebt die Datei das. Die Skripte suchen der Reihe nach: `$PALWORLD_CONF` →
+neben dem Skript → `/etc/palworld/palworld-scripts.conf`.
+
+**Die Skripte müssen nicht im Compose-/Spielverzeichnis liegen** – aber dann
+muss `COMPOSE_DIR` in der Conf gesetzt sein, denn der Standard ist das
 Verzeichnis, in dem das Skript liegt (das gilt auch für `SAVED_DIR` und
 `BACKUP_DIR`, die davon abgeleitet werden). `palworld-discord.sh` gehört
 zwingend neben die anderen Skripte – sonst fällt die Neustart-Meldung still
 aufs alte Verhalten zurück.
 
-**Alles Serverspezifische steht in `palworld-scripts.conf`** (Vorlage:
-`palworld-scripts.conf.example`, `chmod 600`): Passwörter, Webhook, Adressen,
-Pfade, `RESTART_SCHEDULE`. Dadurch ist `/etc/cron.d/palworld` auf beiden
-Servern identisch und darf 644 sein – in der Cron-Zeile steht kein
-AdminPassword und kein Upload-Secret mehr. Dafür sind
-`palworld-status.sh` und `palworld-upload.sh` da:
+**Alles Serverspezifische steht in der Conf** (Vorlage:
+`palworld-scripts.conf.example`, Werte mit `[SERVER]` markiert). Dadurch ist
+der Cron auf beiden Servern identisch und enthält **kein** AdminPassword und
+kein Upload-Secret mehr – dafür sind `palworld-status.sh` und
+`palworld-upload.sh` da:
 
-```bash
+```cron
 # statt: */5 * * * * … discord-status.py --password 'GEHEIM' --webhook 'https://…'
-*/5  * * * * root /opt/palworld/palworld-status.sh   >> /var/log/palworld-status.log 2>&1
-10   * * * * root /opt/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
-40   * * * * root /opt/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
+*/5  * * * * /opt/paltools/palworld-status.sh   >> /var/log/palworld-status.log 2>&1
+10   * * * * /opt/paltools/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
+40   * * * * /opt/paltools/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 ```
 
-Einrichten:
+Einrichten (auf jedem Gameserver identisch):
 
 ```bash
-install -d -m 750 /opt/palworld
-install -m 755 deploy/gameserver/palworld-*.sh /opt/palworld/
-install -m 644 deploy/gameserver/announcements.txt /opt/palworld/
-install -m 600 deploy/gameserver/palworld-scripts.conf.example /opt/palworld/palworld-scripts.conf
-nano /opt/palworld/palworld-scripts.conf          # Werte mit [SERVER] anpassen
-install -m 644 deploy/gameserver/cron.d-palworld /etc/cron.d/palworld
-install -m 644 deploy/gameserver/logrotate-palworld /etc/logrotate.d/palworld
+# holt venv, Python-Werkzeuge, Wartungs-Skripte und die Conf-Vorlage
+bash install-paltools.sh                  # optional: Server-ID der Webseite, z. B. "pve2"
+nano /etc/palworld/palworld-scripts.conf  # Werte mit [SERVER] anpassen, chmod 600
 # Testlauf, bevor der Cron es tut:
-/opt/palworld/palworld-status.sh --dry-run
-/opt/palworld/palworld-upload.sh bases --dry-run
-/opt/palworld/palworld-autoupdate.sh --discord-refresh
+/opt/paltools/palworld-status.sh --dry-run
+/opt/paltools/palworld-upload.sh bases --dry-run
+/opt/paltools/palworld-autoupdate.sh --discord-refresh
+# Cron (Vorlage: deploy/gameserver/crontab-palworld.txt)
+crontab -l > ~/crontab.backup-$(date +%F)
+crontab -e
+# Logs begrenzen
+install -m 644 deploy/gameserver/logrotate-palworld /etc/logrotate.d/palworld
 ```
 
-Das Zeitraster im Cron ist so gewählt, dass sich die Jobs nicht überlappen:
+Das Zeitraster ist so gewählt, dass sich die Jobs nicht überlappen:
 Update-Check `:00/:30`, Basen-Upload `:10`, Ansagen `:15/:45`, Live-Backup
-`:20` (alle 6 h), Ranglisten `:40`, Status alle 5 min. Die Neustart-Zeilen
-sollten auf dem zweiten Server **versetzt** laufen (z. B. `55 5,10,18` statt
+`:20` (alle 6 h), Ranglisten `:40`, Status alle 5 min. Die Neustart-Zeile
+sollte auf dem zweiten Server **versetzt** laufen (`55 5,10,18` statt
 `55 4,9,17`), damit nie beide Welten gleichzeitig offline sind – und
 `RESTART_SCHEDULE` in der Conf entsprechend mitziehen (Cron-Zeit +
 Vorwarnzeit).
 
-> `palworld-announce.sh` läuft auf beiden Servern, liegt aber noch nicht im
-> Repo – nur seine Datenbasis `announcements.txt`. Wer die Server neu
-> aufsetzt, braucht das Skript von einem laufenden Server.
+> **Noch offen:** `palworld-autoupdate.sh`, `palworld-watchdog.sh` und
+> `palworld-backup.sh` steuern den Server ausschließlich über
+> `docker compose`. Für eine native Instanz (systemd + steamcmd) brauchen sie
+> eine Laufzeit-Umschaltung. Ebenfalls nicht im Repo: `palworld-announce.sh`
+> und das Setup-Skript des zweiten Servers.
+
 
 ## Server-Status im Discord (tools/discord-status.py)
 

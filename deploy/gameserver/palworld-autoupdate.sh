@@ -26,22 +26,23 @@
 # die Status-Nachricht von tools/discord-status.py sichtbar bleibt. Details und
 # Einstellungen: palworld-discord.sh (liegt neben diesem Skript).
 #
-# Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
+# Konfiguration: /etc/palworld/palworld-scripts.conf (oder neben dem Skript,
+# oder $PALWORLD_CONF)
 # COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
 #
 # Cron-Beispiele:
-#   */30 * * * * /root/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+#   */30 * * * * /opt/paltools/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
 #
 #   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern):
-#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 4 * * *   /opt/paltools/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
 #   Mehrere Neustarts pro Tag (Zeiten an die Spielerlast anpassen);
 #   --min-gap 4 sorgt dafuer, dass nach Update-/anderen Neustarts
 #   mindestens 4 h Ruhe ist, bevor der naechste geplante greift:
-#   55 10 * * *  /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 10 * * *  /opt/paltools/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
 #   Discord-Nachricht frisch halten (optional, kostet nichts):
-#   */15 * * * * /root/palworld/palworld-autoupdate.sh --discord-refresh >> /dev/null 2>&1
+#   */15 * * * * /opt/paltools/palworld-autoupdate.sh --discord-refresh >> /dev/null 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -66,9 +67,16 @@ DISCORD_WEBHOOK=""
 LOCKFILE="/var/lock/palworld-autoupdate.lock"
 RESTART_MARKER="/run/palworld-restart-done"
 
-CONF="${PALWORLD_CONF:-${SCRIPT_DIR}/palworld-scripts.conf}"
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
 # shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 ENV_FILE="${ENV_FILE:-${COMPOSE_DIR}/.env}"
 BACKUP_DIR="${BACKUP_DIR:-${COMPOSE_DIR}/backups}"
 SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"

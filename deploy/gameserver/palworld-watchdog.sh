@@ -12,11 +12,12 @@
 #                                  die Welt-Ladezeit darf kein Fehlalarm sein
 #
 # Bei Erfolg keine Ausgabe (Cron-Log bleibt sauber).
-# Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
+# Konfiguration: /etc/palworld/palworld-scripts.conf (oder neben dem Skript,
+# oder $PALWORLD_CONF)
 # COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
 #
 # Cron (jede Minute; bei FAILS_MAX=3 wird nach ~3 min Haenger neu gestartet):
-#   * * * * * /root/palworld/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
+#   * * * * * /opt/paltools/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -34,9 +35,16 @@ WATCHDOG_GRACE_SECONDS=300
 DISCORD_WEBHOOK=""
 LOCKFILE="/var/lock/palworld-autoupdate.lock"   # Lock des Update-Skripts
 
-CONF="${PALWORLD_CONF:-${SCRIPT_DIR}/palworld-scripts.conf}"
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
 # shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 
 WATCHDOG_LOCK="/var/lock/palworld-watchdog.lock"
 STATE_FILE="/run/palworld-watchdog.fails"
