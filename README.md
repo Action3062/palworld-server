@@ -681,7 +681,7 @@ Optional hält ein kleiner Cronjob den nächsten Termin frisch (nötig z. B.,
 wenn ein Lauf wegen `--if-empty` übersprungen wurde):
 
 ```bash
-*/15 * * * * /root/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
+*/15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
 ```
 
 ## Vote-Belohnung (Serverlisten wie palserver.de)
