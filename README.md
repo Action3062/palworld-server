@@ -553,9 +553,11 @@ Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
 **Läuft der Server im Docker-Container?** Dann antwortet die REST-API oft
 nicht auf `127.0.0.1` – typischer Fehler:
 `Spielserver nicht erreichbar: <urlopen error [Errno 111] Connection refused>`.
-Das Skript sucht die API in dem Fall selbst am Container (Host-Netz,
-veröffentlichter Port, Container-IP), meldet die gefundene Adresse einmal im
-Log und merkt sie sich für die nächsten Läufe – `--api` kann man dann
+Das Skript sucht die API in dem Fall selbst am Container: Host-Netz,
+veröffentlichte Ports **samt Host-IP** (wer `10.88.0.2:8212:8212` in den
+WireGuard-Tunnel veröffentlicht, ist über `127.0.0.1` eben nicht erreichbar)
+und zuletzt die Container-IP. Die gefundene Adresse meldet es einmal im Log
+und merkt sie sich für die nächsten Läufe – `--api` kann man dann
 weglassen oder auf die gemeldete Adresse setzen. Steuerbar mit
 `--container <name>` (falls die Automatik den falschen Container erwischt),
 `--port 8212` (REST-Port im Container) und `--no-docker` (Suche aus).

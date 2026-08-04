@@ -133,16 +133,28 @@ def docker_api_candidates(hint, port):
     cands = []
     if (_docker("inspect", "-f", "{{.HostConfig.NetworkMode}}", cid) or "") == "host":
         cands.append(f"http://127.0.0.1:{port}")
-    hostport = _docker(
+
+    # Veroeffentlichte Ports: die Host-IP zaehlt mit! Wer nur auf eine
+    # bestimmte Adresse veroeffentlicht (z. B. "10.88.0.2:8212:8212" fuer den
+    # WireGuard-Tunnel), ist ueber 127.0.0.1 eben NICHT erreichbar.
+    published = _docker(
         "inspect", "-f",
-        '{{with index .NetworkSettings.Ports "%d/tcp"}}{{(index . 0).HostPort}}{{end}}'
-        % port, cid)
-    if hostport:
-        cands.append(f"http://127.0.0.1:{hostport}")
+        '{{range index .NetworkSettings.Ports "%d/tcp"}}{{.HostIp}}|{{.HostPort}} {{end}}'
+        % port, cid) or ""
+    for binding in published.split():
+        host_ip, _, host_port = binding.partition("|")
+        if not host_port:
+            continue
+        if host_ip in ("", "0.0.0.0"):
+            host_ip = "127.0.0.1"
+        elif ":" in host_ip:          # IPv6 (z. B. "::") – hier uninteressant
+            continue
+        cands.append(f"http://{host_ip}:{host_port}")
+
     ips = _docker("inspect", "-f",
                   "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", cid) or ""
     cands += [f"http://{ip}:{port}" for ip in ips.split() if ip]
-    return cands
+    return list(dict.fromkeys(cands))
 
 
 # ---------------------------------------------------------------------------
