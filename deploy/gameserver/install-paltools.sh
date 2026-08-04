@@ -81,26 +81,38 @@ fi
 # ----------------------------------------------------------------------------
 step "3/6 – Save-Bibliotheken (Oodle-fähige Forks)"
 # ----------------------------------------------------------------------------
-echo "pyooz (Oodle-Dekomprimierung, wird kompiliert – dauert einen Moment) …"
-"${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/pyooz.git"
-echo "palworld-save-tools (Fork mit PlM-Unterstützung) …"
-"${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/palworld-save-tools.git"
-
-if "${VENV}/bin/python3" -c "import ooz, palworld_save_tools" 2>/dev/null; then
-  c_green "Bibliotheken einsatzbereit."
+# pyooz wird beim Installieren kompiliert (dauert Minuten). Bei einem zweiten
+# Lauf ist das unnoetig, solange sich beides importieren laesst.
+if [ "${FORCE_LIBS:-0}" != "1" ] && \
+   "${VENV}/bin/python3" -c "import ooz, palworld_save_tools" 2>/dev/null; then
+  c_green "Bibliotheken sind bereits einsatzbereit (Neuinstallation: FORCE_LIBS=1)."
 else
-  c_red "Die Bibliotheken lassen sich nicht importieren – bitte Ausgabe oben prüfen."
-  exit 1
+  echo "pyooz (Oodle-Dekomprimierung, wird kompiliert – dauert einen Moment) …"
+  "${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/pyooz.git"
+  echo "palworld-save-tools (Fork mit PlM-Unterstützung) …"
+  "${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/palworld-save-tools.git"
+  if "${VENV}/bin/python3" -c "import ooz, palworld_save_tools" 2>/dev/null; then
+    c_green "Bibliotheken einsatzbereit."
+  else
+    c_red "Die Bibliotheken lassen sich nicht importieren – bitte Ausgabe oben prüfen."
+    exit 1
+  fi
 fi
 
 # ----------------------------------------------------------------------------
 step "4/6 – Werkzeuge holen (${TOOLS_DIR})"
 # ----------------------------------------------------------------------------
-fetch() {  # fetch <ziel> <url>
-  if curl -fsSLo "$1" "$2"; then
+fetch() {  # fetch <ziel> <url> - erst nach Temp, dann verschieben
+  local tmp; tmp="$(mktemp)"
+  if curl -fsSLo "$tmp" "$2" && [ -s "$tmp" ]; then
+    mv "$tmp" "$1"
+    chmod 644 "$1"          # mktemp legt 600 an; Rechte danach explizit setzen
     echo "  $(basename "$1")"
   else
-    c_red "  $(basename "$1") konnte nicht geladen werden (Netzwerk/URL prüfen)."
+    rm -f "$tmp"
+    c_red "  $(basename "$1") konnte nicht geladen werden."
+    c_red "  URL: $2"
+    c_red "  (Branch falsch? Dann mit BRANCH=<branch> bash install-paltools.sh starten.)"
     exit 1
   fi
 }
