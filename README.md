@@ -450,21 +450,16 @@ Umrechnung zu den In-Game-Kartenkoordinaten: `karte_x = (welt_y − 158000) / 45
 `karte_y = (welt_x + 123888) / 459`.
 
 **Basen-Positionen** stehen nicht in der REST-API, sondern nur im Spielstand.
-Dafür läuft auf dem **Palworld-Server** ein Uploader:
+Dafür läuft auf dem **Palworld-Server** ein Uploader. Eingerichtet wird er von
+`deploy/gameserver/install-paltools.sh` (venv + Oodle-fähige Forks + Skripte),
+aufgerufen über den Wrapper – Pfade und Secret kommen aus der
+`palworld-scripts.conf`, siehe „Gameserver: Verzeichnisstruktur und Cron":
 
 ```bash
-# Debian 12+: venv + Fork mit Unterstützung für das neue PlM/Oodle-Save-Format
-apt update && apt install -y python3-venv git build-essential python3-dev
-python3 -m venv /opt/paltools
-/opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/pyooz.git"
-/opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/palworld-save-tools.git"
-# testen (Web-Server über den WireGuard-Tunnel):
-/opt/paltools/bin/python3 tools/upload-bases.py \
-  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
-  --url http://10.88.0.1/api/map/bases \
-  --secret DEIN-UPLOAD-SECRET --dry-run
-# als Cronjob alle 30 Minuten (crontab -e):
-*/30 * * * * /opt/paltools/bin/python3 /pfad/zu/upload-bases.py --sav "…" --url "…" --secret "…"
+bash install-paltools.sh                        # einmalig
+/etc/palworld/palworld-upload.sh bases --dry-run  # testen
+# im Cron (stündlich):
+10 * * * * /etc/palworld/palworld-upload.sh bases >> /var/log/palworld-upload.log 2>&1
 ```
 
 Das `uploadSecret` wird in der `config.json` der Webseite unter `map`
@@ -485,12 +480,9 @@ zusätzlich zur `Level.sav` auch die kleinen `Players/*.sav`):
 
 ```bash
 # testen:
-/opt/paltools/bin/python3 tools/upload-rankings.py \
-  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
-  --url http://10.88.0.1/api/rankings/upload \
-  --secret DEIN-UPLOAD-SECRET --server pve --dry-run
+/etc/palworld/palworld-upload.sh rankings --dry-run
 # als Cronjob 1x pro Stunde, zeitversetzt zum Basen-Upload (crontab -e):
-40 * * * * /opt/paltools/bin/python3 /pfad/zu/upload-rankings.py --sav "…" --url "…" --secret "…" --server pve
+40 * * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 ```
 
 Endpunkte: `POST /api/rankings/upload` (Secret wie Basen-Upload),
@@ -524,13 +516,13 @@ python3 tools/build-paldata.py --source /pfad/zu/PalworldSaveTools/resources
 ## Gameserver: Verzeichnisstruktur und Cron
 
 Auf den Palworld-Maschinen (nicht auf dem Web-Server) laufen die Skripte aus
-`deploy/gameserver/` und `tools/`. Damit beide Server gleich aussehen, liegt
-alles in **einem** Verzeichnis – die Konfiguration bewusst außerhalb:
+`deploy/gameserver/` und `tools/`. Beide Server sind identisch aufgebaut:
+**ein** Verzeichnis, das man pflegt, und ein Python-venv, das man jederzeit
+wegwerfen kann.
 
 ```
-/opt/paltools/                     # ALLE Skripte + das Python-venv
-  bin/python3, lib/…               #   venv (install-paltools.sh)
-  upload-bases.py  upload-rankings.py  base-report.py  discord-status.py
+/etc/palworld/                     # ALLES, was du pflegst (750)
+  palworld-scripts.conf            #   Einstellungen & Geheimnisse (600)
   palworld-autoupdate.sh           #   Update + geplante Neustarts
   palworld-watchdog.sh             #   Haenger-Erkennung, jede Minute
   palworld-backup.sh               #   Live-Backup ohne Neustart
@@ -538,20 +530,24 @@ alles in **einem** Verzeichnis – die Konfiguration bewusst außerhalb:
   palworld-discord.sh              #   Bibliothek: eine Neustart-Nachricht
   palworld-status.sh               #   Wrapper → discord-status.py
   palworld-upload.sh               #   Wrapper → upload-bases/-rankings.py
+  discord-status.py  upload-bases.py  upload-rankings.py  base-report.py
   announcements.txt
-/etc/palworld/palworld-scripts.conf   # ALLE Einstellungen & Geheimnisse (600)
+/opt/paltools/                     # reines Python-venv (install-paltools.sh)
+  bin/python3, lib/…               #   wegwerfbar: loeschen + Installer neu
 /etc/logrotate.d/palworld
 /root/palworld/  bzw. /home/palworld/…   # compose.yml, .env, Saved/, backups/
 ```
 
-**Warum die Conf nicht in `/opt/paltools`?** Das ist ein Python-venv. Wird es
-nach einem Python-Upgrade neu angelegt (`rm -rf /opt/paltools` +
-`install-paltools.sh`), wären Passwörter und Webhook weg. Unter `/etc/palworld`
-überlebt die Datei das. Die Skripte suchen der Reihe nach: `$PALWORLD_CONF` →
-neben dem Skript → `/etc/palworld/palworld-scripts.conf`.
+**Warum die Trennung?** Das venv ist generierter Kram – nach einem
+Python-Upgrade baut man es mit `rm -rf /opt/paltools && bash
+install-paltools.sh` einfach neu. Lägen Skripte und Passwörter darin, wären
+sie dabei weg. Umgekehrt braucht in `/etc/palworld` nichts kompiliert zu
+werden. Die Skripte finden ihre Konfiguration und die `.py`-Werkzeuge
+automatisch neben sich; gesucht wird der Reihe nach `$PALWORLD_CONF` → neben
+dem Skript → `/etc/palworld/palworld-scripts.conf`.
 
-**Die Skripte müssen nicht im Compose-/Spielverzeichnis liegen** – aber dann
-muss `COMPOSE_DIR` in der Conf gesetzt sein, denn der Standard ist das
+**Die Skripte liegen nicht im Compose-/Spielverzeichnis** – deshalb muss
+`COMPOSE_DIR` in der Conf gesetzt sein, denn der Standard ist das
 Verzeichnis, in dem das Skript liegt (das gilt auch für `SAVED_DIR` und
 `BACKUP_DIR`, die davon abgeleitet werden). `palworld-discord.sh` gehört
 zwingend neben die anderen Skripte – sonst fällt die Neustart-Meldung still
@@ -565,21 +561,21 @@ kein Upload-Secret mehr – dafür sind `palworld-status.sh` und
 
 ```cron
 # statt: */5 * * * * … discord-status.py --password 'GEHEIM' --webhook 'https://…'
-*/5  * * * * /opt/paltools/palworld-status.sh   >> /var/log/palworld-status.log 2>&1
-10   * * * * /opt/paltools/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
-40   * * * * /opt/paltools/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
+*/5  * * * * /etc/palworld/palworld-status.sh   >> /var/log/palworld-status.log 2>&1
+10   * * * * /etc/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
+40   * * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 ```
 
 Einrichten (auf jedem Gameserver identisch):
 
 ```bash
 # holt venv, Python-Werkzeuge, Wartungs-Skripte und die Conf-Vorlage
-bash install-paltools.sh                  # optional: Server-ID der Webseite, z. B. "pve2"
-nano /etc/palworld/palworld-scripts.conf  # Werte mit [SERVER] anpassen, chmod 600
+bash install-paltools.sh                    # optional: Server-ID der Webseite, z. B. "pve2"
+nano /etc/palworld/palworld-scripts.conf    # Werte mit [SERVER] anpassen
 # Testlauf, bevor der Cron es tut:
-/opt/paltools/palworld-status.sh --dry-run
-/opt/paltools/palworld-upload.sh bases --dry-run
-/opt/paltools/palworld-autoupdate.sh --discord-refresh
+/etc/palworld/palworld-status.sh --dry-run
+/etc/palworld/palworld-upload.sh bases --dry-run
+/etc/palworld/palworld-autoupdate.sh --discord-refresh
 # Cron (Vorlage: deploy/gameserver/crontab-palworld.txt)
 crontab -l > ~/crontab.backup-$(date +%F)
 crontab -e
@@ -600,7 +596,6 @@ Vorwarnzeit).
 > `docker compose`. Für eine native Instanz (systemd + steamcmd) brauchen sie
 > eine Laufzeit-Umschaltung. Ebenfalls nicht im Repo: `palworld-announce.sh`
 > und das Setup-Skript des zweiten Servers.
-
 
 ## Server-Status im Discord (tools/discord-status.py)
 

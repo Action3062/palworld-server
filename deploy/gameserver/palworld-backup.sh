@@ -23,7 +23,7 @@
 #   LIVE_BACKUP_SAVE_WAIT=15   Sekunden Wartezeit nach dem API-Save
 #
 # Cron (alle 6 Stunden, bewusst versetzt zu Update :00/:30 und Announce :15/:45):
-#   20 */6 * * * /opt/paltools/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
+#   20 */6 * * * /etc/palworld/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

@@ -25,8 +25,10 @@ SERVER_ADDRESS=""
 STATUS_API=""
 STATUS_CONTAINER=""
 STATUS_STATE=""
-PALTOOLS_DIR="/opt/paltools"      # hier liegen die .py-Werkzeuge
-PALTOOLS_PYTHON=""                # leer = ${PALTOOLS_DIR}/bin/python3
+# Standard: die .py-Werkzeuge liegen neben diesem Skript, der
+# Interpreter im venv. Beides ueber die Conf umstellbar.
+PALTOOLS_DIR="$SCRIPT_DIR"
+PALTOOLS_PYTHON="/opt/paltools/bin/python3"
 
 # Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
 # So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
@@ -39,7 +41,7 @@ fi
 # shellcheck disable=SC1090
 [ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 
-PYTHON="${PALTOOLS_PYTHON:-${PALTOOLS_DIR}/bin/python3}"
+PYTHON="$PALTOOLS_PYTHON"
 [ -x "$PYTHON" ] || PYTHON="$(command -v python3 || true)"
 SCRIPT="${PALTOOLS_DIR}/discord-status.py"
 

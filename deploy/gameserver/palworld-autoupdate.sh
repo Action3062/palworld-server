@@ -31,18 +31,18 @@
 # COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
 #
 # Cron-Beispiele:
-#   */30 * * * * /opt/paltools/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+#   */30 * * * * /etc/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
 #
 #   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern):
-#   55 4 * * *   /opt/paltools/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 4 * * *   /etc/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
 #   Mehrere Neustarts pro Tag (Zeiten an die Spielerlast anpassen);
 #   --min-gap 4 sorgt dafuer, dass nach Update-/anderen Neustarts
 #   mindestens 4 h Ruhe ist, bevor der naechste geplante greift:
-#   55 10 * * *  /opt/paltools/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 10 * * *  /etc/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
 #   Discord-Nachricht frisch halten (optional, kostet nichts):
-#   */15 * * * * /opt/paltools/palworld-autoupdate.sh --discord-refresh >> /dev/null 2>&1
+#   */15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >> /dev/null 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

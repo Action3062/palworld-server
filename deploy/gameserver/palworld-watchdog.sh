@@ -17,7 +17,7 @@
 # COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
 #
 # Cron (jede Minute; bei FAILS_MAX=3 wird nach ~3 min Haenger neu gestartet):
-#   * * * * * /opt/paltools/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
+#   * * * * * /etc/palworld/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

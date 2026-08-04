@@ -1,15 +1,14 @@
 # =============================================================================
 # palworld-scripts.conf - zentrale Konfiguration ALLER Gameserver-Skripte
 # =============================================================================
-# Empfohlener Ort: /etc/palworld/palworld-scripts.conf
-#   install -d -m 750 /etc/palworld
+# Ort: /etc/palworld/palworld-scripts.conf - dort liegen auch die Skripte.
 #   install -m 600 palworld-scripts.conf.example /etc/palworld/palworld-scripts.conf
 #
 # WICHTIG: chmod 600 - hier stehen AdminPassword, Webhook und Upload-Secret.
 # Suchreihenfolge aller Skripte:
 #   1. $PALWORLD_CONF   2. neben dem Skript   3. /etc/palworld/palworld-scripts.conf
-# Der Ort unter /etc ueberlebt ein Neuanlegen des paltools-venv - deshalb
-# gehoert die Datei NICHT nach /opt/paltools.
+# /opt/paltools bleibt reines Python-venv: wegwerfbar, ohne dass Skripte
+# oder Passwoerter mit verschwinden.
 #
 # Idee: Alles, was sich zwischen den Servern unterscheidet, steht hier drin -
 # dann sind Skripte und Cron auf allen Gameservern identisch.
@@ -70,8 +69,10 @@ SERVER_ADDRESS="pve.palheim.de:8211"             # [SERVER] Join-Adresse
 # STATUS_STATE="/var/lib/palworld/discord-status.json"
 
 # --- Python-Werkzeuge (palworld-status.sh, palworld-upload.sh) ----------------
-PALTOOLS_DIR="/opt/paltools"                     # hier liegen die .py-Dateien
-# PALTOOLS_PYTHON="/opt/paltools/bin/python3"    # nur, wenn das venv woanders liegt
+# Standard: .py-Dateien neben den Skripten, Interpreter aus dem venv.
+# Nur setzen, wenn davon abgewichen wird:
+# PALTOOLS_DIR="/etc/palworld"
+# PALTOOLS_PYTHON="/opt/paltools/bin/python3"
 
 # --- Uploads zur Webseite (palworld-upload.sh) --------------------------------
 SAV_GLOB="${SAVED_DIR}/SaveGames/0/*/Level.sav"

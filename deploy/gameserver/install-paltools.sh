@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================================
-# install-paltools.sh – alle Server-Werkzeuge nach /opt/paltools einrichten
+# install-paltools.sh – Server-Werkzeuge nach /etc/palworld einrichten
 # ============================================================================
-# Auf einem PALWORLD-SERVER ausführen. Richtet das Python-venv ein und holt
-# alle Skripte, die dort laufen – auf jedem Gameserver dieselben:
+# Auf einem PALWORLD-SERVER ausführen. Legt zwei Verzeichnisse an:
+#
+#   /etc/palworld/   alles, was du pflegst: Skripte + Konfiguration
+#   /opt/paltools/   reines Python-venv – jederzeit wegwerfbar und neu baubar
+#
+# Geholt werden – auf jedem Gameserver dieselben:
 #
 #   Python (brauchen das venv):
 #   • upload-bases.py     – Basen-Positionen für die Live-Karte hochladen
@@ -15,8 +19,8 @@
 #   • palworld-autoupdate.sh  palworld-watchdog.sh  palworld-backup.sh
 #   • palworld-discord.sh (Bibliothek)  palworld-status.sh  palworld-upload.sh
 #
-# Ein zweiter Lauf aktualisiert alle Skripte; die Konfiguration unter
-# /etc/palworld bleibt dabei unangetastet.
+# Ein zweiter Lauf aktualisiert alle Skripte; die palworld-scripts.conf
+# bleibt dabei unangetastet.
 #
 # Aufruf:
 #   bash install-paltools.sh                 # Standard-Server (erster in der config)
@@ -29,13 +33,13 @@
 # ============================================================================
 set -euo pipefail
 
-VENV="${VENV:-/opt/paltools}"
+VENV="${VENV:-/opt/paltools}"          # nur das Python-venv (wegwerfbar)
+TOOLS_DIR="${TOOLS_DIR:-/etc/palworld}" # Skripte + Konfiguration
 SERVER_ID="${1:-}"
 BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 RAW_BASE="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}"
 RAW="${RAW_BASE}/tools"                  # Python-Werkzeuge
 RAW_SRV="${RAW_BASE}/deploy/gameserver"  # Wartungs-Skripte
-CONF_DIR="${CONF_DIR:-/etc/palworld}"
 
 c_red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 c_green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -90,7 +94,7 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-step "4/6 – Python-Werkzeuge holen"
+step "4/6 – Werkzeuge holen (${TOOLS_DIR})"
 # ----------------------------------------------------------------------------
 fetch() {  # fetch <ziel> <url>
   if curl -fsSLo "$1" "$2"; then
@@ -100,31 +104,30 @@ fetch() {  # fetch <ziel> <url>
     exit 1
   fi
 }
+mkdir -p "$TOOLS_DIR"; chmod 750 "$TOOLS_DIR"
 for script in upload-bases.py upload-rankings.py base-report.py discord-status.py; do
-  fetch "${VENV}/${script}" "${RAW}/${script}"
+  fetch "${TOOLS_DIR}/${script}" "${RAW}/${script}"
 done
 
 # ----------------------------------------------------------------------------
-step "5/6 – Wartungs-Skripte holen"
+step "5/6 – Wartungs-Skripte und Konfiguration"
 # ----------------------------------------------------------------------------
 for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-backup.sh \
               palworld-discord.sh palworld-status.sh palworld-upload.sh; do
-  fetch "${VENV}/${script}" "${RAW_SRV}/${script}"
-  chmod 755 "${VENV}/${script}"
+  fetch "${TOOLS_DIR}/${script}" "${RAW_SRV}/${script}"
+  chmod 755 "${TOOLS_DIR}/${script}"
 done
-fetch "${VENV}/announcements.txt" "${RAW_SRV}/announcements.txt"
-c_green "Alle Skripte liegen in ${VENV}/."
+fetch "${TOOLS_DIR}/announcements.txt" "${RAW_SRV}/announcements.txt"
+c_green "Alle Skripte liegen in ${TOOLS_DIR}/."
 
-# Konfiguration liegt bewusst NICHT im venv: ein neu angelegtes venv soll die
-# Passwörter nicht mitreißen. Vorhandene Conf wird nie überschrieben.
-mkdir -p "$CONF_DIR"; chmod 750 "$CONF_DIR"
-if [ -f "${CONF_DIR}/palworld-scripts.conf" ]; then
-  c_green "Konfiguration bleibt unverändert: ${CONF_DIR}/palworld-scripts.conf"
+# Vorhandene Konfiguration wird NIE überschrieben (Passwörter!).
+if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
+  c_green "Konfiguration bleibt unverändert: ${TOOLS_DIR}/palworld-scripts.conf"
 else
-  fetch "${CONF_DIR}/palworld-scripts.conf" "${RAW_SRV}/palworld-scripts.conf.example"
-  chmod 600 "${CONF_DIR}/palworld-scripts.conf"
-  c_yellow "Neue Vorlage: ${CONF_DIR}/palworld-scripts.conf – Werte mit [SERVER] anpassen!"
+  fetch "${TOOLS_DIR}/palworld-scripts.conf" "${RAW_SRV}/palworld-scripts.conf.example"
+  c_yellow "Neue Vorlage: ${TOOLS_DIR}/palworld-scripts.conf – Werte mit [SERVER] anpassen!"
 fi
+chmod 600 "${TOOLS_DIR}/palworld-scripts.conf"
 
 # ----------------------------------------------------------------------------
 step "6/6 – Spielstand suchen"
@@ -150,15 +153,15 @@ cat <<EOF
 $(c_green "Fertig.")
 
 1) Konfiguration ausfüllen (dort steht ALLES Serverspezifische):
-     nano ${CONF_DIR}/palworld-scripts.conf
+     nano ${TOOLS_DIR}/palworld-scripts.conf
    Mindestens: COMPOSE_DIR, SERVICE, ADMIN_PASSWORD, DISCORD_WEBHOOK,
    DISCORD_SERVER_NAME, RESTART_SCHEDULE, UPLOAD_SECRET$([ -n "$SRV_ARG" ] && echo ", WEB_SERVER_ID=\"${SRV_ARG}\"")
      SAV_GLOB="${SAV_GLOB}"
 
 2) Trockenlauf – schreibt nichts, postet nichts:
-     ${VENV}/palworld-upload.sh bases --dry-run
-     ${VENV}/palworld-status.sh --dry-run
-     ${VENV}/bin/python3 ${VENV}/base-report.py --sav '${SAV_GLOB}' --threshold 14
+     ${TOOLS_DIR}/palworld-upload.sh bases --dry-run
+     ${TOOLS_DIR}/palworld-status.sh --dry-run
+     ${VENV}/bin/python3 ${TOOLS_DIR}/base-report.py --sav '${SAV_GLOB}' --threshold 14
 
 3) Cron übernehmen (Vorlage: deploy/gameserver/crontab-palworld.txt):
      crontab -l > ~/crontab.backup-\$(date +%F)

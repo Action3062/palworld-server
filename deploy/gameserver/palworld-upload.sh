@@ -20,8 +20,10 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PALTOOLS_DIR="/opt/paltools"      # hier liegen die .py-Werkzeuge
-PALTOOLS_PYTHON=""                # leer = ${PALTOOLS_DIR}/bin/python3
+# Standard: die .py-Werkzeuge liegen neben diesem Skript, der
+# Interpreter im venv. Beides ueber die Conf umstellbar.
+PALTOOLS_DIR="$SCRIPT_DIR"
+PALTOOLS_PYTHON="/opt/paltools/bin/python3"
 SAV_GLOB=""
 UPLOAD_URL=""
 UPLOAD_SECRET=""
@@ -47,7 +49,7 @@ case "$WHAT" in
   *) echo "Aufruf: $(basename "$0") bases|rankings [weitere Optionen]" >&2; exit 2 ;;
 esac
 
-PYTHON="${PALTOOLS_PYTHON:-${PALTOOLS_DIR}/bin/python3}"
+PYTHON="$PALTOOLS_PYTHON"
 [ -x "$PYTHON" ] || fail "paltools-venv fehlt: ${PYTHON} (install-paltools.sh ausfuehren)."
 [ -f "${PALTOOLS_DIR}/${SCRIPT}" ] || fail "${SCRIPT} fehlt in ${PALTOOLS_DIR}."
 [ -n "$SAV_GLOB" ]      || fail "SAV_GLOB ist nicht gesetzt (${CONF})."
