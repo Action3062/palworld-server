@@ -23,7 +23,7 @@
 #   LIVE_BACKUP_SAVE_WAIT=15   Sekunden Wartezeit nach dem API-Save
 #
 # Cron (alle 6 Stunden, bewusst versetzt zu Update :00/:30 und Announce :15/:45):
-#   20 */6 * * * /root/palworld/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
+#   20 */6 * * * /etc/palworld/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -46,9 +46,16 @@ BACKUP_LOCK_WAIT=900
 DISCORD_WEBHOOK=""
 LOCKFILE="/var/lock/palworld-autoupdate.lock"   # Lock des Update-Skripts
 
-CONF="${PALWORLD_CONF:-${SCRIPT_DIR}/palworld-scripts.conf}"
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
 # shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 BACKUP_DIR="${BACKUP_DIR:-${COMPOSE_DIR}/backups}"
 SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"
 

@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
 # ============================================================================
-# install-paltools.sh – Werkzeuge zum Auslesen der Level.sav einrichten
+# install-paltools.sh – Server-Werkzeuge nach /etc/palworld einrichten
 # ============================================================================
-# Auf einem PALWORLD-SERVER ausführen. Richtet alles ein, was die beiden
-# Save-Skripte brauchen, und lädt sie gleich mit herunter:
+# Auf einem PALWORLD-SERVER ausführen. Legt zwei Verzeichnisse an:
 #
-#   • upload-bases.py  – Basen-Positionen für die Live-Karte hochladen
-#   • base-report.py   – Bericht: welche Basen sind wie lange inaktiv?
+#   /etc/palworld/   alles, was du pflegst: Skripte + Konfiguration
+#   /opt/paltools/   reines Python-venv – jederzeit wegwerfbar und neu baubar
+#
+# Geholt werden – auf jedem Gameserver dieselben:
+#
+#   Python (brauchen das venv):
+#   • upload-bases.py     – Basen-Positionen für die Live-Karte hochladen
+#   • upload-rankings.py  – Spielerwerte für die Ranglisten hochladen
+#   • base-report.py      – Bericht: welche Basen sind wie lange inaktiv?
+#   • discord-status.py   – Status-Nachricht im Discord pflegen
+#
+#   Wartung (Bash, lesen /etc/palworld/palworld-scripts.conf):
+#   • palworld-autoupdate.sh  palworld-watchdog.sh  palworld-backup.sh
+#   • palworld-discord.sh (Bibliothek)  palworld-status.sh  palworld-upload.sh
+#
+# Ein zweiter Lauf aktualisiert alle Skripte; die palworld-scripts.conf
+# bleibt dabei unangetastet.
 #
 # Aufruf:
 #   bash install-paltools.sh                 # Standard-Server (erster in der config)
@@ -19,10 +33,13 @@
 # ============================================================================
 set -euo pipefail
 
-VENV="${VENV:-/opt/paltools}"
+VENV="${VENV:-/opt/paltools}"          # nur das Python-venv (wegwerfbar)
+TOOLS_DIR="${TOOLS_DIR:-/etc/palworld}" # Skripte + Konfiguration
 SERVER_ID="${1:-}"
-BRANCH="claude/palworld-server-website-j2gox0"
-RAW="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}/tools"
+BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
+RAW_BASE="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}"
+RAW="${RAW_BASE}/tools"                  # Python-Werkzeuge
+RAW_SRV="${RAW_BASE}/deploy/gameserver"  # Wartungs-Skripte
 
 c_red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 c_green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -32,7 +49,7 @@ step()     { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 [ "$(id -u)" -eq 0 ] || { c_red "Bitte als root ausführen (sudo)."; exit 1; }
 
 # ----------------------------------------------------------------------------
-step "1/5 – Systempakete"
+step "1/6 – Systempakete"
 # ----------------------------------------------------------------------------
 # python3-venv: eigene Umgebung; git: Installation direkt von GitHub;
 # build-essential + python3-dev: pyooz wird beim Installieren kompiliert.
@@ -51,7 +68,7 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-step "2/5 – Python-Umgebung (${VENV})"
+step "2/6 – Python-Umgebung (${VENV})"
 # ----------------------------------------------------------------------------
 if [ ! -x "${VENV}/bin/python3" ]; then
   python3 -m venv "$VENV"
@@ -62,35 +79,70 @@ fi
 "${VENV}/bin/pip" install --quiet --upgrade pip
 
 # ----------------------------------------------------------------------------
-step "3/5 – Save-Bibliotheken (Oodle-fähige Forks)"
+step "3/6 – Save-Bibliotheken (Oodle-fähige Forks)"
 # ----------------------------------------------------------------------------
-echo "pyooz (Oodle-Dekomprimierung, wird kompiliert – dauert einen Moment) …"
-"${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/pyooz.git"
-echo "palworld-save-tools (Fork mit PlM-Unterstützung) …"
-"${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/palworld-save-tools.git"
-
-if "${VENV}/bin/python3" -c "import ooz, palworld_save_tools" 2>/dev/null; then
-  c_green "Bibliotheken einsatzbereit."
+# pyooz wird beim Installieren kompiliert (dauert Minuten). Bei einem zweiten
+# Lauf ist das unnoetig, solange sich beides importieren laesst.
+if [ "${FORCE_LIBS:-0}" != "1" ] && \
+   "${VENV}/bin/python3" -c "import ooz, palworld_save_tools" 2>/dev/null; then
+  c_green "Bibliotheken sind bereits einsatzbereit (Neuinstallation: FORCE_LIBS=1)."
 else
-  c_red "Die Bibliotheken lassen sich nicht importieren – bitte Ausgabe oben prüfen."
-  exit 1
+  echo "pyooz (Oodle-Dekomprimierung, wird kompiliert – dauert einen Moment) …"
+  "${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/pyooz.git"
+  echo "palworld-save-tools (Fork mit PlM-Unterstützung) …"
+  "${VENV}/bin/pip" install --quiet "git+https://github.com/MRHRTZ/palworld-save-tools.git"
+  if "${VENV}/bin/python3" -c "import ooz, palworld_save_tools" 2>/dev/null; then
+    c_green "Bibliotheken einsatzbereit."
+  else
+    c_red "Die Bibliotheken lassen sich nicht importieren – bitte Ausgabe oben prüfen."
+    exit 1
+  fi
 fi
 
 # ----------------------------------------------------------------------------
-step "4/5 – Skripte holen"
+step "4/6 – Werkzeuge holen (${TOOLS_DIR})"
 # ----------------------------------------------------------------------------
-for script in upload-bases.py base-report.py; do
-  if curl -fsSLo "${VENV}/${script}" "${RAW}/${script}"; then
-    echo "  ${script}"
+fetch() {  # fetch <ziel> <url> - erst nach Temp, dann verschieben
+  local tmp; tmp="$(mktemp)"
+  if curl -fsSLo "$tmp" "$2" && [ -s "$tmp" ]; then
+    mv "$tmp" "$1"
+    chmod 644 "$1"          # mktemp legt 600 an; Rechte danach explizit setzen
+    echo "  $(basename "$1")"
   else
-    c_red "  ${script} konnte nicht geladen werden (Netzwerk/URL prüfen)."
+    rm -f "$tmp"
+    c_red "  $(basename "$1") konnte nicht geladen werden."
+    c_red "  URL: $2"
+    c_red "  (Branch falsch? Dann mit BRANCH=<branch> bash install-paltools.sh starten.)"
     exit 1
   fi
+}
+mkdir -p "$TOOLS_DIR"; chmod 750 "$TOOLS_DIR"
+for script in upload-bases.py upload-rankings.py base-report.py discord-status.py; do
+  fetch "${TOOLS_DIR}/${script}" "${RAW}/${script}"
 done
-c_green "Skripte liegen in ${VENV}/."
 
 # ----------------------------------------------------------------------------
-step "5/5 – Spielstand suchen"
+step "5/6 – Wartungs-Skripte und Konfiguration"
+# ----------------------------------------------------------------------------
+for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-backup.sh \
+              palworld-discord.sh palworld-status.sh palworld-upload.sh; do
+  fetch "${TOOLS_DIR}/${script}" "${RAW_SRV}/${script}"
+  chmod 755 "${TOOLS_DIR}/${script}"
+done
+fetch "${TOOLS_DIR}/announcements.txt" "${RAW_SRV}/announcements.txt"
+c_green "Alle Skripte liegen in ${TOOLS_DIR}/."
+
+# Vorhandene Konfiguration wird NIE überschrieben (Passwörter!).
+if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
+  c_green "Konfiguration bleibt unverändert: ${TOOLS_DIR}/palworld-scripts.conf"
+else
+  fetch "${TOOLS_DIR}/palworld-scripts.conf" "${RAW_SRV}/palworld-scripts.conf.example"
+  c_yellow "Neue Vorlage: ${TOOLS_DIR}/palworld-scripts.conf – Werte mit [SERVER] anpassen!"
+fi
+chmod 600 "${TOOLS_DIR}/palworld-scripts.conf"
+
+# ----------------------------------------------------------------------------
+step "6/6 – Spielstand suchen"
 # ----------------------------------------------------------------------------
 # Ohne Docker liegt der Spielstand meist im Home des Server-Benutzers,
 # mit Docker unter dem gemounteten Datenverzeichnis.
@@ -106,25 +158,27 @@ else
 fi
 
 SRV_ARG=""
-[ -n "$SERVER_ID" ] && SRV_ARG=" --server ${SERVER_ID}"
+[ -n "$SERVER_ID" ] && SRV_ARG="$SERVER_ID"
 
 cat <<EOF
 
 $(c_green "Fertig.")
 
-Basen-Bericht testen (zeigt inaktive Basen, ändert nichts):
-  ${VENV}/bin/python3 ${VENV}/base-report.py \\
-      --sav '${SAV_GLOB}' --threshold 14
+1) Konfiguration ausfüllen (dort steht ALLES Serverspezifische):
+     nano ${TOOLS_DIR}/palworld-scripts.conf
+   Mindestens: COMPOSE_DIR, SERVICE, ADMIN_PASSWORD, DISCORD_WEBHOOK,
+   DISCORD_SERVER_NAME, RESTART_SCHEDULE, UPLOAD_SECRET$([ -n "$SRV_ARG" ] && echo ", WEB_SERVER_ID=\"${SRV_ARG}\"")
+     SAV_GLOB="${SAV_GLOB}"
 
-Basen für die Live-Karte hochladen (erst mit --dry-run testen):
-  ${VENV}/bin/python3 ${VENV}/upload-bases.py \\
-      --sav '${SAV_GLOB}' \\
-      --url 'http://10.88.0.1/api/map/bases' \\
-      --secret 'UPLOAD-SECRET-AUS-DER-CONFIG'${SRV_ARG} --dry-run
+2) Trockenlauf – schreibt nichts, postet nichts:
+     ${TOOLS_DIR}/palworld-upload.sh bases --dry-run
+     ${TOOLS_DIR}/palworld-status.sh --dry-run
+     ${VENV}/bin/python3 ${TOOLS_DIR}/base-report.py --sav '${SAV_GLOB}' --threshold 14
 
-Als Cronjob alle 30 Minuten (crontab -e), ohne --dry-run:
-  */30 * * * * ${VENV}/bin/python3 ${VENV}/upload-bases.py --sav '${SAV_GLOB}' --url 'http://10.88.0.1/api/map/bases' --secret 'UPLOAD-SECRET-AUS-DER-CONFIG'${SRV_ARG} >> /var/log/upload-bases.log 2>&1
+3) Cron übernehmen (Vorlage: deploy/gameserver/crontab-palworld.txt):
+     crontab -l > ~/crontab.backup-\$(date +%F)
+     crontab -e
 
-Hinweis: Das Secret in EINFACHE Anführungszeichen setzen$([ -n "$SERVER_ID" ] && echo "; --server ${SERVER_ID} sorgt dafür,
-dass die Basen beim richtigen Server der Webseite landen").
+4) Logs begrenzen:
+     install -m 644 logrotate-palworld /etc/logrotate.d/palworld
 EOF

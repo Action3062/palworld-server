@@ -450,21 +450,16 @@ Umrechnung zu den In-Game-Kartenkoordinaten: `karte_x = (welt_y − 158000) / 45
 `karte_y = (welt_x + 123888) / 459`.
 
 **Basen-Positionen** stehen nicht in der REST-API, sondern nur im Spielstand.
-Dafür läuft auf dem **Palworld-Server** ein Uploader:
+Dafür läuft auf dem **Palworld-Server** ein Uploader. Eingerichtet wird er von
+`deploy/gameserver/install-paltools.sh` (venv + Oodle-fähige Forks + Skripte),
+aufgerufen über den Wrapper – Pfade und Secret kommen aus der
+`palworld-scripts.conf`, siehe „Gameserver: Verzeichnisstruktur und Cron":
 
 ```bash
-# Debian 12+: venv + Fork mit Unterstützung für das neue PlM/Oodle-Save-Format
-apt update && apt install -y python3-venv git build-essential python3-dev
-python3 -m venv /opt/paltools
-/opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/pyooz.git"
-/opt/paltools/bin/pip install "git+https://github.com/MRHRTZ/palworld-save-tools.git"
-# testen (Web-Server über den WireGuard-Tunnel):
-/opt/paltools/bin/python3 tools/upload-bases.py \
-  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
-  --url http://10.88.0.1/api/map/bases \
-  --secret DEIN-UPLOAD-SECRET --dry-run
-# als Cronjob alle 30 Minuten (crontab -e):
-*/30 * * * * /opt/paltools/bin/python3 /pfad/zu/upload-bases.py --sav "…" --url "…" --secret "…"
+bash install-paltools.sh                        # einmalig
+/etc/palworld/palworld-upload.sh bases --dry-run  # testen
+# im Cron (stündlich):
+10 * * * * /etc/palworld/palworld-upload.sh bases >> /var/log/palworld-upload.log 2>&1
 ```
 
 Das `uploadSecret` wird in der `config.json` der Webseite unter `map`
@@ -485,12 +480,9 @@ zusätzlich zur `Level.sav` auch die kleinen `Players/*.sav`):
 
 ```bash
 # testen:
-/opt/paltools/bin/python3 tools/upload-rankings.py \
-  --sav "~/palworld/Saved/SaveGames/0/*/Level.sav" \
-  --url http://10.88.0.1/api/rankings/upload \
-  --secret DEIN-UPLOAD-SECRET --server pve --dry-run
+/etc/palworld/palworld-upload.sh rankings --dry-run
 # als Cronjob 1x pro Stunde, zeitversetzt zum Basen-Upload (crontab -e):
-40 * * * * /opt/paltools/bin/python3 /pfad/zu/upload-rankings.py --sav "…" --url "…" --secret "…" --server pve
+40 * * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 ```
 
 Endpunkte: `POST /api/rankings/upload` (Secret wie Basen-Upload),
@@ -521,6 +513,90 @@ einfach neu generieren:
 python3 tools/build-paldata.py --source /pfad/zu/PalworldSaveTools/resources
 ```
 
+## Gameserver: Verzeichnisstruktur und Cron
+
+Auf den Palworld-Maschinen (nicht auf dem Web-Server) laufen die Skripte aus
+`deploy/gameserver/` und `tools/`. Beide Server sind identisch aufgebaut:
+**ein** Verzeichnis, das man pflegt, und ein Python-venv, das man jederzeit
+wegwerfen kann.
+
+```
+/etc/palworld/                     # ALLES, was du pflegst (750)
+  palworld-scripts.conf            #   Einstellungen & Geheimnisse (600)
+  palworld-autoupdate.sh           #   Update + geplante Neustarts
+  palworld-watchdog.sh             #   Haenger-Erkennung, jede Minute
+  palworld-backup.sh               #   Live-Backup ohne Neustart
+  palworld-announce.sh             #   Ingame-Ansagen
+  palworld-discord.sh              #   Bibliothek: eine Neustart-Nachricht
+  palworld-status.sh               #   Wrapper → discord-status.py
+  palworld-upload.sh               #   Wrapper → upload-bases/-rankings.py
+  discord-status.py  upload-bases.py  upload-rankings.py  base-report.py
+  announcements.txt
+/opt/paltools/                     # reines Python-venv (install-paltools.sh)
+  bin/python3, lib/…               #   wegwerfbar: loeschen + Installer neu
+/etc/logrotate.d/palworld
+/root/palworld/  bzw. /home/palworld/…   # compose.yml, .env, Saved/, backups/
+```
+
+**Warum die Trennung?** Das venv ist generierter Kram – nach einem
+Python-Upgrade baut man es mit `rm -rf /opt/paltools && bash
+install-paltools.sh` einfach neu. Lägen Skripte und Passwörter darin, wären
+sie dabei weg. Umgekehrt braucht in `/etc/palworld` nichts kompiliert zu
+werden. Die Skripte finden ihre Konfiguration und die `.py`-Werkzeuge
+automatisch neben sich; gesucht wird der Reihe nach `$PALWORLD_CONF` → neben
+dem Skript → `/etc/palworld/palworld-scripts.conf`.
+
+**Die Skripte liegen nicht im Compose-/Spielverzeichnis** – deshalb muss
+`COMPOSE_DIR` in der Conf gesetzt sein, denn der Standard ist das
+Verzeichnis, in dem das Skript liegt (das gilt auch für `SAVED_DIR` und
+`BACKUP_DIR`, die davon abgeleitet werden). `palworld-discord.sh` gehört
+zwingend neben die anderen Skripte – sonst fällt die Neustart-Meldung still
+aufs alte Verhalten zurück.
+
+**Alles Serverspezifische steht in der Conf** (Vorlage:
+`palworld-scripts.conf.example`, Werte mit `[SERVER]` markiert). Dadurch ist
+der Cron auf beiden Servern identisch und enthält **kein** AdminPassword und
+kein Upload-Secret mehr – dafür sind `palworld-status.sh` und
+`palworld-upload.sh` da:
+
+```cron
+# statt: */5 * * * * … discord-status.py --password 'GEHEIM' --webhook 'https://…'
+*/5  * * * * /etc/palworld/palworld-status.sh   >> /var/log/palworld-status.log 2>&1
+10   * * * * /etc/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
+40   * * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
+```
+
+Einrichten (auf jedem Gameserver identisch):
+
+```bash
+# holt venv, Python-Werkzeuge, Wartungs-Skripte und die Conf-Vorlage
+bash install-paltools.sh                    # optional: Server-ID der Webseite, z. B. "pve2"
+nano /etc/palworld/palworld-scripts.conf    # Werte mit [SERVER] anpassen
+# Testlauf, bevor der Cron es tut:
+/etc/palworld/palworld-status.sh --dry-run
+/etc/palworld/palworld-upload.sh bases --dry-run
+/etc/palworld/palworld-autoupdate.sh --discord-refresh
+# Cron (Vorlage: deploy/gameserver/crontab-palworld.txt)
+crontab -l > ~/crontab.backup-$(date +%F)
+crontab -e
+# Logs begrenzen
+install -m 644 deploy/gameserver/logrotate-palworld /etc/logrotate.d/palworld
+```
+
+Das Zeitraster ist so gewählt, dass sich die Jobs nicht überlappen:
+Update-Check `:00/:30`, Basen-Upload `:10`, Ansagen `:15/:45`, Live-Backup
+`:20` (alle 6 h), Ranglisten `:40`, Status alle 5 min. Die Neustart-Zeile
+sollte auf dem zweiten Server **versetzt** laufen (`55 5,10,18` statt
+`55 4,9,17`), damit nie beide Welten gleichzeitig offline sind – und
+`RESTART_SCHEDULE` in der Conf entsprechend mitziehen (Cron-Zeit +
+Vorwarnzeit).
+
+> **Noch offen:** `palworld-autoupdate.sh`, `palworld-watchdog.sh` und
+> `palworld-backup.sh` steuern den Server ausschließlich über
+> `docker compose`. Für eine native Instanz (systemd + steamcmd) brauchen sie
+> eine Laufzeit-Umschaltung. Ebenfalls nicht im Repo: `palworld-announce.sh`
+> und das Setup-Skript des zweiten Servers.
+
 ## Server-Status im Discord (tools/discord-status.py)
 
 Spiegelt den Live-Status jedes Servers als **eine sich selbst
@@ -549,6 +625,64 @@ Beide Server können denselben Webhook/Kanal nutzen – jeder pflegt seine
 eigene Nachricht (unterschieden über `--name`). Die Nachrichten-ID merkt
 sich das Skript in `~/.palheim-discord-status.json`; wird die Nachricht im
 Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
+
+**Läuft der Server im Docker-Container?** Dann antwortet die REST-API oft
+nicht auf `127.0.0.1` – typischer Fehler:
+`Spielserver nicht erreichbar: <urlopen error [Errno 111] Connection refused>`.
+Das Skript sucht die API in dem Fall selbst am Container: Host-Netz,
+veröffentlichte Ports **samt Host-IP** (wer `10.88.0.2:8212:8212` in den
+WireGuard-Tunnel veröffentlicht, ist über `127.0.0.1` eben nicht erreichbar)
+und zuletzt die Container-IP. Die gefundene Adresse meldet es einmal im Log
+und merkt sie sich für die nächsten Läufe – `--api` kann man dann
+weglassen oder auf die gemeldete Adresse setzen. Steuerbar mit
+`--container <name>` (falls die Automatik den falschen Container erwischt),
+`--port 8212` (REST-Port im Container) und `--no-docker` (Suche aus).
+Kommt stattdessen `HTTP 401`, ist die API erreichbar und nur das
+`--password` passt nicht zum `AdminPassword` der `PalWorldSettings.ini`.
+
+### Neustarts im selben Kanal (ohne Nachrichten-Spam)
+
+Früher hat jeder Neustart eine **neue** Nachricht gepostet – dadurch rutschte
+die Status-Nachricht mit Spielern, FPS und CPU/RAM nach und nach nach oben aus
+dem Blick. Jetzt pflegen `palworld-autoupdate.sh` und `palworld-watchdog.sh`
+über `deploy/gameserver/palworld-discord.sh` **eine** Neustart-Nachricht, die
+bearbeitet statt neu gepostet wird:
+
+> 🔄 **Neustarts · Server 1 · PvE 4x** · 🟢 Server läuft.
+> **🕒 Letzter Neustart** – 4. Aug 2026, 05:05 · *vor 6 Std* · ⬆️ Update ·
+> `v0.6.1` → `v0.6.2` · 3 Spieler waren online
+> **⏭️ Nächster Neustart** – 4. Aug 2026, 17:05 · *in 6 Std*
+
+Die Zeiten gehen als Discord-Zeitstempel (`<t:…:R>`) raus – Discord rechnet
+sie im Client selbst um, „vor 6 Std“ bleibt also aktuell, ohne dass ein
+Cronjob die Nachricht ständig neu schreiben muss. Während eines Neustarts wird
+die Nachricht orange („Neustart läuft“), bei Fehlern rot.
+
+Damit das läuft, muss `palworld-discord.sh` neben den beiden Skripten liegen
+(gleiches Verzeichnis, meist `/root/palworld/`). Fehlt die Datei, bleibt alles
+beim alten Verhalten. Einstellungen in der `palworld-scripts.conf`:
+
+```bash
+DISCORD_WEBHOOK="https://discord.com/api/webhooks/…"  # derselbe Kanal wie oben
+DISCORD_SERVER_NAME="Server 1 · PvE 4x"    # Titelzusatz, optional
+RESTART_SCHEDULE="05:05 17:05"             # geplante Neustarts (lokale Zeit)
+# DISCORD_RESTART_MESSAGE=false            # zurück zum alten Verhalten
+# DISCORD_ALERT_NEW_MESSAGE=true           # Fehler zusätzlich als eigene Nachricht
+# DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
+```
+
+`RESTART_SCHEDULE` ist die Zeit, zu der der Server **wirklich** runtergeht,
+also Cron-Zeit + Vorwarnzeit (Cron `55 4 * * *` + 10 min Warnung → `05:05`).
+Ohne die Angabe zeigt die Nachricht „kein fester Termin“. Ein `--min-gap`
+wird berücksichtigt: liegt der nächste Termin zu dicht am letzten Neustart,
+wird gleich der übernächste angezeigt.
+
+Optional hält ein kleiner Cronjob den nächsten Termin frisch (nötig z. B.,
+wenn ein Lauf wegen `--if-empty` übersprungen wurde):
+
+```bash
+*/15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
+```
 
 ## Vote-Belohnung (Serverlisten wie palserver.de)
 

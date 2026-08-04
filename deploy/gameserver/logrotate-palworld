@@ -1,0 +1,18 @@
+# /etc/logrotate.d/palworld - Logs der Wartungs-Skripte begrenzen
+#
+# Installieren:  install -m 644 logrotate-palworld /etc/logrotate.d/palworld
+#
+# Ohne das waechst vor allem palworld-watchdog.log unbegrenzt: der Watchdog
+# laeuft jede Minute. Die Skripte schreiben per ">>" und oeffnen die Datei
+# bei jedem Lauf neu, deshalb reicht "copytruncate" nicht nur, sondern ist
+# genau richtig - es laeuft kein Dienst, dem man ein Signal schicken muesste.
+/var/log/palworld-*.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su root root
+}

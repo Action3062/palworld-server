@@ -18,20 +18,31 @@
 #                      Neustarts pro Tag; verhindert z. B., dass kurz nach
 #                      einem Update-Neustart gleich wieder neu gestartet wird)
 #   --reason "Text"    Eigener Grund fuer die Ingame-Ankuendigung
+#   --discord-refresh  Nichts am Server tun, nur die Discord-Neustart-Nachricht
+#                      neu zeichnen (naechster Termin). Fuer einen Cronjob.
 #
-# Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
+# Discord: Neustarts posten KEINE neuen Nachrichten mehr, sondern pflegen eine
+# einzige Nachricht im Kanal ("Letzter Neustart" / "Naechster Neustart"), damit
+# die Status-Nachricht von tools/discord-status.py sichtbar bleibt. Details und
+# Einstellungen: palworld-discord.sh (liegt neben diesem Skript).
+#
+# Konfiguration: /etc/palworld/palworld-scripts.conf (oder neben dem Skript,
+# oder $PALWORLD_CONF)
 # COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
 #
 # Cron-Beispiele:
-#   */30 * * * * /root/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+#   */30 * * * * /etc/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
 #
 #   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern):
-#   55 4 * * *   /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 4 * * *   /etc/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
 #
 #   Mehrere Neustarts pro Tag (Zeiten an die Spielerlast anpassen);
 #   --min-gap 4 sorgt dafuer, dass nach Update-/anderen Neustarts
 #   mindestens 4 h Ruhe ist, bevor der naechste geplante greift:
-#   55 10 * * *  /root/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#   55 10 * * *  /etc/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
+#
+#   Discord-Nachricht frisch halten (optional, kostet nichts):
+#   */15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >> /dev/null 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -56,9 +67,16 @@ DISCORD_WEBHOOK=""
 LOCKFILE="/var/lock/palworld-autoupdate.lock"
 RESTART_MARKER="/run/palworld-restart-done"
 
-CONF="${PALWORLD_CONF:-${SCRIPT_DIR}/palworld-scripts.conf}"
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
 # shellcheck disable=SC1090
-[ -f "$CONF" ] && . "$CONF"
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 ENV_FILE="${ENV_FILE:-${COMPOSE_DIR}/.env}"
 BACKUP_DIR="${BACKUP_DIR:-${COMPOSE_DIR}/backups}"
 SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"
@@ -69,15 +87,17 @@ IF_EMPTY=false
 ONCE_DAILY=false
 MIN_GAP_HOURS=0
 REASON=""
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; }
+# Kopfkommentar als Hilfe ausgeben (bis zur schliessenden ===-Zeile)
+usage() { awk 'NR>2 && /^# ={10,}/{exit} NR>2{sub(/^# ?/,""); print}' "$0"; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --force-restart) MODE="restart" ;;
-    --if-empty)      IF_EMPTY=true ;;
-    --once-daily)    ONCE_DAILY=true ;;
-    --min-gap)       MIN_GAP_HOURS="${2:-0}"; shift ;;
-    --reason)        REASON="${2:-}"; shift ;;
-    -h|--help)       usage; exit 0 ;;
+    --force-restart)   MODE="restart" ;;
+    --discord-refresh) MODE="discord-refresh" ;;
+    --if-empty)        IF_EMPTY=true ;;
+    --once-daily)      ONCE_DAILY=true ;;
+    --min-gap)         MIN_GAP_HOURS="${2:-0}"; shift ;;
+    --reason)          REASON="${2:-}"; shift ;;
+    -h|--help)         usage; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; usage; exit 2 ;;
   esac
   shift
@@ -87,17 +107,33 @@ done
 log() { echo "[$(date '+%F %T')] $*"; }
 dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
 
-# Discord-Benachrichtigung als farbiges Embed.
-#   notify_discord <Titel (mit Emoji)> <Text> [Farbe]
+# --- Discord ---------------------------------------------------------------------
+# palworld-discord.sh pflegt EINE Neustart-Nachricht (bearbeiten statt neu posten).
+# Fehlt die Datei (aeltere Installation), bleibt es beim alten Verhalten.
 DC_GREEN=3066993; DC_BLUE=3447003; DC_ORANGE=15105570; DC_RED=15158332
-notify_discord() {
-  [ -n "$DISCORD_WEBHOOK" ] || return 0
-  local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
-  curl -fsS -m 10 -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
-      '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
-    "$DISCORD_WEBHOOK" >/dev/null || true
-}
+if [ -f "${SCRIPT_DIR}/palworld-discord.sh" ]; then
+  # shellcheck disable=SC1091
+  . "${SCRIPT_DIR}/palworld-discord.sh"
+  DISCORD_MIN_GAP_HOURS="$MIN_GAP_HOURS"
+else
+  DISCORD_RESTART_MESSAGE=false
+  notify_discord() {
+    [ -n "$DISCORD_WEBHOOK" ] || return 0
+    local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
+    curl -fsS -m 10 -H 'Content-Type: application/json' \
+      -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
+        '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
+      "$DISCORD_WEBHOOK" >/dev/null || true
+  }
+  discord_restart_event() { :; }
+  discord_alert() { notify_discord "$1" "${2:-}" "$DC_RED"; }
+fi
+
+# --- Nur die Discord-Nachricht neu zeichnen --------------------------------------
+if [ "$MODE" = "discord-refresh" ]; then
+  discord_restart_event refresh
+  exit 0
+fi
 
 # --- Doppelstart verhindern (Watchdog prueft dieses Lock ebenfalls) --------------
 exec 9>"$LOCKFILE"
@@ -112,11 +148,13 @@ if [ "$MODE" = "restart" ]; then
   if [ "$ONCE_DAILY" = "true" ] && [ "$LAST_RESTART" -gt 0 ] && \
      [ "$(date -d "@${LAST_RESTART}" +%F)" = "$(date +%F)" ]; then
     log "Heute wurde bereits neu gestartet, ueberspringe (--once-daily)."
+    discord_restart_event refresh   # naechsten Termin in Discord nachziehen
     exit 0
   fi
   if [ "$MIN_GAP_HOURS" -gt 0 ] && [ "$LAST_RESTART" -gt 0 ] && \
      [ $(( $(date +%s) - LAST_RESTART )) -lt $(( MIN_GAP_HOURS * 3600 )) ]; then
     log "Letzter Neustart ist weniger als ${MIN_GAP_HOURS} h her, ueberspringe (--min-gap)."
+    discord_restart_event refresh
     exit 0
   fi
 fi
@@ -197,6 +235,7 @@ if [ "$IF_EMPTY" = "true" ]; then
   fi
   if [ "$PLAYERS" -gt 0 ]; then
     log "${PLAYERS} Spieler online, ueberspringe (--if-empty). Naechster Lauf versucht es erneut."
+    discord_restart_event refresh
     exit 0
   fi
 fi
@@ -213,9 +252,17 @@ STARTED_BEFORE=$(docker inspect -f '{{.State.StartedAt}}' "$CID")
 # --- Spieler warnen + sauber herunterfahren --------------------------------------------
 if [ "$MODE" = "update" ]; then
   ANNOUNCE_REASON="${REASON:-SERVER UPDATE auf ${TARGET_TAG}}"
+  RESTART_KIND="update"
+  RESTART_NOTE="Palworld \`${CURRENT_TAG}\` → \`${TARGET_TAG}\`"
 else
   ANNOUNCE_REASON="${REASON:-Geplanter Wartungs-Neustart}"
+  RESTART_KIND="restart"
+  RESTART_NOTE="Version \`${CURRENT_TAG}\`"
 fi
+
+# Discord: laufender Neustart (dieselbe Nachricht wird spaeter auf "fertig" gesetzt)
+discord_restart_event running "$RESTART_KIND" "$ANNOUNCE_REASON" \
+  "${RESTART_NOTE} · ${PLAYERS} Spieler online"
 
 if [ "$API_OK" = "true" ]; then
   log "Spieler online: ${PLAYERS}"
@@ -251,7 +298,7 @@ else
     log "FEHLER: REST-API nicht erreichbar (${API})."
     log "RESTAPIEnabled=True, RESTAPIPort=${REST_PORT} und AdminPassword in PalWorldSettings.ini setzen,"
     log "oder ALLOW_RESTART_WITHOUT_API=true konfigurieren."
-    notify_discord "🔴 Aktion fehlgeschlagen" "Aktion \`${MODE}\` angefordert, aber die REST-API antwortet nicht. Bitte manuell prüfen." "$DC_RED"
+    discord_alert "🔴 Aktion fehlgeschlagen" "Aktion \`${MODE}\` angefordert, aber die REST-API antwortet nicht. Bitte manuell prüfen."
     exit 1
   fi
 fi
@@ -305,7 +352,11 @@ sleep 10
 NEW_CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
 RUNNING_IMAGE=$([ -n "$NEW_CID" ] && docker inspect -f '{{.Config.Image}}' "$NEW_CID" || echo "unbekannt")
 log "Fertig. Laufendes Image: ${RUNNING_IMAGE}"
-if [ "$MODE" = "update" ]; then
+if [ "${DISCORD_RESTART_MESSAGE:-false}" = "true" ]; then
+  # Eine gepflegte Nachricht statt einer neuen pro Neustart
+  discord_restart_event ok "$RESTART_KIND" "$ANNOUNCE_REASON" \
+    "${RESTART_NOTE} · ${PLAYERS} Spieler waren online"
+elif [ "$MODE" = "update" ]; then
   notify_discord "⬆️ Update installiert" "Palworld \`${CURRENT_TAG}\` → \`${TARGET_TAG}\`" "$DC_BLUE"
 else
   notify_discord "🔄 Server neu gestartet" "**${ANNOUNCE_REASON}** · ${PLAYERS} Spieler waren online · Version \`${CURRENT_TAG}\`" "$DC_GREEN"
