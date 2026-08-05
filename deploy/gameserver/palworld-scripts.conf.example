@@ -1,6 +1,6 @@
 # =============================================================================
 # palworld-scripts.conf - zentrale Konfiguration ALLER Gameserver-Skripte
-# Variante fuer eine NATIVE Instanz (SteamCMD + systemd, ohne Docker)
+# Alle Gameserver laufen nativ: SteamCMD + systemd-Unit palworld.service
 # =============================================================================
 # Ort: /etc/palworld/palworld-scripts.conf - dort liegen auch die Skripte.
 # WICHTIG: chmod 600 - hier stehen AdminPassword, Webhook und Upload-Secret.
