@@ -197,5 +197,6 @@ mv "${BFILE}.part" "$BFILE"
 log "Backup erstellt: ${BFILE} ($(du -sh "$BFILE" | cut -f1), Server $( [ "$RUNNING" = "true" ] && echo laeuft || echo aus ))"
 
 # --- Rotation (nur die Live-Backups; palworld-saved-* bleibt unberuehrt) ----------
+# "|| true": unter pipefail wuerde ein leeres Verzeichnis den Lauf abbrechen
 ls -1t "${BACKUP_DIR}"/palworld-live-*.tar.gz 2>/dev/null \
-  | tail -n +$((LIVE_BACKUP_KEEP + 1)) | xargs -r rm -f
+  | tail -n +$((LIVE_BACKUP_KEEP + 1)) | xargs -r rm -f || true

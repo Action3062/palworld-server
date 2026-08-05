@@ -20,7 +20,7 @@
 # Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
 #
 # Cron (halbstuendlich, bewusst versetzt zum Update-Check auf :00/:30):
-#   15,45 * * * * /home/scripts/palworld-announce.sh >> /var/log/palworld-announce.log 2>&1
+#   15,45 * * * * /etc/palworld/palworld-announce.sh >> /var/log/palworld-announce.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

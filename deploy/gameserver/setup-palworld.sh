@@ -643,6 +643,7 @@ cat <<SUMMARY_EOF
         ${TOOLS_DIR}/palworld-status.sh --dry-run
         ${TOOLS_DIR}/palworld-upload.sh bases --dry-run
         ${TOOLS_DIR}/palworld-backup.sh --dry-run
+        ${TOOLS_DIR}/palworld-event.sh start --dry-run
    3. Firewall des Hosters: ${GAME_PORT}/udp eingehend erlauben,
       ${REST_PORT}/tcp$([ "$ENABLE_RCON" = "true" ] && echo " und ${RCON_PORT}/tcp") NICHT oeffentlich.
    4. Discord-Link in ${TOOLS_DIR}/announcements.txt anpassen.

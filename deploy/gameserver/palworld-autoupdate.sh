@@ -19,8 +19,8 @@
 # Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
 #
 # Cron-Beispiele:
-#   */30 * * * * /home/scripts/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
-#   10 4-9 * * * /home/scripts/palworld-autoupdate.sh --force-restart --if-empty >> /var/log/palworld-update.log 2>&1
+#   */30 * * * * /etc/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+#   10 4-9 * * * /etc/palworld/palworld-autoupdate.sh --force-restart --if-empty >> /var/log/palworld-update.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

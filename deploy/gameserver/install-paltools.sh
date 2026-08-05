@@ -20,8 +20,8 @@
 #   • palworld-backup.sh  palworld-event.sh
 #   • palworld-discord.sh (Bibliothek)  palworld-status.sh  palworld-upload.sh
 #
-#   Dazu: announcements.txt, crontab-palworld.txt (Vorlage zum Nachschlagen)
-#   und /etc/logrotate.d/palworld, falls dort noch nichts liegt.
+#   Dazu: announcements.txt, crontab-palworld.txt (Vorlage zum Nachschlagen),
+#   setup-palworld.sh und /etc/logrotate.d/palworld, falls dort noch nichts liegt.
 #
 # Ein zweiter Lauf aktualisiert alle Skripte; die palworld-scripts.conf
 # bleibt dabei unangetastet.
@@ -134,6 +134,10 @@ for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh \
   chmod 755 "${TOOLS_DIR}/${script}"
 done
 fetch "${TOOLS_DIR}/announcements.txt" "${RAW_SRV}/announcements.txt"
+# Setup-Skript mitliefern: so laesst sich spaeter z. B. --trusted-net oder
+# --second-server nachziehen, ohne es erst wieder herunterzuladen.
+fetch "${TOOLS_DIR}/setup-palworld.sh" "${RAW_SRV}/setup-palworld.sh"
+chmod 755 "${TOOLS_DIR}/setup-palworld.sh"
 # Cron-Vorlage nur als Nachschlagewerk - eingetragen wird sie von Hand
 # (crontab -e) bzw. von setup-palworld.sh.
 fetch "${TOOLS_DIR}/crontab-palworld.txt" "${RAW_SRV}/crontab-palworld.txt"

@@ -21,10 +21,16 @@
 # No-Ops - doppelt feuernde Crons koennen nichts kaputt machen.
 #
 # Aufrufe:
-#   palworld-event.sh start [--first-weekend-only] [--event NAME|NR]
-#   palworld-event.sh stop [--restart]     # --restart = sofortiger Neustart
+#   palworld-event.sh start [--first-weekend-only] [--event NAME|NR] [--dry-run]
+#   palworld-event.sh stop [--restart] [--dry-run]  # --restart = sofort neu starten
 #   palworld-event.sh guard
 #   palworld-event.sh status
+#
+# --dry-run zeigt nur, was passieren wuerde (Event, Ini, alte -> neue Werte)
+# und fasst weder Ini noch Server an.
+#
+# Vor dem Patchen legt "start" eine Kopie der Ini als <ini>.pre-event ab -
+# Notnagel, falls die State-Datei verlorengeht: einfach zurueckkopieren.
 #
 # Konfiguration: palworld-scripts.conf (EVENT_*-Block, siehe Beispiel-Conf).
 # Test-Hooks: EVENT_FORCE_DOM / EVENT_FORCE_MONTH ueberschreiben das Datum,
@@ -74,6 +80,7 @@ fi
 [ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
 SAVED_DIR="${SAVED_DIR:-${INSTALL_DIR}/Pal/Saved}"
 
+DRY_RUN=false
 log() { echo "[$(date '+%F %T')] $*"; }
 
 # Discord-Helfer der anderen Skripte mitbenutzen (weiche Abhaengigkeit)
@@ -177,6 +184,7 @@ cmd_start() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --first-weekend-only) first_only=true ;;
+      --dry-run) DRY_RUN=true ;;
       --event) want="$2"; shift ;;
       *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
     esac
@@ -197,14 +205,20 @@ cmd_start() {
   # beim Start. Das Lock wird VOR dem eigenen Neustart wieder freigegeben,
   # sonst wuerde palworld-autoupdate.sh am eigenen Lock haengenbleiben.
   exec 9>"$LOCKFILE"
-  if ! flock -w "$EVENT_LOCK_WAIT" 9; then
+  if [ "$DRY_RUN" = "true" ]; then
+    if flock -n 9; then
+      flock -u 9; log "[dry-run] Update-Lock ist frei, ein echter Lauf koennte sofort starten."
+    else
+      log "[dry-run] Update/Neustart laeuft - ein echter Lauf wuerde bis zu ${EVENT_LOCK_WAIT}s warten."
+    fi
+  elif ! flock -w "$EVENT_LOCK_WAIT" 9; then
     log "Update/Neustart laeuft seit ueber ${EVENT_LOCK_WAIT}s - Event-Start verschoben."
     return 0
   fi
 
   pick_event "$want"
   local ini; ini=$(find_ini)
-  log "Starte ${EV_NAME}: ${EV_CHANGES} (Ini: ${ini})"
+  [ "$DRY_RUN" = "true" ] || log "Starte ${EV_NAME}: ${EV_CHANGES} (Ini: ${ini})"
 
   # Aenderungen berechnen (Originalwerte VOR dem Patchen einsammeln)
   local changes="[]" key spec cur new
@@ -223,6 +237,16 @@ cmd_start() {
     changes=$(jq -c --arg k "$key" --arg o "$cur" --arg n "$new" \
       '. + [{key:$k, old:$o, new:$n}]' <<< "$changes")
   done
+
+  if [ "$DRY_RUN" = "true" ]; then
+    log "[dry-run] Event:  ${EV_NAME}"
+    log "[dry-run] Ini:    ${ini}"
+    jq -r '.[] | "  \(.key): \(.old) -> \(.new)"' <<< "$changes" \
+      | while IFS= read -r line; do log "[dry-run] Wert: ${line#  }"; done
+    log "[dry-run] Danach: Neustart ueber palworld-autoupdate.sh, Discord-Embed${EVENT_BANNER:+ und Website-Banner}"
+    log "[dry-run] Fertig - es wurde nichts veraendert."
+    return 0
+  fi
 
   # Erst den Zustand sichern, DANN patchen - bricht das Patchen ab, weiss
   # der naechste Lauf trotzdem, was zurueckzusetzen ist
@@ -255,13 +279,26 @@ cmd_start() {
 
 cmd_stop() {
   local do_restart=false
-  [ "${1:-}" = "--restart" ] && do_restart=true
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --restart) do_restart=true ;;
+      --dry-run) DRY_RUN=true ;;
+      *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
   if [ ! -f "$EVENT_STATE" ]; then
     log "Kein Event aktiv - nichts zu tun."
     return 0
   fi
   exec 9>"$LOCKFILE"
-  if ! flock -w "$EVENT_LOCK_WAIT" 9; then
+  if [ "$DRY_RUN" = "true" ]; then
+    if flock -n 9; then
+      flock -u 9; log "[dry-run] Update-Lock ist frei."
+    else
+      log "[dry-run] Update/Neustart laeuft - ein echter Lauf wuerde warten."
+    fi
+  elif ! flock -w "$EVENT_LOCK_WAIT" 9; then
     log "Update/Neustart laeuft seit ueber ${EVENT_LOCK_WAIT}s - Event-Ende verschoben."
     return 0
   fi
@@ -269,6 +306,13 @@ cmd_stop() {
   local name ini n
   name=$(jq -r .name "$EVENT_STATE")
   ini=$(jq -r .ini "$EVENT_STATE")
+  if [ "$DRY_RUN" = "true" ]; then
+    log "[dry-run] Wuerde ${name} beenden und in ${ini} zuruecksetzen:"
+    jq -r '.changes[] | "  \(.key): \(.new) -> \(.old)"' "$EVENT_STATE" \
+      | while IFS= read -r line; do log "[dry-run] Wert: ${line#  }"; done
+    log "[dry-run] Fertig - es wurde nichts veraendert."
+    return 0
+  fi
   log "Beende ${name}: setze Originalwerte zurueck."
   for n in $(jq -c '.changes[]' "$EVENT_STATE"); do
     ini_set "$ini" "$(jq -r .key <<< "$n")" "$(jq -r .old <<< "$n")"
@@ -305,6 +349,9 @@ cmd_guard() {
 cmd_status() {
   if [ -f "$EVENT_STATE" ]; then
     jq . "$EVENT_STATE"
+    local ini; ini=$(jq -r .ini "$EVENT_STATE")
+    [ -f "${ini}.pre-event" ] \
+      && echo "Sicherheitskopie der Ini vor dem Event: ${ini}.pre-event"
   else
     echo "Kein Event aktiv."
     pick_event
@@ -314,9 +361,9 @@ cmd_status() {
 
 case "${1:-}" in
   start)  shift; cmd_start "$@" ;;
-  stop)   shift; cmd_stop "${1:-}" ;;
+  stop)   shift; cmd_stop "$@" ;;
   guard)  cmd_guard ;;
   status) cmd_status ;;
-  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] | stop [--restart] | guard | status" >&2
+  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] [--dry-run] | stop [--restart] [--dry-run] | guard | status" >&2
      exit 2 ;;
 esac
