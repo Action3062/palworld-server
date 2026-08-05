@@ -311,6 +311,40 @@ sudo git pull
 sudo systemctl restart palworld-web
 ```
 
+### Privates Repo: Server-Zugriff per Deploy-Key
+
+Ist das GitHub-Repo **privat**, braucht jeder Server (Web- und Gameserver)
+einen eigenen **Deploy-Key** – ein SSH-Schlüssel, der nur für dieses Repo
+gilt und nur lesen darf. Auf jedem Server als der Benutzer, der
+`git pull` ausführt:
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "palheim-$(hostname)" -f ~/.ssh/palheim-repo
+cat ~/.ssh/palheim-repo.pub   # kopieren
+```
+
+Den öffentlichen Schlüssel auf GitHub eintragen: Repo → **Settings →
+Deploy keys → Add deploy key** (pro Server ein Eintrag, „Allow write
+access" **nicht** anhaken). Dann auf dem Server:
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/palheim-repo
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+cd /pfad/zum/repo
+git remote set-url origin git@github.com:Action3062/palworld-server.git
+git pull
+```
+
+Ein Server, der ausgemustert wird, verliert den Zugriff durch Löschen
+seines einen Deploy-Keys. Hinweis: Die `curl`-Einzeiler weiter oben
+(Schnellinstallation, WireGuard) setzen ein **öffentliches** Repo
+voraus – bei privatem Repo stattdessen die Skripte aus dem geklonten
+Repo ausführen (`bash deploy/setup.sh` usw.).
+
 ## Konfiguration
 
 `config.json` (siehe `config.example.json`) – wird **nicht** eingecheckt (`.gitignore`):
