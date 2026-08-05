@@ -311,11 +311,47 @@ sudo git pull
 sudo systemctl restart palworld-web
 ```
 
-### Privates Repo: Server-Zugriff per Deploy-Key
+### Privates Repo: Zugriff für die Server
 
-Ist das GitHub-Repo **privat**, braucht jeder Server (Web- und Gameserver)
-einen eigenen **Deploy-Key** – ein SSH-Schlüssel, der nur für dieses Repo
-gilt und nur lesen darf. Auf jedem Server als der Benutzer, der
+Ist das GitHub-Repo **privat**, gibt es zwei Wege – je nachdem, wie der
+Server die Dateien holt:
+
+#### Gameserver (curl-Einzeiler): Fine-grained Token
+
+Die Gameserver klonen kein Repo, sie laden nur einzelne Dateien per
+`raw.githubusercontent.com`. Dafür reicht ein **Fine-grained Personal
+Access Token**, der nur dieses eine Repo lesen darf:
+
+1. GitHub → **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**
+2. **Repository access**: „Only select repositories" → dieses Repo
+3. **Permissions → Contents: Read-only** (sonst nichts)
+4. Laufzeit nach Geschmack (z. B. 1 Jahr) – GitHub erinnert vor Ablauf.
+
+Den Token auf **jedem Gameserver** einmalig ablegen:
+
+```bash
+install -m 600 /dev/null /etc/palworld/github-token
+nano /etc/palworld/github-token    # Token einfügen, eine Zeile, speichern
+```
+
+Danach funktioniert der Einzeiler wieder – nur der äußere `curl` braucht
+jetzt den Header, alles Weitere liest `install-paltools.sh` selbst aus
+der Datei:
+
+```bash
+bash <(curl -sL -H "Authorization: Bearer $(cat /etc/palworld/github-token)" https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/gameserver/install-paltools.sh)
+```
+
+Läuft der Token ab oder wird ein Server ausgemustert, den Token auf
+GitHub widerrufen und ggf. einen neuen in die Datei legen – mehr ist
+nicht zu tun.
+
+#### Web-Server (git pull): Deploy-Key
+
+Der Web-Server zieht Updates per `git pull` und braucht dafür einen
+eigenen **Deploy-Key** – ein SSH-Schlüssel, der nur für dieses Repo
+gilt und nur lesen darf. Auf dem Server als der Benutzer, der
 `git pull` ausführt:
 
 ```bash
@@ -340,10 +376,10 @@ git pull
 ```
 
 Ein Server, der ausgemustert wird, verliert den Zugriff durch Löschen
-seines einen Deploy-Keys. Hinweis: Die `curl`-Einzeiler weiter oben
-(Schnellinstallation, WireGuard) setzen ein **öffentliches** Repo
-voraus – bei privatem Repo stattdessen die Skripte aus dem geklonten
-Repo ausführen (`bash deploy/setup.sh` usw.).
+seines einen Deploy-Keys. Hinweis: Die übrigen `curl`-Einzeiler weiter
+oben (Schnellinstallation, WireGuard) funktionieren beim privaten Repo
+ebenfalls mit dem Token-Header aus dem Gameserver-Abschnitt – oder man
+führt die Skripte aus dem geklonten Repo aus (`bash deploy/setup.sh`).
 
 ## Konfiguration
 
