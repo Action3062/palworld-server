@@ -71,45 +71,28 @@ if [ "$ROLE" = "game" ]; then
     *) c_yellow "  REST-API antwortet mit HTTP ${CODE} – ungewöhnlich, aber sie läuft." ;;
   esac
 
-  # Läuft der Server im Container oder direkt auf dem System? Die Ursachen bei
-  # einem nicht erreichbaren Port sind völlig unterschiedlich.
-  IN_DOCKER=false
-  if command -v docker >/dev/null 2>&1 &&
-     docker ps --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi 'pal'; then
-    IN_DOCKER=true
-  fi
-
   step "2/3 – Ist der Port auf der Tunnel-IP erreichbar?"
   if tcp_open "$MY_WG_IP" "$API_PORT"; then
     ok "${MY_WG_IP}:${API_PORT} nimmt Verbindungen an."
-  elif [ "$IN_DOCKER" = true ]; then
-    fail "${MY_WG_IP}:${API_PORT} ist NICHT erreichbar – der Container veröffentlicht den Port nicht."
-    info "In der docker-compose.yml eintragen und den Container NEU ERSTELLEN:"
-    info "   ports:"
-    info "     - \"${MY_WG_IP}:${API_PORT}:${API_PORT}\""
-    info "   docker compose up -d --force-recreate"
-    info "(Nachträglich lassen sich Ports an einem laufenden Container nicht öffnen.)"
-    info "Wichtig: Das Tunnel-Interface muss VOR dem Container starten, sonst"
-    info "kann Docker die Adresse ${MY_WG_IP} nicht binden."
   else
-    fail "${MY_WG_IP}:${API_PORT} ist nicht erreichbar (Server läuft direkt auf dem System)."
-    info "Ohne Container hängt das allein an der REST-API selbst:"
+    fail "${MY_WG_IP}:${API_PORT} ist nicht erreichbar."
+    info "Häufigste Ursache: der Portschutz aus setup-palworld.sh lässt nur"
+    info "127.0.0.1 durch. Das Tunnel-Netz muss mit rein:"
+    info "      bash setup-palworld.sh --trusted-net ${MY_WG_IP%.*}.0/24"
+    info "  (setzt die Regel in /etc/palworld-firewall.nft neu; prüfen mit"
+    info "      nft list table inet palworld )"
+    info "Sonst hängt es an der REST-API selbst:"
     info "  • Ist sie aktiv? (Schritt 1 oben)"
     info "  • Worauf lauscht der Prozess wirklich?"
     info "      ss -tlnp | grep -i palserver"
     info "    Steht dort NUR der RCON-Port, fehlt RESTAPIEnabled=True."
-    info "  • Blockt eine lokale Firewall den Tunnel?"
+    info "  • Blockt zusätzlich ufw den Tunnel?"
     info "      ufw allow in on ${WG_IF} to any port ${API_PORT} proto tcp"
   fi
 
-  if [ "$IN_DOCKER" = true ]; then
-    echo "  Aktuell veröffentlichte Container-Ports:"
-    docker ps --format '    {{.Names}}: {{.Ports}}' 2>/dev/null | head -5 || true
-  else
-    echo "  Offene TCP-Ports des Palworld-Prozesses:"
-    ss -tlnp 2>/dev/null | grep -i 'palserver' | awk '{print "    " $4}' | head -5 ||
-      echo "    (keine gefunden – läuft der Server gerade?)"
-  fi
+  echo "  Offene TCP-Ports des Palworld-Prozesses:"
+  ss -tlnp 2>/dev/null | grep -i 'palserver' | awk '{print "    " $4}' | head -5 ||
+    echo "    (keine gefunden – läuft der Server gerade?)"
 
   step "3/4 – Lässt die Firewall den Tunnel durch?"
   # Wichtig: Der lokale Test oben läuft über loopback und sagt daher NICHTS
