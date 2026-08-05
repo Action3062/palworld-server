@@ -40,6 +40,14 @@ BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 RAW_BASE="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}"
 RAW="${RAW_BASE}/tools"                  # Python-Werkzeuge
 RAW_SRV="${RAW_BASE}/deploy/gameserver"  # Wartungs-Skripte
+# Welche Variante der Server-steuernden Skripte? docker = Container (compose),
+# native = SteamCMD + systemd. Alles andere ist bei beiden identisch.
+SCRIPT_SET="${SCRIPT_SET:-docker}"
+case "$SCRIPT_SET" in
+  docker) RAW_RT="$RAW_SRV";           RT_SCRIPTS="palworld-autoupdate.sh palworld-watchdog.sh" ;;
+  native) RAW_RT="${RAW_SRV}/native";  RT_SCRIPTS="palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh" ;;
+  *) echo "SCRIPT_SET muss 'docker' oder 'native' sein (ist: ${SCRIPT_SET})" >&2; exit 2 ;;
+esac
 
 c_red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 c_green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -124,8 +132,13 @@ done
 # ----------------------------------------------------------------------------
 step "5/6 – Wartungs-Skripte und Konfiguration"
 # ----------------------------------------------------------------------------
-for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-backup.sh \
-              palworld-discord.sh palworld-status.sh palworld-upload.sh; do
+# Laufzeitabhaengig (Container oder systemd)
+for script in $RT_SCRIPTS; do
+  fetch "${TOOLS_DIR}/${script}" "${RAW_RT}/${script}"
+  chmod 755 "${TOOLS_DIR}/${script}"
+done
+# Laufzeitunabhaengig
+for script in palworld-backup.sh palworld-discord.sh palworld-status.sh palworld-upload.sh; do
   fetch "${TOOLS_DIR}/${script}" "${RAW_SRV}/${script}"
   chmod 755 "${TOOLS_DIR}/${script}"
 done
@@ -136,7 +149,7 @@ c_green "Alle Skripte liegen in ${TOOLS_DIR}/."
 if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
   c_green "Konfiguration bleibt unverändert: ${TOOLS_DIR}/palworld-scripts.conf"
 else
-  fetch "${TOOLS_DIR}/palworld-scripts.conf" "${RAW_SRV}/palworld-scripts.conf.example"
+  fetch "${TOOLS_DIR}/palworld-scripts.conf" "${RAW_RT}/palworld-scripts.conf.example"
   c_yellow "Neue Vorlage: ${TOOLS_DIR}/palworld-scripts.conf – Werte mit [SERVER] anpassen!"
 fi
 chmod 600 "${TOOLS_DIR}/palworld-scripts.conf"

@@ -140,16 +140,20 @@ CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
 RUNNING="false"
 if [ -n "$CID" ]; then
   RUNNING=$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null || echo "false")
-fi
-
-if [ "$RUNNING" = "true" ]; then
-  if [ -z "$REST_HOST" ]; then
+  if [ "$RUNNING" = "true" ] && [ -z "$REST_HOST" ]; then
     if [ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CID")" = "host" ]; then
       REST_HOST="127.0.0.1"
     else
       REST_HOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CID")
     fi
   fi
+elif systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+  # Native Instanz (systemd) - die REST-API laeuft dann lokal
+  RUNNING="true"
+  REST_HOST="${REST_HOST:-127.0.0.1}"
+fi
+
+if [ "$RUNNING" = "true" ]; then
   API="http://${REST_HOST}:${REST_PORT}/v1/api"
   if [ "$DRY_RUN" = "true" ]; then
     if curl -fsS -m 10 -u "admin:${ADMIN_PASSWORD}" "${API}/info" >/dev/null 2>&1; then
@@ -164,7 +168,7 @@ if [ "$RUNNING" = "true" ]; then
     log "WARNUNG: API-Save fehlgeschlagen, sichere den letzten Autosave-Stand."
   fi
 else
-  [ "$DRY_RUN" = "true" ] && log "[dry-run] Server laeuft nicht (kein Container) - Sicherung ohne API-Save."
+  [ "$DRY_RUN" = "true" ] && log "[dry-run] Server laeuft nicht (weder Container noch systemd-Unit) - Sicherung ohne API-Save."
 fi
 
 # --- Unveraendert seit dem letzten Live-Backup? Dann sparen wir uns das ----------

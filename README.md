@@ -592,11 +592,39 @@ sollte auf dem zweiten Server **versetzt** laufen (`55 5,10,18` statt
 `RESTART_SCHEDULE` in der Conf entsprechend mitziehen (Cron-Zeit +
 Vorwarnzeit).
 
-> **Noch offen:** `palworld-autoupdate.sh`, `palworld-watchdog.sh` und
-> `palworld-backup.sh` steuern den Server ausschließlich über
-> `docker compose`. Für eine native Instanz (systemd + steamcmd) brauchen sie
-> eine Laufzeit-Umschaltung. Ebenfalls nicht im Repo: `palworld-announce.sh`
-> und das Setup-Skript des zweiten Servers.
+### Native Instanz (systemd + SteamCMD, ohne Docker)
+
+`deploy/gameserver/setup-palworld.sh` richtet einen kompletten Gameserver
+ohne Docker ein: SteamCMD, Palworld (App 2394010), `PalWorldSettings.ini`
+mit **REST-API und RCON**, systemd-Unit, Portschutz per nftables, alle
+Skripte nach `/etc/palworld`, root-crontab und Logrotate.
+
+```bash
+bash setup-palworld.sh --server-name "PalHeim" --trusted-net 10.88.0.0/24
+```
+
+`--trusted-net` gibt REST- und RCON-Port zusätzlich für ein Netz frei (z. B.
+den Tunnel zum Web-Server); ohne die Angabe sind beide nur lokal erreichbar.
+Der Spiel-Port bleibt immer offen. RCON braucht die Webseite für die
+Vote-Belohnungen (`lib/rcon.js`), Passwort ist das AdminPassword.
+
+Die Wartungs-Skripte gibt es deshalb in zwei Varianten – Auswahl über
+`SCRIPT_SET` in `install-paltools.sh`:
+
+| | Container | Native Instanz |
+|---|---|---|
+| `palworld-autoupdate.sh` | `deploy/gameserver/` (GHCR-Tag) | `deploy/gameserver/native/` (SteamCMD-Buildid) |
+| `palworld-watchdog.sh` | `docker compose restart` | `systemctl restart` |
+| `palworld-announce.sh` | – | `deploy/gameserver/native/` |
+| Rest (`-discord`, `-backup`, `-status`, `-upload`) | für beide identisch | |
+
+Beide Varianten kennen dieselben Optionen (`--force-restart`, `--if-empty`,
+`--min-gap`, `--reason`, `--discord-refresh`) und pflegen dieselbe
+Discord-Neustart-Nachricht – der Cron kann auf beiden Servern gleich sein.
+
+> **Noch offen:** Läuft auf der Maschine noch ein Palworld-Container, meldet
+> das Setup das und startet den Dienst nicht automatisch – Spielstand
+> vorher kopieren (`<compose-dir>/Saved` → `/home/palworld/palserver/Pal/Saved`).
 
 ## Server-Status im Discord (tools/discord-status.py)
 
