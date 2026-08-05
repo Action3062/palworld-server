@@ -50,14 +50,14 @@ MAILTO=""
 10   *      * * * /etc/palworld/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
 40   *      * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 
-# Event-Wochenende (JEDES Wochenende, Rotation nach Kalenderwoche):
-# Fr 17:40 Vorwarnungen -> ~17:50 Event-Start mit Neustart. Bewusst VOR dem
-# 17:55-Wartungsneustart: der wird dann per --min-gap uebersprungen, statt sich
-# auf das Lock zu verlassen.
-# Das Ende setzt Montag frueh nur die Werte zurueck - den Neustart erledigt
-# der regulaere Wartungs-Neustart danach. Server 2: Stopp auf "45 5" legen
-# (vor dessen versetztem 6-Uhr-Neustart).
-40   17     * * 5 /etc/palworld/palworld-event.sh start >> /var/log/palworld-event.log 2>&1
+# Event-Wochenende (JEDES Wochenende, Rotation nach Kalenderwoche).
+# Beide Schritte haengen sich an die regulaeren Wartungs-Neustarts, es gibt
+# also KEINEN zusaetzlichen Neustart:
+#   Fr 17:50  patcht nur die Ini  -> der 17:55-Neustart traegt die Werte ein
+#   Mo 04:45  setzt nur zurueck   -> der 04:55-Neustart macht sie wieder normal
+# Server 2: Stopp auf "45 5" legen (vor dessen 05:55-Neustart).
+# Faellt der Neustart aus (z. B. wegen --min-gap), meldet sich der Waechter.
+50   17     * * 5 /etc/palworld/palworld-event.sh start --no-restart >> /var/log/palworld-event.log 2>&1
 45   4      * * 1 /etc/palworld/palworld-event.sh stop >> /var/log/palworld-event.log 2>&1
 # Waechter: setzt haengengebliebene Events zwangsweise zurueck
 0    12     * * * /etc/palworld/palworld-event.sh guard >> /var/log/palworld-event.log 2>&1

@@ -8,12 +8,14 @@
 # EVENT_OFFSET verschiebt die Rotation (Kalibrierung, welches Event
 # "als naechstes" dran ist).
 #
-# Ablauf:
-#   Freitag  17:50  start  -> Ini patchen, Neustart mit Vorwarnung (uebernimmt
-#                             palworld-autoupdate.sh), Discord + Website-Banner
-#   Montag   04:45  stop   -> Originalwerte zuruecksetzen, KEIN eigener
-#                             Neustart: der regulaere 5-Uhr-Neustart uebernimmt
-#                             die normalen Raten (Server 2: 05:45 vor 6 Uhr)
+# Ablauf (haengt sich an die regulaeren Wartungs-Neustarts, KEIN zusaetzlicher):
+#   Freitag  17:50  start --no-restart -> nur Ini patchen; der 17:55-Neustart
+#                             traegt die Werte mit seiner ueblichen Vorwarnung ein
+#   Montag   04:45  stop   -> Originalwerte zuruecksetzen, ebenfalls ohne
+#                             eigenen Neustart: der 04:55-Neustart uebernimmt
+#                             (Server 2: 05:45 vor dessen 05:55-Neustart)
+#
+# Ohne --no-restart startet "start" selbst neu (fuer manuelle Eventstarts).
 #   taeglich 12:00  guard  -> setzt verwaiste Events zwangsweise zurueck,
 #                             falls der Montag-Lauf ausgefallen ist
 #
@@ -21,7 +23,8 @@
 # No-Ops - doppelt feuernde Crons koennen nichts kaputt machen.
 #
 # Aufrufe:
-#   palworld-event.sh start [--first-weekend-only] [--event NAME|NR] [--dry-run]
+#   palworld-event.sh start [--first-weekend-only] [--event NAME|NR]
+#                           [--no-restart] [--dry-run]
 #   palworld-event.sh stop [--restart] [--dry-run]  # --restart = sofort neu starten
 #   palworld-event.sh guard
 #   palworld-event.sh status
@@ -53,6 +56,8 @@ EVENT_ENABLED=true
 EVENT_INI=""                                   # leer = automatisch suchen
 EVENT_STATE="/var/lib/palworld/event.json"
 EVENT_MAX_HOURS=70                             # Fr 18 -> Mo 5 sind 59 h + Puffer
+EVENT_APPLY_GRACE_H=12                         # so lange darf ein gepatchtes
+                                               # Event auf seinen Neustart warten
 EVENT_BANNER=true                              # Website-Banner setzen/entfernen?
 EVENT_OFFSET=0                                 # verschiebt die Wochen-Rotation
 LOCKFILE="/var/lock/palworld-autoupdate.lock"  # Lock des Update-Skripts
@@ -88,6 +93,7 @@ if [ -f "${SCRIPT_DIR}/palworld-discord.sh" ]; then
   # shellcheck disable=SC1091
   . "${SCRIPT_DIR}/palworld-discord.sh"
 else
+  DC_GREEN=3066993; DC_BLUE=3447003; DC_ORANGE=15105570; DC_RED=15158332
   notify_discord() { :; }
 fi
 DC_GREEN=3066993
@@ -178,12 +184,20 @@ restart_server() {  # restart_server GRUND -> 0 = neu gestartet, 1 = nicht
   [ "$after" != "$before" ]
 }
 
+# Vermerkt im Zustand, dass die Werte durch einen Neustart wirksam wurden.
+mark_restarted() {
+  [ -f "$EVENT_STATE" ] || return 0
+  local tmp; tmp=$(jq -c '.restarted = true' "$EVENT_STATE") || return 0
+  printf '%s\n' "$tmp" > "$EVENT_STATE"
+}
+
 # --- Kommandos ------------------------------------------------------------------
 cmd_start() {
-  local first_only=false want=""
+  local first_only=false want="" do_restart=true
   while [ $# -gt 0 ]; do
     case "$1" in
       --first-weekend-only) first_only=true ;;
+      --no-restart) do_restart=false ;;
       --dry-run) DRY_RUN=true ;;
       --event) want="$2"; shift ;;
       *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
@@ -252,8 +266,10 @@ cmd_start() {
   # der naechste Lauf trotzdem, was zurueckzusetzen ist
   mkdir -p "$(dirname "$EVENT_STATE")"
   jq -nc --arg name "$EV_NAME" --arg text "$EV_TEXT" --arg ini "$ini" \
-    --arg started "$(date -Is)" --argjson changes "$changes" \
-    '{name:$name, text:$text, ini:$ini, started:$started, changes:$changes}' \
+    --arg started "$(date -Is)" --argjson patched "$(date +%s)" \
+    --argjson changes "$changes" \
+    '{name:$name, text:$text, ini:$ini, started:$started, patched_at:$patched,
+      restarted:false, changes:$changes}' \
     > "$EVENT_STATE"
   cp -p "$ini" "${ini}.pre-event"
 
@@ -264,7 +280,11 @@ cmd_start() {
   log "Ini gepatcht: $(jq -r '[.changes[] | "\(.key) \(.old)->\(.new)"] | join(", ")' "$EVENT_STATE")"
 
   flock -u 9   # freigeben, damit das Update-Skript neu starten kann
-  if restart_server "Event-Start: ${EV_NAME}"; then
+  if [ "$do_restart" != "true" ]; then
+    log "Kein eigener Neustart (--no-restart) - der naechste Wartungs-Neustart"
+    log "traegt die Werte ein. Der Waechter meldet sich, falls das ausbleibt."
+  elif restart_server "Event-Start: ${EV_NAME}"; then
+    mark_restarted
     log "Server mit den Event-Werten neu gestartet."
   else
     log "WARNUNG: Neustart kam nicht zustande (laeuft gerade ein Update?)."
@@ -334,6 +354,30 @@ cmd_stop() {
 
 cmd_guard() {
   [ -f "$EVENT_STATE" ] || return 0
+
+  # Gepatcht, aber nie neu gestartet? Dann laufen die Event-Werte nur auf dem
+  # Papier. Der Neustart-Marker verraet, ob seit dem Patchen einer stattfand.
+  if [ "$(jq -r '.restarted // false' "$EVENT_STATE")" != "true" ]; then
+    local patched marker
+    patched=$(jq -r '.patched_at // 0' "$EVENT_STATE")
+    marker=$(cat "$RESTART_MARKER" 2>/dev/null || echo 0)
+    [[ "$patched" =~ ^[0-9]+$ ]] || patched=0
+    [[ "$marker"  =~ ^[0-9]+$ ]] || marker=0
+    if [ "$marker" -gt "$patched" ]; then
+      mark_restarted
+      log "Event-Werte sind seit dem Neustart um $(date -d "@${marker}" '+%F %T') aktiv."
+    elif [ "$patched" -gt 0 ] && \
+         [ $(( ($(date +%s) - patched) / 3600 )) -ge "$EVENT_APPLY_GRACE_H" ]; then
+      if [ "$(jq -r '.warned // false' "$EVENT_STATE")" != "true" ]; then
+        log "WARNUNG: Event seit ueber ${EVENT_APPLY_GRACE_H} h gepatcht, aber kein Neustart - die Werte sind nicht aktiv."
+        notify_discord "⚠️ Event-Wächter${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
+          "Die Event-Werte stehen in der Ini, aber seit ${EVENT_APPLY_GRACE_H} h gab es keinen Neustart – im Spiel gelten noch die normalen Raten." \
+          "${DC_ORANGE:-15105570}" || true
+        local tmp; tmp=$(jq -c '.warned = true' "$EVENT_STATE") && printf '%s\n' "$tmp" > "$EVENT_STATE"
+      fi
+    fi
+  fi
+
   local started age_h
   started=$(jq -r .started "$EVENT_STATE")
   age_h=$(( ($(date +%s) - $(date -d "$started" +%s)) / 3600 ))

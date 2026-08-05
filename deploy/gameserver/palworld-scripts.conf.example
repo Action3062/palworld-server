@@ -75,6 +75,8 @@ EVENT_OFFSET=2
 # EVENT_INI=""                 # leer = automatisch unter $SAVED_DIR/Config suchen
 # EVENT_STATE="/var/lib/palworld/event.json"
 # EVENT_MAX_HOURS=70           # Waechter: laenger aktiv -> Zwangs-Ruecksetzung
+# EVENT_APPLY_GRACE_H=12       # so lange darf ein gepatchtes Event auf den
+                               # naechsten Wartungs-Neustart warten
 # EVENT_BANNER=true            # Website-Banner automatisch setzen/entfernen
 # EVENT_LIST=(
 #   "Drop-Wochenende|💰 Event-Wochenende: Doppelte Drops von Gegnern – bis Montag früh!|EnemyDropItemRate*2"

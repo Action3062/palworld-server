@@ -626,13 +626,16 @@ verschiebt die Rotation (kalibriert: KW 32/2026 = Supply). Änderungen
 sind als **Faktoren** definiert (`KEY*2`) und skalieren damit auf beiden
 Servern richtig; Festwerte gehen mit `KEY=10`.
 
-Ablauf: Freitag 17:50 patcht `start` die Ini und startet mit den üblichen
-Vorwarnungen neu (übernimmt `palworld-autoupdate.sh`); Discord-Embed und
+Ablauf – **ohne zusätzlichen Neustart**, beide Schritte hängen sich an die
+regulären Wartungs-Neustarts: Freitag 17:50 patcht `start --no-restart` nur
+die Ini, der 17:55-Neustart trägt die Werte mit seiner üblichen Vorwarnung
+ein. Montag 04:45 setzt `stop` zurück, der 04:55-Neustart macht die Raten
+wieder normal (Server 2: Stopp-Cron auf `45 5`). Discord-Embed und
 Website-Banner (Endpunkt `/api/banner/event`, Auth per `UPLOAD_SECRET`)
-gehen automatisch raus. Montag früh setzt `stop` nur die Werte zurück –
-**ohne eigenen Neustart**, den erledigt der reguläre Wartungs-Neustart
-danach (Server 2: Stopp-Cron auf `45 5` legen). Ein täglicher
-`guard`-Lauf setzt hängengebliebene Events zwangsweise zurück. Alle
+gehen beim Patchen automatisch raus. Der tägliche `guard`-Lauf setzt
+hängengebliebene Events zurück **und** meldet, wenn ein gepatchtes Event
+mangels Neustart gar nicht wirksam wurde (`EVENT_APPLY_GRACE_H`, 12 h).
+Ein manuelles `start` ohne `--no-restart` startet weiterhin selbst neu. Alle
 Aufrufe sind idempotent; `palworld-event.sh status` zeigt das aktive bzw.
 nächste Event. Manuell: `start --event Safari-Wochenende`,
 `stop --restart` für sofortiges Ende mit Neustart.
