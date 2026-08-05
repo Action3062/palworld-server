@@ -241,7 +241,10 @@ cmd_start() {
       key="${spec%%\**}"
       cur=$(ini_get "$ini" "$key")
       [ -n "$cur" ] || { echo "FEHLER: ${key} nicht in der Ini gefunden." >&2; exit 1; }
-      new=$(awk -v a="$cur" -v f="${spec#*\*}" 'BEGIN{printf "%.6f", a*f}')
+      # LC_ALL=C: gawk wuerde unter de_DE "1,875000" ausgeben - ein Komma in der
+      # OptionSettings-Zeile waere fatal. ini_set faengt es zwar ab, aber dann
+      # startet das Event gar nicht erst.
+      new=$(LC_ALL=C awk -v a="$cur" -v f="${spec#*\*}" 'BEGIN{printf "%.6f", a*f}')
     else
       key="${spec%%=*}"
       cur=$(ini_get "$ini" "$key")
