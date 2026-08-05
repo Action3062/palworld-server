@@ -608,8 +608,10 @@ den Tunnel zum Web-Server); ohne die Angabe sind beide nur lokal erreichbar.
 Der Spiel-Port bleibt immer offen. RCON braucht die Webseite für die
 Vote-Belohnungen (`lib/rcon.js`), Passwort ist das AdminPassword.
 
-Die Wartungs-Skripte gibt es deshalb in zwei Varianten – Auswahl über
-`SCRIPT_SET` in `install-paltools.sh`:
+Die Wartungs-Skripte gibt es deshalb in zwei Varianten. `install-paltools.sh`
+erkennt die Laufzeit selbst (systemd-Unit `palworld.service` → nativ, sonst
+Container, sonst nativ) und lässt sich mit `SCRIPT_SET=native|docker`
+überstimmen:
 
 | | Container | Native Instanz |
 |---|---|---|

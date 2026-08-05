@@ -40,13 +40,26 @@ BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 RAW_BASE="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}"
 RAW="${RAW_BASE}/tools"                  # Python-Werkzeuge
 RAW_SRV="${RAW_BASE}/deploy/gameserver"  # Wartungs-Skripte
-# Welche Variante der Server-steuernden Skripte? docker = Container (compose),
-# native = SteamCMD + systemd. Alles andere ist bei beiden identisch.
-SCRIPT_SET="${SCRIPT_SET:-docker}"
+# Welche Variante der Server-steuernden Skripte? native = SteamCMD + systemd,
+# docker = Container (compose). Alles andere ist bei beiden identisch.
+# Standard ist "auto": ein vorhandener systemd-Dienst gewinnt, ein Container
+# nur, wenn es wirklich einen gibt. Erzwingen mit SCRIPT_SET=native|docker.
+SCRIPT_SET="${SCRIPT_SET:-auto}"
+DETECTED=""
+if [ "$SCRIPT_SET" = "auto" ]; then
+  if systemctl cat palworld.service >/dev/null 2>&1; then
+    SCRIPT_SET="native"; DETECTED="systemd-Unit palworld.service gefunden"
+  elif command -v docker >/dev/null 2>&1 \
+       && docker ps -a --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi 'palserver\|palworld'; then
+    SCRIPT_SET="docker"; DETECTED="Palworld-Container gefunden"
+  else
+    SCRIPT_SET="native"; DETECTED="weder Unit noch Container gefunden - nehme die native Variante"
+  fi
+fi
 case "$SCRIPT_SET" in
   docker) RAW_RT="$RAW_SRV";           RT_SCRIPTS="palworld-autoupdate.sh palworld-watchdog.sh" ;;
   native) RAW_RT="${RAW_SRV}/native";  RT_SCRIPTS="palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh" ;;
-  *) echo "SCRIPT_SET muss 'docker' oder 'native' sein (ist: ${SCRIPT_SET})" >&2; exit 2 ;;
+  *) echo "SCRIPT_SET muss 'native', 'docker' oder 'auto' sein (ist: ${SCRIPT_SET})" >&2; exit 2 ;;
 esac
 
 c_red()    { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -55,6 +68,12 @@ c_yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
 step()     { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 [ "$(id -u)" -eq 0 ] || { c_red "Bitte als root ausführen (sudo)."; exit 1; }
+
+if [ -n "$DETECTED" ]; then
+  c_green "Laufzeit erkannt: ${SCRIPT_SET} (${DETECTED})"
+else
+  c_yellow "Laufzeit vorgegeben: ${SCRIPT_SET}"
+fi
 
 # ----------------------------------------------------------------------------
 step "1/6 – Systempakete"
