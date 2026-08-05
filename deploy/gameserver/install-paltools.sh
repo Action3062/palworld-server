@@ -163,17 +163,38 @@ chmod 600 "${TOOLS_DIR}/palworld-scripts.conf"
 # ----------------------------------------------------------------------------
 step "6/6 – Spielstand suchen"
 # ----------------------------------------------------------------------------
-# Ohne Docker liegt der Spielstand meist im Home des Server-Benutzers,
-# mit Docker unter dem gemounteten Datenverzeichnis.
-SAV=$(find / -name Level.sav -path '*SaveGames*' -not -path '*/backup*' \
-        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+# Steht der Pfad schon in der Conf, ist die Suche ueberfluessig.
+SAV_GLOB=""
+if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
+  CONF_GLOB="$(sed -n 's/^SAV_GLOB="\([^"]*\)".*/\1/p' "${TOOLS_DIR}/palworld-scripts.conf" | head -n1)"
+  case "$CONF_GLOB" in
+    ''|*CHANGE_ME*|*pfad/zu*) ;;
+    *) SAV_GLOB="$CONF_GLOB"; c_green "Aus der Conf uebernommen: ${SAV_GLOB}" ;;
+  esac
+fi
 
-if [ -n "$SAV" ]; then
-  c_green "Gefunden: ${SAV}"
-  SAV_GLOB="$(dirname "$(dirname "$SAV")")/*/Level.sav"
-else
-  c_yellow "Keine Level.sav gefunden – läuft der Server schon und wurde gespeichert?"
-  SAV_GLOB="/pfad/zu/Saved/SaveGames/0/*/Level.sav"
+# Sonst suchen. WICHTIG: "|| true" - find endet mit 1, sobald ein einziges
+# Verzeichnis unlesbar ist (/proc, Mounts), und wuerde unter pipefail den
+# ganzen Lauf abbrechen, obwohl der Spielstand laengst gefunden wurde.
+if [ -z "$SAV_GLOB" ]; then
+  find_sav() {  # find_sav <Startverzeichnis...>
+    find "$@" -name Level.sav -path '*SaveGames*' -not -path '*/backup*' \
+      -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true
+  }
+  # Erst die ueblichen Orte (schnell), dann notfalls die ganze Platte
+  SAV="$(find_sav /home /root /opt /srv 2>/dev/null)"
+  if [ -z "$SAV" ]; then
+    echo "  (nicht an den ueblichen Orten – durchsuche die ganze Platte, das dauert)"
+    SAV="$(find_sav /)"
+  fi
+
+  if [ -n "$SAV" ]; then
+    c_green "Gefunden: ${SAV}"
+    SAV_GLOB="$(dirname "$(dirname "$SAV")")/*/Level.sav"
+  else
+    c_yellow "Keine Level.sav gefunden – läuft der Server schon und wurde gespeichert?"
+    SAV_GLOB="/pfad/zu/Saved/SaveGames/0/*/Level.sav"
+  fi
 fi
 
 SRV_ARG=""
