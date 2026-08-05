@@ -4,8 +4,8 @@
 #
 # Duenner Wrapper um discord-status.py (im paltools-venv). Zweck: Passwort,
 # Webhook und Server-Name kommen aus der palworld-scripts.conf statt aus der
-# Cron-Zeile - so steht kein Geheimnis in einer 644-Datei wie /etc/cron.d/*,
-# und der Cron ist auf allen Gameservern identisch.
+# Cron-Zeile - so steht kein Geheimnis in der Cron-Zeile, und der Cron ist auf
+# allen Gameservern identisch.
 #
 # Cron (alle 5 Minuten):
 #   */5 * * * * /etc/palworld/palworld-status.sh >> /var/log/palworld-status.log 2>&1
@@ -23,10 +23,7 @@ DISCORD_WEBHOOK=""
 DISCORD_SERVER_NAME=""
 SERVER_ADDRESS=""
 STATUS_API=""
-STATUS_CONTAINER=""
 STATUS_STATE=""
-STATUS_PORT=""                    # nur setzen, wenn die Docker-Suche einen
-                                  # anderen REST-Port als --api treffen soll
 # Standard: die .py-Werkzeuge liegen neben diesem Skript, der
 # Interpreter im venv. Beides ueber die Conf umstellbar.
 PALTOOLS_DIR="$SCRIPT_DIR"
@@ -57,10 +54,6 @@ ARGS=(--password "$ADMIN_PASSWORD" --webhook "$DISCORD_WEBHOOK"
       --name "$DISCORD_SERVER_NAME")
 [ -n "$SERVER_ADDRESS"   ] && ARGS+=(--address   "$SERVER_ADDRESS")
 [ -n "$STATUS_API"       ] && ARGS+=(--api       "$STATUS_API")
-[ -n "$STATUS_CONTAINER" ] && ARGS+=(--container "$STATUS_CONTAINER")
 [ -n "$STATUS_STATE"     ] && ARGS+=(--state     "$STATUS_STATE")
-# --port bewusst nur auf Wunsch: aeltere discord-status.py kennen die Option
-# nicht, und ohne Angabe leitet sie den Port ohnehin aus --api ab.
-[ -n "$STATUS_PORT"      ] && ARGS+=(--port      "$STATUS_PORT")
 
 exec "$PYTHON" "$SCRIPT" "${ARGS[@]}" "$@"

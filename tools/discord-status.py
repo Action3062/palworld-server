@@ -17,13 +17,10 @@ Einrichtung:
          --webhook 'https://discord.com/api/webhooks/…' \
          --name 'Server 1 · PvE 4x' --address pve.palheim.de:8211
   3. Cron (crontab -e), alle 5 Minuten:
-       */5 * * * * python3 /root/palworld/discord-status.py --api … --password '…' --webhook '…' --name '…' --address … >> /var/log/discord-status.log 2>&1
+       */5 * * * * /etc/palworld/palworld-status.sh --password '…' --webhook '…' --name '…' --address … >> /var/log/discord-status.log 2>&1
 
-Läuft der Server im Docker-Container, antwortet die REST-API oft nicht auf
-127.0.0.1 (kein veröffentlichter Port). Schlägt --api fehl, sucht das Skript
-die API deshalb selbst am Container (Host-Netz, veröffentlichter Port,
-Container-IP) und merkt sich die gefundene Adresse – so wie es
-palworld-autoupdate.sh auch macht. Abschalten mit --no-docker.
+Die zuletzt erfolgreiche Adresse merkt sich das Skript und probiert sie beim
+nächsten Lauf zuerst – --api ist damit nur noch der Startwert.
 
 Braucht nur die Python-Standardbibliothek (kein /opt/paltools nötig).
 Die Nachrichten-ID merkt sich das Skript in --state (Standard:
@@ -35,8 +32,6 @@ import argparse
 import base64
 import json
 import os
-import shutil
-import subprocess
 import sys
 import time
 import urllib.error
@@ -91,70 +86,6 @@ def try_bases(bases, password):
         except Exception as err:  # noqa: BLE001 – offline ist ein normaler Zustand
             errors.append(f"{base}: {err}")
     return None, None, None, 0.0, errors
-
-
-# ---------------------------------------------------------------------------
-# Docker: wo antwortet die REST-API wirklich?
-# ---------------------------------------------------------------------------
-
-def _docker(*args):
-    """docker aufrufen; stdout zurückgeben oder None (nie eine Exception)."""
-    if not shutil.which("docker"):
-        return None
-    try:
-        res = subprocess.run(["docker", *args], capture_output=True,
-                             text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return res.stdout.strip() if res.returncode == 0 else None
-
-
-def find_container(hint=""):
-    """Container-ID des Palworld-Servers (Name/ID als Hinweis, sonst geraten)."""
-    out = _docker("ps", "--format", "{{.ID}}\t{{.Image}}\t{{.Names}}")
-    if not out:
-        return None
-    rows = [line.split("\t") for line in out.splitlines() if "\t" in line]
-    for cid, image, names in rows:
-        if hint:
-            if hint in (cid, names) or hint in names or hint in image:
-                return cid
-        elif "palserver" in f"{image} {names}".lower() \
-                or "palworld" in f"{image} {names}".lower():
-            return cid
-    return None
-
-
-def docker_api_candidates(hint, port):
-    """Mögliche API-Adressen des Containers – wahrscheinlichste zuerst."""
-    cid = find_container(hint)
-    if not cid:
-        return []
-    cands = []
-    if (_docker("inspect", "-f", "{{.HostConfig.NetworkMode}}", cid) or "") == "host":
-        cands.append(f"http://127.0.0.1:{port}")
-
-    # Veroeffentlichte Ports: die Host-IP zaehlt mit! Wer nur auf eine
-    # bestimmte Adresse veroeffentlicht (z. B. "10.88.0.2:8212:8212" fuer den
-    # WireGuard-Tunnel), ist ueber 127.0.0.1 eben NICHT erreichbar.
-    published = _docker(
-        "inspect", "-f",
-        '{{range index .NetworkSettings.Ports "%d/tcp"}}{{.HostIp}}|{{.HostPort}} {{end}}'
-        % port, cid) or ""
-    for binding in published.split():
-        host_ip, _, host_port = binding.partition("|")
-        if not host_port:
-            continue
-        if host_ip in ("", "0.0.0.0"):
-            host_ip = "127.0.0.1"
-        elif ":" in host_ip:          # IPv6 (z. B. "::") – hier uninteressant
-            continue
-        cands.append(f"http://{host_ip}:{host_port}")
-
-    ips = _docker("inspect", "-f",
-                  "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", cid) or ""
-    cands += [f"http://{ip}:{port}" for ip in ips.split() if ip]
-    return list(dict.fromkeys(cands))
 
 
 # ---------------------------------------------------------------------------
@@ -399,38 +330,20 @@ def main():
     parser.add_argument("--address", default="", help="Join-Adresse, z. B. pve.palheim.de:8211")
     parser.add_argument("--state", default="~/.palheim-discord-status.json",
                         help="Datei für die gemerkte Nachrichten-ID")
-    parser.add_argument("--container", default="",
-                        help="Name/ID des Docker-Containers (sonst automatisch)")
-    parser.add_argument("--port", type=int, default=0,
-                        help="REST-Port im Container (Standard: Port aus --api, sonst 8212)")
-    parser.add_argument("--no-docker", action="store_true",
-                        help="Nicht im Docker-Container nach der REST-API suchen")
     parser.add_argument("--dry-run", action="store_true",
                         help="Embed nur ausgeben, nichts an Discord senden")
     args = parser.parse_args()
 
-    api_port = args.port or urllib.parse.urlparse(args.api).port or 8212
-
-    # Reihenfolge: zuletzt erfolgreiche Adresse, dann --api, dann der Container
+    # Reihenfolge: zuletzt erfolgreiche Adresse, dann --api
     remembered = load_state(args.state).get(f"{args.name}::api")
     bases = [b for b in (remembered, args.api) if b]
     bases = list(dict.fromkeys(bases))
     used, info, metrics, latency_ms, errors = try_bases(bases, args.password)
 
-    if used is None and not args.no_docker:
-        extra = [b for b in docker_api_candidates(args.container, api_port)
-                 if b not in bases]
-        if extra:
-            print("REST-API nicht erreichbar – suche sie am Docker-Container …")
-            used, info, metrics, latency_ms, more = try_bases(extra, args.password)
-            errors += more
-
     if used is None:
         print("Spielserver nicht erreichbar:")
         for line in errors:
             print(f"  {line}")
-        if not args.no_docker and not shutil.which("docker"):
-            print("  (docker nicht gefunden – läuft das Skript auf dem Spielserver?)")
         print("  Prüfen: RESTAPIEnabled=True und RESTAPIPort in PalWorldSettings.ini.")
     elif used != args.api and used != remembered:
         # nur beim ersten Fund melden, sonst steht das alle 5 min im Log

@@ -666,11 +666,9 @@ sich das Skript in `~/.palheim-discord-status.json`; wird die Nachricht im
 Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
 
 Antwortet die API nicht, listet das Skript alle probierten Adressen auf und
-merkt sich die erste, die funktioniert hat. Kommt `HTTP 401`, ist die API
-erreichbar und nur das `--password` passt nicht zum `AdminPassword` der
-`PalWorldSettings.ini`. (Die eingebaute Container-Suche stammt aus der
-Docker-Zeit und bleibt wirkungslos, wenn kein Docker installiert ist –
-abschaltbar mit `--no-docker`.)
+merkt sich die erste, die funktioniert hat – `--api` ist damit nur der
+Startwert. Kommt `HTTP 401`, ist die API erreichbar und nur das `--password`
+passt nicht zum `AdminPassword` der `PalWorldSettings.ini`.
 
 ### Neustarts im selben Kanal (ohne Nachrichten-Spam)
 
