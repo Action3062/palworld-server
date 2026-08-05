@@ -20,6 +20,9 @@
 #   • palworld-backup.sh  palworld-discord.sh (Bibliothek)
 #   • palworld-status.sh  palworld-upload.sh
 #
+#   Dazu: announcements.txt, crontab-palworld.txt (Vorlage zum Nachschlagen)
+#   und /etc/logrotate.d/palworld, falls dort noch nichts liegt.
+#
 # Ein zweiter Lauf aktualisiert alle Skripte; die palworld-scripts.conf
 # bleibt dabei unangetastet.
 #
@@ -130,7 +133,18 @@ for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh \
   chmod 755 "${TOOLS_DIR}/${script}"
 done
 fetch "${TOOLS_DIR}/announcements.txt" "${RAW_SRV}/announcements.txt"
+# Cron-Vorlage nur als Nachschlagewerk - eingetragen wird sie von Hand
+# (crontab -e) bzw. von setup-palworld.sh.
+fetch "${TOOLS_DIR}/crontab-palworld.txt" "${RAW_SRV}/crontab-palworld.txt"
 c_green "Alle Skripte liegen in ${TOOLS_DIR}/."
+
+# Logrotate: vorhandene Datei nicht ueberschreiben, eigene Anpassungen bleiben
+if [ -f /etc/logrotate.d/palworld ]; then
+  c_green "Logrotate bleibt unveraendert: /etc/logrotate.d/palworld"
+else
+  fetch /etc/logrotate.d/palworld "${RAW_SRV}/logrotate-palworld"
+  c_green "Logrotate eingerichtet: /etc/logrotate.d/palworld"
+fi
 
 # Vorhandene Konfiguration wird NIE überschrieben (Passwörter!).
 if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
@@ -179,6 +193,6 @@ $(c_green "Fertig.")
      crontab -l > ~/crontab.backup-\$(date +%F)
      crontab -e
 
-4) Logs begrenzen:
-     install -m 644 logrotate-palworld /etc/logrotate.d/palworld
+4) Cron uebernehmen ist der letzte Schritt - Vorlage liegt jetzt lokal:
+     less ${TOOLS_DIR}/crontab-palworld.txt
 EOF
