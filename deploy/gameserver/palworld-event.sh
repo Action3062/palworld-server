@@ -243,7 +243,7 @@ cmd_start() {
     log "[dry-run] Ini:    ${ini}"
     jq -r '.[] | "  \(.key): \(.old) -> \(.new)"' <<< "$changes" \
       | while IFS= read -r line; do log "[dry-run] Wert: ${line#  }"; done
-    log "[dry-run] Danach: Neustart ueber palworld-autoupdate.sh, Discord-Embed${EVENT_BANNER:+ und Website-Banner}"
+    log "[dry-run] Danach: Neustart ueber palworld-autoupdate.sh, Discord-Embed$([ "$EVENT_BANNER" = "true" ] && echo " und Website-Banner")"
     log "[dry-run] Fertig - es wurde nichts veraendert."
     return 0
   fi
