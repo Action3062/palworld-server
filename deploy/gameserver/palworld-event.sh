@@ -2,9 +2,11 @@
 # =============================================================================
 # palworld-event.sh - automatische Event-Wochenenden
 #
-# Dreht am Event-Wochenende ausgewaehlte Raten in der PalWorldSettings.ini
+# Dreht JEDES Wochenende ausgewaehlte Raten in der PalWorldSettings.ini
 # hoch und setzt sie danach EXAKT auf die gemerkten Originalwerte zurueck.
-# Welches Event laeuft, rotiert automatisch nach Monat (EVENT_LIST).
+# Welches Event laeuft, rotiert automatisch nach Kalenderwoche (EVENT_LIST);
+# EVENT_OFFSET verschiebt die Rotation (Kalibrierung, welches Event
+# "als naechstes" dran ist).
 #
 # Ablauf:
 #   Freitag  17:50  start  -> Ini patchen, Neustart mit Vorwarnung (uebernimmt
@@ -46,7 +48,8 @@ EVENT_INI=""                                   # leer = automatisch suchen
 EVENT_STATE="/var/lib/palworld/event.json"
 EVENT_MAX_HOURS=70                             # Fr 18 -> Mo 5 sind 59 h + Puffer
 EVENT_BANNER=true                              # Website-Banner setzen/entfernen?
-# Rotation nach Monat: Eintrag = "Name|Ansage-/Banner-Text|Aenderungen"
+EVENT_OFFSET=0                                 # verschiebt die Wochen-Rotation
+# Rotation nach Kalenderwoche: Eintrag = "Name|Ansage-/Banner-Text|Aenderungen"
 # Aenderungen: KEY*FAKTOR (multipliziert den aktuellen Wert) oder KEY=WERT
 EVENT_LIST=(
   "Drop-Wochenende|💰 Event-Wochenende: Doppelte Drops von Gegnern – bis Montag früh!|EnemyDropItemRate*2"
@@ -113,8 +116,8 @@ ini_set() {  # ini_set DATEI KEY WERT (nur Zahlen erlaubt)
 }
 
 # --- Datum (mit Test-Hooks) -----------------------------------------------------
-today_dom()   { echo "${EVENT_FORCE_DOM:-$(date +%-d)}"; }
-today_month() { echo "${EVENT_FORCE_MONTH:-$(date +%-m)}"; }
+today_dom()  { echo "${EVENT_FORCE_DOM:-$(date +%-d)}"; }
+today_week() { echo "$(( 10#${EVENT_FORCE_WEEK:-$(date +%V)} ))"; }
 
 # --- Event aus der Rotation waehlen ---------------------------------------------
 pick_event() {  # [NAME|NR] -> setzt EV_NAME, EV_TEXT, EV_CHANGES
@@ -131,7 +134,7 @@ pick_event() {  # [NAME|NR] -> setzt EV_NAME, EV_TEXT, EV_CHANGES
       [ "$idx" -ge 0 ] || { echo "FEHLER: Event '$want' nicht in EVENT_LIST." >&2; exit 1; }
     fi
   else
-    idx=$(( ($(today_month) - 1) % count ))
+    idx=$(( ($(today_week) + EVENT_OFFSET) % count ))
   fi
   IFS='|' read -r EV_NAME EV_TEXT EV_CHANGES <<< "${EVENT_LIST[$idx]}"
 }
@@ -272,7 +275,7 @@ cmd_status() {
   else
     echo "Kein Event aktiv."
     pick_event
-    echo "Naechstes Event laut Rotation (Monat $(today_month)): ${EV_NAME}"
+    echo "Naechstes Event laut Rotation (KW $(today_week)): ${EV_NAME}"
   fi
 }
 

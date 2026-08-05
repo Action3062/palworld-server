@@ -69,11 +69,14 @@ SERVER_ADDRESS="pve.palheim.de:8211"             # [SERVER] Join-Adresse
 # STATUS_STATE="/var/lib/palworld/discord-status.json"
 
 # --- Event-Wochenenden (palworld-event.sh) ------------------------------------
-# Rotiert automatisch nach Monat durch EVENT_LIST (Jan=1, Feb=2, ...).
+# JEDES Wochenende ein Event, rotierend nach Kalenderwoche durch EVENT_LIST.
 # Aenderungs-Syntax: KEY*FAKTOR (multipliziert den aktuellen Ini-Wert,
 # skaliert also auf beiden Servern richtig) oder KEY=FESTWERT.
 # Originalwerte merkt sich das Skript und setzt sie EXAKT zurueck.
 EVENT_ENABLED=true
+# Verschiebt die Rotation. 2 = Kalibrierung "KW 32/2026 -> Supply-Wochenende"
+# (danach laeuft die Reihenfolge einfach weiter: Drop, Ranch, Safari, ...).
+EVENT_OFFSET=2
 # EVENT_INI=""                 # leer = automatisch unter $SAVED_DIR/Config suchen
 # EVENT_STATE="/var/lib/palworld/event.json"
 # EVENT_MAX_HOURS=70           # Waechter: laenger aktiv -> Zwangs-Ruecksetzung

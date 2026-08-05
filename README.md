@@ -594,13 +594,14 @@ Vorwarnzeit).
 
 ### Event-Wochenenden (palworld-event.sh)
 
-Am **ersten Wochenende im Monat** dreht `palworld-event.sh` automatisch
-ausgewählte Raten hoch und setzt sie danach exakt zurück – rotierend durch
-fünf Events (`EVENT_LIST` in der Conf): 💰 doppelte Gegner-Drops, 🥚 Ranch
-×3, 🎯 Fangrate ×1,5, ⛏️ Sammel-Erträge ×2 + halbes Gewicht, 📦
-Versorgungsabwürfe alle 10 Minuten. Änderungen sind als **Faktoren**
-definiert (`KEY*2`) und skalieren damit auf beiden Servern richtig;
-Festwerte gehen mit `KEY=10`.
+**Jedes Wochenende** dreht `palworld-event.sh` automatisch ausgewählte
+Raten hoch und setzt sie danach exakt zurück – rotierend nach
+Kalenderwoche durch fünf Events (`EVENT_LIST` in der Conf): 💰 doppelte
+Gegner-Drops, 🥚 Ranch ×3, 🎯 Fangrate ×1,5, ⛏️ Sammel-Erträge ×2 +
+halbes Gewicht, 📦 Versorgungsabwürfe alle 10 Minuten. `EVENT_OFFSET`
+verschiebt die Rotation (kalibriert: KW 32/2026 = Supply). Änderungen
+sind als **Faktoren** definiert (`KEY*2`) und skalieren damit auf beiden
+Servern richtig; Festwerte gehen mit `KEY=10`.
 
 Ablauf: Freitag 17:50 patcht `start` die Ini und startet mit den üblichen
 Vorwarnungen neu (übernimmt `palworld-autoupdate.sh`); Discord-Embed und
