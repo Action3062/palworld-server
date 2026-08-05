@@ -35,6 +35,11 @@
 
       const level = ['info', 'event', 'warn'].includes(b.level) ? b.level : 'info';
       const sig = `${level}:${b.text}`;
+
+      // Event-Banner bekommen zusätzlich einmalig das Popup –
+      // unabhängig davon, ob das Banner selbst schon weggeklickt wurde
+      if (level === 'event') showEventPopup(sig, b.text);
+
       try {
         if (localStorage.getItem(KEY) === sig) return; // schon weggeklickt
       } catch { /* localStorage kann gesperrt sein */ }
@@ -64,4 +69,94 @@
       document.body.classList.add('has-banner');
     })
     .catch(() => { /* Backend nicht erreichbar – kein Banner */ });
+
+  // --------------------------------------------------------------------
+  // Event-Popup: großer Auftritt für Event-Banner (level "event").
+  // Erscheint pro Event genau einmal; danach bleibt nur das Banner oben.
+  // --------------------------------------------------------------------
+  const POP_KEY = 'palheim.eventpop.dismissed';
+
+  function showEventPopup(sig, rawText) {
+    try {
+      if (localStorage.getItem(POP_KEY) === sig) return; // schon gesehen
+    } catch { /* localStorage kann gesperrt sein */ }
+
+    // Führendes Emoji wird zum großen Popup-Emoji; ein "Event-Wochenende:"-
+    // Präfix fliegt raus, weil der Titel das schon sagt
+    let text = String(rawText).trim();
+    let emoji = '🎉';
+    const m = text.match(/^(\p{Extended_Pictographic}️?)\s*/u);
+    if (m) {
+      emoji = m[1];
+      text = text.slice(m[0].length);
+    }
+    text = text.replace(/^Event-Wochenende:\s*/i, '');
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'event-pop__backdrop';
+
+    const pop = document.createElement('div');
+    pop.className = 'event-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-modal', 'true');
+    pop.setAttribute('aria-labelledby', 'eventPopTitle');
+
+    const decoL = document.createElement('span');
+    decoL.className = 'event-pop__deco event-pop__deco--l';
+    decoL.textContent = '🎊';
+    const decoR = document.createElement('span');
+    decoR.className = 'event-pop__deco event-pop__deco--r';
+    decoR.textContent = '✨';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'event-pop__close';
+    closeBtn.setAttribute('aria-label', 'Schließen');
+    closeBtn.textContent = '✕';
+
+    const big = document.createElement('span');
+    big.className = 'event-pop__emoji';
+    big.textContent = emoji;
+
+    const title = document.createElement('h2');
+    title.className = 'event-pop__title';
+    title.id = 'eventPopTitle';
+    title.append('Event-');
+    title.appendChild(Object.assign(document.createElement('em'),
+      { textContent: 'Wochenende!' }));
+
+    const msg = document.createElement('p');
+    msg.className = 'event-pop__text';
+    msg.textContent = text; // textContent: Banner-Text nie als HTML deuten
+
+    const sub = document.createElement('p');
+    sub.className = 'event-pop__sub';
+    sub.textContent = 'Gilt automatisch auf Server 1 & 2';
+
+    const cta = document.createElement('button');
+    cta.type = 'button';
+    cta.className = 'event-pop__btn';
+    cta.textContent = 'Alles klar – ab auf den Server! 🎮';
+
+    pop.append(decoL, decoR, closeBtn, big, title, msg, sub, cta);
+    backdrop.appendChild(pop);
+
+    function dismiss() {
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+      try { localStorage.setItem(POP_KEY, sig); } catch { /* egal */ }
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') dismiss();
+    }
+    closeBtn.addEventListener('click', dismiss);
+    cta.addEventListener('click', dismiss);
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) dismiss();
+    });
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(backdrop);
+    cta.focus();
+  }
 })();

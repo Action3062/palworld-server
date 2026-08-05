@@ -341,6 +341,13 @@ ohne Neustart. Alternativ statisch in der `config.json` (gilt nur, solange
 Besucher können das Banner wegklicken; eine neue/​geänderte Nachricht erscheint
 wieder.
 
+Banner mit der Optik **„Grün – Event"** bekommen zusätzlich einmalig ein
+**Event-Popup** (zentrierte Karte mit dem Emoji aus dem Banner-Text):
+mehr Aufmerksamkeit beim ersten Besuch, danach erinnert nur noch das
+Banner. Das Wegklicken merkt sich der Browser pro Event-Text; die
+Event-Wochenenden (`palworld-event.sh`) lösen das Popup damit automatisch
+aus, es funktioniert aber genauso für von Hand gesetzte Event-Banner.
+
 ### Admin-Seite (`/admin`)
 
 `https://palheim.de/admin` ist das Cockpit fürs Server-Team – absichtlich
