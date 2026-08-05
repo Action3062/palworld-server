@@ -51,11 +51,13 @@ MAILTO=""
 40   *      * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 
 # Event-Wochenende (JEDES Wochenende, Rotation nach Kalenderwoche):
-# Fr 17:50 Vorwarnungen -> ~18:00 Event-Start mit Neustart.
+# Fr 17:40 Vorwarnungen -> ~17:50 Event-Start mit Neustart. Bewusst VOR dem
+# 17:55-Wartungsneustart: der wird dann per --min-gap uebersprungen, statt sich
+# auf das Lock zu verlassen.
 # Das Ende setzt Montag frueh nur die Werte zurueck - den Neustart erledigt
 # der regulaere Wartungs-Neustart danach. Server 2: Stopp auf "45 5" legen
 # (vor dessen versetztem 6-Uhr-Neustart).
-50   17     * * 5 /etc/palworld/palworld-event.sh start >> /var/log/palworld-event.log 2>&1
+40   17     * * 5 /etc/palworld/palworld-event.sh start >> /var/log/palworld-event.log 2>&1
 45   4      * * 1 /etc/palworld/palworld-event.sh stop >> /var/log/palworld-event.log 2>&1
 # Waechter: setzt haengengebliebene Events zwangsweise zurueck
 0    12     * * * /etc/palworld/palworld-event.sh guard >> /var/log/palworld-event.log 2>&1

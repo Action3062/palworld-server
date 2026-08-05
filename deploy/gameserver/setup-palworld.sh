@@ -39,6 +39,8 @@
 #                         z. B. 10.88.0.0/24 fuer den Tunnel zur Webseite
 #   --no-firewall         Keine nftables-Regeln setzen
 #   --branch NAME         Git-Branch, aus dem die Skripte geladen werden
+#   --second-server       Neustart- und Event-Zeiten eine Stunde versetzt
+#                         (damit nie beide Welten gleichzeitig offline sind)
 #   --no-cron             root-crontab nicht anfassen
 #   --no-start            Server am Ende nicht starten
 #   -h | --help           Diese Hilfe
@@ -83,6 +85,7 @@ ENABLE_RCON=true
 TRUSTED_NET=""
 INSTALL_FW=true
 INSTALL_CRON=true
+SECOND_SERVER=false
 START_SERVER=true
 BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 # Merker, welche Werte der Aufrufer explizit gesetzt hat. Alles andere wird bei
@@ -109,6 +112,7 @@ while [ $# -gt 0 ]; do
     --trusted-net)     TRUSTED_NET="${2:-}"; shift ;;
     --no-firewall)     INSTALL_FW=false ;;
     --branch)          BRANCH="${2:-}"; shift ;;
+    --second-server)   SECOND_SERVER=true ;;
     --no-cron)         INSTALL_CRON=false ;;
     --no-start)        START_SERVER=false ;;
     -h|--help)         usage; exit 0 ;;
@@ -473,6 +477,12 @@ conf_set SAV_GLOB       "\"${INSTALL_DIR}/Pal/Saved/SaveGames/0/*/Level.sav\""
 conf_set REST_PORT      "${REST_PORT}"
 conf_set REST_HOST      "\"127.0.0.1\""
 conf_set STATUS_API     "\"http://127.0.0.1:${REST_PORT}\""
+# Muss zu den Cron-Zeiten passen: Cron-Zeit + Vorwarnzeit (10 min)
+if [ "$SECOND_SERVER" = "true" ]; then
+  conf_set RESTART_SCHEDULE "\"06:05 11:05 19:05\""
+else
+  conf_set RESTART_SCHEDULE "\"05:05 10:05 18:05\""
+fi
 chmod 600 "$CONF_FILE"
 
 # --- root-crontab ---------------------------------------------------------------
@@ -486,6 +496,11 @@ else
     mv /etc/cron.d/palworld "/root/cron.d-palworld.alt-$(date +%F)"
     log "Alte /etc/cron.d/palworld nach /root/cron.d-palworld.alt-$(date +%F) verschoben (lief sonst doppelt)."
   fi
+  # Die Jobs kommen aus crontab-palworld.txt - eine Quelle, damit Vorlage und
+  # Setup nicht auseinanderlaufen (frueher fehlten hier z. B. die Event-Jobs).
+  CRON_SRC="${TOOLS_DIR}/crontab-palworld.txt"
+  [ -f "$CRON_SRC" ] || die "Cron-Vorlage fehlt: ${CRON_SRC} (install-paltools.sh legt sie ab)."
+
   CRON_TMP="$(mktemp)"
   crontab -l 2>/dev/null > "${CRON_TMP}.alt" || true
   if [ -s "${CRON_TMP}.alt" ]; then
@@ -495,30 +510,24 @@ else
   # Alten Palworld-Block entfernen, Rest der crontab unangetastet lassen
   awk '/^# >>> palworld/{skip=1} /^# <<< palworld/{skip=0; next} !skip' \
     "${CRON_TMP}.alt" > "$CRON_TMP" 2>/dev/null || true
-  cat >> "$CRON_TMP" <<CRON_EOF
-# >>> palworld (von setup-palworld.sh verwaltet - Block nicht umbenennen)
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-MAILTO=""
-# Update-Check
-*/30 *     * * * ${TOOLS_DIR}/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
-# Geplante Neustarts (Warnung ab :55, Server geht ~10 min spaeter runter).
-# Muss zu RESTART_SCHEDULE in der Conf passen (dort Cron-Zeit + Vorwarnzeit).
-55   4,9,17 * * * ${TOOLS_DIR}/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
-# Haenger-Erkennung
-*    *      * * * ${TOOLS_DIR}/palworld-watchdog.sh >> /var/log/palworld-watchdog.log 2>&1
-# Ingame-Ansagen
-15,45 *     * * * ${TOOLS_DIR}/palworld-announce.sh >> /var/log/palworld-announce.log 2>&1
-# Live-Backup alle 6 Stunden
-20   */6    * * * ${TOOLS_DIR}/palworld-backup.sh >> /var/log/palworld-backup.log 2>&1
-# Discord: Status-Nachricht und Neustart-Nachricht frisch halten
-*/5  *      * * * ${TOOLS_DIR}/palworld-status.sh >> /var/log/palworld-status.log 2>&1
-*/15 *      * * * ${TOOLS_DIR}/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
-# Uploads zur Webseite
-10   *      * * * ${TOOLS_DIR}/palworld-upload.sh bases    >> /var/log/palworld-upload.log 2>&1
-40   *      * * * ${TOOLS_DIR}/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
-# <<< palworld
-CRON_EOF
+
+  # Vorlage ab der SHELL-Zeile uebernehmen (der Kopf erklaert nur die Handarbeit)
+  CRON_JOBS="$(sed -n '/^SHELL=/,$p' "$CRON_SRC")"
+  [ -n "$CRON_JOBS" ] || die "Cron-Vorlage enthaelt keine Jobs: ${CRON_SRC}"
+  # Pfade anpassen, falls TOOLS_DIR nicht der Standard ist
+  [ "$TOOLS_DIR" = "/etc/palworld" ] \
+    || CRON_JOBS="${CRON_JOBS//\/etc\/palworld\//${TOOLS_DIR}/}"
+  if [ "$SECOND_SERVER" = "true" ]; then
+    # Eine Stunde versetzt, damit nie beide Welten gleichzeitig offline sind
+    CRON_JOBS="${CRON_JOBS//55   4,9,17/55   5,10,18}"
+    CRON_JOBS="${CRON_JOBS//45   4      \* \* 1/45   5      * * 1}"
+  fi
+
+  {
+    echo "# >>> palworld (von setup-palworld.sh verwaltet - Block nicht umbenennen)"
+    printf '%s\n' "$CRON_JOBS"
+    echo "# <<< palworld"
+  } >> "$CRON_TMP"
   crontab "$CRON_TMP"
   rm -f "$CRON_TMP" "${CRON_TMP}.alt"
   log "root-crontab aktualisiert (Block '>>> palworld')."
@@ -573,6 +582,11 @@ else
   log "Start uebersprungen."
 fi
 
+if [ "$SECOND_SERVER" = "true" ]; then
+  CRON_RESTART_TXT="55 5,10,18"; CRON_EVENT_TXT="17:40 -> Mo 05:45"
+else
+  CRON_RESTART_TXT="55 4,9,17 "; CRON_EVENT_TXT="17:40 -> Mo 04:45"
+fi
 SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 SERVER_IP="${SERVER_IP:-<SERVER-IP>}"
 case "$HEALTH_OK" in
@@ -617,12 +631,14 @@ cat <<SUMMARY_EOF
  Automatik (root-crontab, Block '>>> palworld'):
    :00/:30   Update-Check      :10  Basen-Upload     :15/:45  Ansagen
    :20 (6 h) Live-Backup       :40  Ranglisten       alle 5 min  Discord-Status
-   55 4,9,17 Wartungs-Neustart mit Ingame-Warnung (10/5 min)
+   ${CRON_RESTART_TXT} Wartungs-Neustart mit Ingame-Warnung (10/5 min)
+   Fr ${CRON_EVENT_TXT} Event-Wochenende, Mo Rueckstellung, taegl. 12:00 Waechter
    Logs: /var/log/palworld-*.log
 
  NOCH ZU TUN:
    1. ${CONF_FILE} ausfuellen: DISCORD_WEBHOOK, DISCORD_SERVER_NAME,
-      SERVER_ADDRESS, RESTART_SCHEDULE, UPLOAD_SECRET, WEB_SERVER_ID.
+      SERVER_ADDRESS, UPLOAD_SECRET, WEB_SERVER_ID.
+      (RESTART_SCHEDULE ist passend zu den Cron-Zeiten schon gesetzt.)
    2. Trockenlaeufe:
         ${TOOLS_DIR}/palworld-status.sh --dry-run
         ${TOOLS_DIR}/palworld-upload.sh bases --dry-run
