@@ -84,7 +84,7 @@ TRUSTED_NET=""
 INSTALL_FW=true
 INSTALL_CRON=true
 START_SERVER=true
-BRANCH="${BRANCH:-claude/discord-restart-message-update-bixh4e}"
+BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 # Merker, welche Werte der Aufrufer explizit gesetzt hat. Alles andere wird bei
 # einem Re-Run aus der vorhandenen Installation uebernommen statt zurueckgesetzt.
 NAME_SET=false; PLAYERS_SET=false; GAMEPORT_SET=false; RESTPORT_SET=false; RCONPORT_SET=false
