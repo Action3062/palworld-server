@@ -1,8 +1,6 @@
 /* PalHeim – Ranglisten
-   Lädt /api/rankings und rendert die Kategorie-Tabs (Level, Spielzeit,
-   Paldeck, Turmbosse, Hall of Shame …) mit Top-Listen. Die Spielstand-Daten
-   kommen vom Ranglisten-Uploader auf dem Palworld-Server, die Spielzeit aus
-   der Website-Statistik. */
+   Lädt /api/rankings und rendert die Kategorie-Tabs (Spielzeit, Paldeck,
+   Hall of Shame …) mit Top-Listen. */
 
 (() => {
   'use strict';
@@ -110,7 +108,7 @@
       td.colSpan = cols.length;
       td.textContent = data.updatedAt || cat.key === 'playtime'
         ? 'Noch keine Daten in dieser Kategorie.'
-        : 'Noch keine Spielstand-Daten – der Ranglisten-Upload läuft noch nicht.';
+        : 'Noch keine Daten – die Ranglisten füllen sich in Kürze.';
       tr.appendChild(td);
       el.body.appendChild(tr);
     }
@@ -144,13 +142,13 @@
       el.body.appendChild(tr);
     });
 
-    // Stand-Zeile: Spielstand-Alter + Hinweis auf Live-Spielzeit
+    // Stand-Zeile
     const parts = [];
     if (data.updatedAt) {
-      parts.push(`Spielstand-Daten: ${formatRelative(data.updatedAt)}`);
+      parts.push(`Stand: ${formatRelative(data.updatedAt)}`);
       if (data.playersTotal) parts.push(`${nf.format(data.playersTotal)} Spieler ausgewertet`);
     } else {
-      parts.push('Spielstand-Daten folgen, sobald der Upload auf dem Spielserver eingerichtet ist');
+      parts.push('Weitere Ranglisten folgen in Kürze');
     }
     parts.push('Spielzeit misst die Website live');
     el.stand.textContent = parts.join(' · ');

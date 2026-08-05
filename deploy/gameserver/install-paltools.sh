@@ -17,8 +17,8 @@
 #
 #   Wartung (Bash, lesen /etc/palworld/palworld-scripts.conf):
 #   • palworld-autoupdate.sh  palworld-watchdog.sh  palworld-announce.sh
-#   • palworld-backup.sh  palworld-discord.sh (Bibliothek)
-#   • palworld-status.sh  palworld-upload.sh
+#   • palworld-backup.sh  palworld-event.sh
+#   • palworld-discord.sh (Bibliothek)  palworld-status.sh  palworld-upload.sh
 #
 #   Dazu: announcements.txt, crontab-palworld.txt (Vorlage zum Nachschlagen)
 #   und /etc/logrotate.d/palworld, falls dort noch nichts liegt.
@@ -128,7 +128,8 @@ done
 step "5/6 – Wartungs-Skripte und Konfiguration"
 # ----------------------------------------------------------------------------
 for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh \
-              palworld-backup.sh palworld-discord.sh palworld-status.sh palworld-upload.sh; do
+              palworld-backup.sh palworld-event.sh palworld-discord.sh \
+              palworld-status.sh palworld-upload.sh; do
   fetch "${TOOLS_DIR}/${script}" "${RAW_SRV}/${script}"
   chmod 755 "${TOOLS_DIR}/${script}"
 done

@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+# =============================================================================
+# palworld-event.sh - automatische Event-Wochenenden
+#
+# Dreht JEDES Wochenende ausgewaehlte Raten in der PalWorldSettings.ini
+# hoch und setzt sie danach EXAKT auf die gemerkten Originalwerte zurueck.
+# Welches Event laeuft, rotiert automatisch nach Kalenderwoche (EVENT_LIST);
+# EVENT_OFFSET verschiebt die Rotation (Kalibrierung, welches Event
+# "als naechstes" dran ist).
+#
+# Ablauf:
+#   Freitag  17:50  start  -> Ini patchen, Neustart mit Vorwarnung (uebernimmt
+#                             palworld-autoupdate.sh), Discord + Website-Banner
+#   Montag   04:45  stop   -> Originalwerte zuruecksetzen, KEIN eigener
+#                             Neustart: der regulaere 5-Uhr-Neustart uebernimmt
+#                             die normalen Raten (Server 2: 05:45 vor 6 Uhr)
+#   taeglich 12:00  guard  -> setzt verwaiste Events zwangsweise zurueck,
+#                             falls der Montag-Lauf ausgefallen ist
+#
+# Alles idempotent: start bei laufendem Event und stop ohne Event sind stille
+# No-Ops - doppelt feuernde Crons koennen nichts kaputt machen.
+#
+# Aufrufe:
+#   palworld-event.sh start [--first-weekend-only] [--event NAME|NR]
+#   palworld-event.sh stop [--restart]     # --restart = sofortiger Neustart
+#   palworld-event.sh guard
+#   palworld-event.sh status
+#
+# Konfiguration: palworld-scripts.conf (EVENT_*-Block, siehe Beispiel-Conf).
+# Test-Hooks: EVENT_FORCE_DOM / EVENT_FORCE_MONTH ueberschreiben das Datum,
+# EVENT_SKIP_RESTART=true unterdrueckt den Neustart (nur fuer Tests).
+# =============================================================================
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Defaults (werden durch die Conf-Datei ueberschrieben) ---------------------
+INSTALL_DIR="/home/palworld/palserver"
+SAVED_DIR=""
+DISCORD_WEBHOOK=""
+DISCORD_SERVER_NAME=""
+UPLOAD_URL=""
+UPLOAD_SECRET=""
+
+EVENT_ENABLED=true
+EVENT_INI=""                                   # leer = automatisch suchen
+EVENT_STATE="/var/lib/palworld/event.json"
+EVENT_MAX_HOURS=70                             # Fr 18 -> Mo 5 sind 59 h + Puffer
+EVENT_BANNER=true                              # Website-Banner setzen/entfernen?
+EVENT_OFFSET=0                                 # verschiebt die Wochen-Rotation
+# Rotation nach Kalenderwoche: Eintrag = "Name|Ansage-/Banner-Text|Aenderungen"
+# Aenderungen: KEY*FAKTOR (multipliziert den aktuellen Wert) oder KEY=WERT
+EVENT_LIST=(
+  "Drop-Wochenende|💰 Event-Wochenende: Doppelte Drops von Gegnern – bis Montag früh!|EnemyDropItemRate*2"
+  "Ranch-Wochenende|🥚 Event-Wochenende: Farm-Pals produzieren 3x so schnell – bis Montag früh!|MonsterFarmActionSpeedRate*3"
+  "Safari-Wochenende|🎯 Event-Wochenende: Fangrate um 50 % erhöht – bis Montag früh!|PalCaptureRate*1.5"
+  "Sammler-Wochenende|⛏️ Event-Wochenende: Doppelte Sammel-Erträge & halbes Gewicht – bis Montag früh!|CollectionDropRate*2 ItemWeightRate*0.5"
+  "Supply-Wochenende|📦 Event-Wochenende: Versorgungsabwürfe alle 10 Minuten – bis Montag früh!|SupplyDropSpan=10"
+)
+
+# Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
+CONF="${PALWORLD_CONF:-}"
+if [ -z "$CONF" ]; then
+  for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
+    if [ -f "$c" ]; then CONF="$c"; break; fi
+  done
+fi
+# shellcheck disable=SC1090
+[ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
+SAVED_DIR="${SAVED_DIR:-${INSTALL_DIR}/Pal/Saved}"
+
+log() { echo "[$(date '+%F %T')] $*"; }
+
+# Discord-Helfer der anderen Skripte mitbenutzen (weiche Abhaengigkeit)
+if [ -f "${SCRIPT_DIR}/palworld-discord.sh" ]; then
+  # shellcheck disable=SC1091
+  . "${SCRIPT_DIR}/palworld-discord.sh"
+else
+  notify_discord() { :; }
+fi
+DC_GREEN=3066993
+DC_ORANGE=15105570
+
+# --- Ini finden ----------------------------------------------------------------
+find_ini() {
+  if [ -n "$EVENT_INI" ]; then
+    echo "$EVENT_INI"
+    return
+  fi
+  local hit
+  hit=$(find "$SAVED_DIR/Config" -name PalWorldSettings.ini 2>/dev/null | head -1 || true)
+  if [ -z "$hit" ]; then
+    echo "FEHLER: PalWorldSettings.ini nicht unter ${SAVED_DIR}/Config gefunden." >&2
+    echo "        EVENT_INI in der Conf setzen." >&2
+    exit 1
+  fi
+  echo "$hit"
+}
+
+# --- Werte in der OptionSettings-Zeile lesen/schreiben --------------------------
+ini_get() {  # ini_get DATEI KEY -> aktueller Zahlenwert
+  grep -oE "[(,]${2}=[^,)]*" "$1" | head -1 | cut -d= -f2
+}
+
+ini_set() {  # ini_set DATEI KEY WERT (nur Zahlen erlaubt)
+  local file="$1" key="$2" val="$3"
+  case "$val" in
+    ''|*[!0-9.]*) echo "FEHLER: unerlaubter Wert '$val' fuer $key" >&2; return 1 ;;
+  esac
+  sed -E -i "s/([(,])${key}=[^,)]*/\1${key}=${val}/" "$file"
+  [ "$(ini_get "$file" "$key")" = "$val" ] || {
+    echo "FEHLER: $key liess sich nicht auf $val setzen." >&2
+    return 1
+  }
+}
+
+# --- Datum (mit Test-Hooks) -----------------------------------------------------
+today_dom()  { echo "${EVENT_FORCE_DOM:-$(date +%-d)}"; }
+today_week() { echo "$(( 10#${EVENT_FORCE_WEEK:-$(date +%V)} ))"; }
+
+# --- Event aus der Rotation waehlen ---------------------------------------------
+pick_event() {  # [NAME|NR] -> setzt EV_NAME, EV_TEXT, EV_CHANGES
+  local want="${1:-}" idx
+  local count=${#EVENT_LIST[@]}
+  if [ -n "$want" ]; then
+    if [[ "$want" =~ ^[0-9]+$ ]]; then
+      idx=$(( (want - 1) % count ))
+    else
+      idx=-1
+      for i in "${!EVENT_LIST[@]}"; do
+        [[ "${EVENT_LIST[$i]}" == "${want}|"* ]] && idx=$i
+      done
+      [ "$idx" -ge 0 ] || { echo "FEHLER: Event '$want' nicht in EVENT_LIST." >&2; exit 1; }
+    fi
+  else
+    idx=$(( ($(today_week) + EVENT_OFFSET) % count ))
+  fi
+  IFS='|' read -r EV_NAME EV_TEXT EV_CHANGES <<< "${EVENT_LIST[$idx]}"
+}
+
+# --- Website-Banner -------------------------------------------------------------
+banner() {  # banner true|false [TEXT]
+  [ "$EVENT_BANNER" = "true" ] || return 0
+  [ -n "$UPLOAD_URL" ] && [ -n "$UPLOAD_SECRET" ] || return 0
+  curl -sS -m 15 -X POST "${UPLOAD_URL%/}/api/banner/event" \
+    -H "Content-Type: application/json" \
+    -H "X-Upload-Secret: ${UPLOAD_SECRET}" \
+    -d "$(jq -nc --argjson e "$1" --arg t "${2:-}" \
+          '{enabled:$e, text:$t, level:"event"}')" >/dev/null \
+    || log "WARNUNG: Website-Banner liess sich nicht setzen (Webseite erreichbar?)"
+}
+
+# --- Neustart ueber das Update-Skript -------------------------------------------
+restart_server() {  # restart_server GRUND
+  if [ "${EVENT_SKIP_RESTART:-false}" = "true" ]; then
+    log "Test-Modus: Neustart uebersprungen (${1})"
+    return 0
+  fi
+  "${SCRIPT_DIR}/palworld-autoupdate.sh" --force-restart --reason "$1"
+}
+
+# --- Kommandos ------------------------------------------------------------------
+cmd_start() {
+  local first_only=false want=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --first-weekend-only) first_only=true ;;
+      --event) want="$2"; shift ;;
+      *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+
+  [ "$EVENT_ENABLED" = "true" ] || { log "Events sind deaktiviert (EVENT_ENABLED)."; return 0; }
+  if [ "$first_only" = "true" ] && [ "$(today_dom)" -gt 7 ]; then
+    log "Kein Event-Wochenende (nicht das erste im Monat)."
+    return 0
+  fi
+  if [ -f "$EVENT_STATE" ]; then
+    log "Event laeuft bereits ($(jq -r .name "$EVENT_STATE" 2>/dev/null || echo '?')) - nichts zu tun."
+    return 0
+  fi
+
+  pick_event "$want"
+  local ini; ini=$(find_ini)
+  log "Starte ${EV_NAME}: ${EV_CHANGES} (Ini: ${ini})"
+
+  # Aenderungen berechnen (Originalwerte VOR dem Patchen einsammeln)
+  local changes="[]" key spec cur new
+  for spec in $EV_CHANGES; do
+    if [[ "$spec" == *"*"* ]]; then
+      key="${spec%%\**}"
+      cur=$(ini_get "$ini" "$key")
+      [ -n "$cur" ] || { echo "FEHLER: ${key} nicht in der Ini gefunden." >&2; exit 1; }
+      new=$(awk -v a="$cur" -v f="${spec#*\*}" 'BEGIN{printf "%.6f", a*f}')
+    else
+      key="${spec%%=*}"
+      cur=$(ini_get "$ini" "$key")
+      [ -n "$cur" ] || { echo "FEHLER: ${key} nicht in der Ini gefunden." >&2; exit 1; }
+      new="${spec#*=}"
+    fi
+    changes=$(jq -c --arg k "$key" --arg o "$cur" --arg n "$new" \
+      '. + [{key:$k, old:$o, new:$n}]' <<< "$changes")
+  done
+
+  # Erst den Zustand sichern, DANN patchen - bricht das Patchen ab, weiss
+  # der naechste Lauf trotzdem, was zurueckzusetzen ist
+  mkdir -p "$(dirname "$EVENT_STATE")"
+  jq -nc --arg name "$EV_NAME" --arg text "$EV_TEXT" --arg ini "$ini" \
+    --arg started "$(date -Is)" --argjson changes "$changes" \
+    '{name:$name, text:$text, ini:$ini, started:$started, changes:$changes}' \
+    > "$EVENT_STATE"
+  cp -p "$ini" "${ini}.pre-event"
+
+  local n
+  for n in $(jq -c '.changes[]' "$EVENT_STATE"); do
+    ini_set "$ini" "$(jq -r .key <<< "$n")" "$(jq -r .new <<< "$n")"
+  done
+  log "Ini gepatcht: $(jq -r '[.changes[] | "\(.key) \(.old)->\(.new)"] | join(", ")' "$EVENT_STATE")"
+
+  restart_server "Event-Start: ${EV_NAME}"
+  banner true "$EV_TEXT"
+  notify_discord "🎉 ${EV_NAME} gestartet${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
+    "${EV_TEXT}"$'\n'"$(jq -r '[.changes[] | "\(.key): \(.old) → \(.new)"] | join("\n")' "$EVENT_STATE")" \
+    "$DC_GREEN" || true
+  log "${EV_NAME} laeuft."
+}
+
+cmd_stop() {
+  local do_restart=false
+  [ "${1:-}" = "--restart" ] && do_restart=true
+  if [ ! -f "$EVENT_STATE" ]; then
+    log "Kein Event aktiv - nichts zu tun."
+    return 0
+  fi
+  local name ini n
+  name=$(jq -r .name "$EVENT_STATE")
+  ini=$(jq -r .ini "$EVENT_STATE")
+  log "Beende ${name}: setze Originalwerte zurueck."
+  for n in $(jq -c '.changes[]' "$EVENT_STATE"); do
+    ini_set "$ini" "$(jq -r .key <<< "$n")" "$(jq -r .old <<< "$n")"
+  done
+  rm -f "$EVENT_STATE" "${ini}.pre-event"
+  banner false
+  if [ "$do_restart" = "true" ]; then
+    restart_server "Event-Ende: ${name}"
+    notify_discord "🏁 ${name} beendet${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
+      "Die Raten sind wieder normal. Danke fürs Mitspielen!" "$DC_ORANGE" || true
+  else
+    notify_discord "🏁 ${name} beendet${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
+      "Die normalen Raten greifen mit dem morgendlichen Neustart. Danke fürs Mitspielen!" \
+      "$DC_ORANGE" || true
+  fi
+  log "${name} beendet."
+}
+
+cmd_guard() {
+  [ -f "$EVENT_STATE" ] || return 0
+  local started age_h
+  started=$(jq -r .started "$EVENT_STATE")
+  age_h=$(( ($(date +%s) - $(date -d "$started" +%s)) / 3600 ))
+  if [ "$age_h" -ge "$EVENT_MAX_HOURS" ]; then
+    log "WARNUNG: Event laeuft seit ${age_h} h (> ${EVENT_MAX_HOURS} h) - Zwangs-Ruecksetzung."
+    notify_discord "⚠️ Event-Wächter${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
+      "Ein Event lief laenger als geplant (${age_h} h) und wurde automatisch zurueckgesetzt." \
+      "$DC_ORANGE" || true
+    cmd_stop
+  fi
+}
+
+cmd_status() {
+  if [ -f "$EVENT_STATE" ]; then
+    jq . "$EVENT_STATE"
+  else
+    echo "Kein Event aktiv."
+    pick_event
+    echo "Naechstes Event laut Rotation (KW $(today_week)): ${EV_NAME}"
+  fi
+}
+
+case "${1:-}" in
+  start)  shift; cmd_start "$@" ;;
+  stop)   shift; cmd_stop "${1:-}" ;;
+  guard)  cmd_guard ;;
+  status) cmd_status ;;
+  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] | stop [--restart] | guard | status" >&2
+     exit 2 ;;
+esac

@@ -255,7 +255,7 @@
       grid.appendChild(empty);
     }
     $('teamStand').textContent =
-      `Stand: ${fmtRelative(d.teamUpdatedAt)} – aus dem letzten Spielstand-Upload, aktualisiert stündlich.`;
+      `Stand: ${fmtRelative(d.teamUpdatedAt)} · aktualisiert stündlich.`;
     wrap.hidden = false;
   }
 

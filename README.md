@@ -526,6 +526,7 @@ wegwerfen kann.
   palworld-autoupdate.sh           #   Update + geplante Neustarts
   palworld-watchdog.sh             #   Haenger-Erkennung, jede Minute
   palworld-backup.sh               #   Live-Backup ohne Neustart
+  palworld-event.sh                #   automatische Event-Wochenenden
   palworld-announce.sh             #   Ingame-Ansagen
   palworld-discord.sh              #   Bibliothek: eine Neustart-Nachricht
   palworld-status.sh               #   Wrapper → discord-status.py
@@ -612,6 +613,28 @@ Vote-Belohnungen (`lib/rcon.js`), Passwort ist das AdminPassword.
 > (SteamCMD + `palworld.service`). Die früheren Container-Varianten von
 > `palworld-autoupdate.sh` und `palworld-watchdog.sh` sind entfernt; wer sie
 > braucht, findet sie in der Git-Historie.
+
+### Event-Wochenenden (palworld-event.sh)
+
+**Jedes Wochenende** dreht `palworld-event.sh` automatisch ausgewählte
+Raten hoch und setzt sie danach exakt zurück – rotierend nach
+Kalenderwoche durch fünf Events (`EVENT_LIST` in der Conf): 💰 doppelte
+Gegner-Drops, 🥚 Ranch ×3, 🎯 Fangrate ×1,5, ⛏️ Sammel-Erträge ×2 +
+halbes Gewicht, 📦 Versorgungsabwürfe alle 10 Minuten. `EVENT_OFFSET`
+verschiebt die Rotation (kalibriert: KW 32/2026 = Supply). Änderungen
+sind als **Faktoren** definiert (`KEY*2`) und skalieren damit auf beiden
+Servern richtig; Festwerte gehen mit `KEY=10`.
+
+Ablauf: Freitag 17:50 patcht `start` die Ini und startet mit den üblichen
+Vorwarnungen neu (übernimmt `palworld-autoupdate.sh`); Discord-Embed und
+Website-Banner (Endpunkt `/api/banner/event`, Auth per `UPLOAD_SECRET`)
+gehen automatisch raus. Montag früh setzt `stop` nur die Werte zurück –
+**ohne eigenen Neustart**, den erledigt der reguläre Wartungs-Neustart
+danach (Server 2: Stopp-Cron auf `45 5` legen). Ein täglicher
+`guard`-Lauf setzt hängengebliebene Events zwangsweise zurück. Alle
+Aufrufe sind idempotent; `palworld-event.sh status` zeigt das aktive bzw.
+nächste Event. Manuell: `start --event Safari-Wochenende`,
+`stop --restart` für sofortiges Ende mit Neustart.
 
 ## Server-Status im Discord (tools/discord-status.py)
 
