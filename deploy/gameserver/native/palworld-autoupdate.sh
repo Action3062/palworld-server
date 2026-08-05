@@ -53,6 +53,10 @@ if [ -z "$CONF" ]; then
 fi
 # shellcheck disable=SC1090
 [ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
+# Leeres REST_HOST (z. B. aus der Docker-Vorlage, wo es die Container-IP
+# bedeutet) wuerde hier eine kaputte URL "http://:8212" ergeben - und der
+# Watchdog wuerde einen kerngesunden Server neu starten.
+REST_HOST="${REST_HOST:-127.0.0.1}"
 BACKUP_DIR="${BACKUP_DIR-${SCRIPT_DIR}/backups}"   # BACKUP_DIR="" in der Conf = Backups aus
 SAVED_DIR="${SAVED_DIR:-${INSTALL_DIR}/Pal/Saved}"
 MANIFEST="${INSTALL_DIR}/steamapps/appmanifest_${APP_ID}.acf"

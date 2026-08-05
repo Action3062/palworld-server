@@ -41,6 +41,10 @@ if [ -z "$CONF" ]; then
 fi
 # shellcheck disable=SC1090
 [ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
+# Leeres REST_HOST (z. B. aus der Docker-Vorlage, wo es die Container-IP
+# bedeutet) wuerde hier eine kaputte URL "http://:8212" ergeben - und der
+# Watchdog wuerde einen kerngesunden Server neu starten.
+REST_HOST="${REST_HOST:-127.0.0.1}"
 
 WATCHDOG_LOCK="/var/lock/palworld-watchdog.lock"
 STATE_FILE="/run/palworld-watchdog.fails"
