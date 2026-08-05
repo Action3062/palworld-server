@@ -10,22 +10,33 @@ Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 ## Features
 
 - ⚡ **Live-Status**: Online/Offline, Spielerzahl, Version, Uptime – automatisch alle 30 s aktualisiert
+- 🖥️ **Mehrserver-Betrieb**: mehrere Spielserver mit Server-Karten und
+  Umschalt-Tabs auf Status, Statistiken, Karte, Profilen und Admin-Seite
 - 👥 **Spielerliste**: zeigt, wer gerade online ist (abschaltbar per Config)
 - 📊 **Statistiken**: Verlauf von Spielerzahl **und Server-FPS** (24 h / 7 Tage)
   als interaktives Chart, Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit,
-  In-Game-Tage und Ranglisten in sechs Kategorien (Spielzeit, Paldeck,
-  💀 Hall of Shame, Angeln u. a.) – gesammelt vom eigenen Backend
+  In-Game-Tage – gesammelt vom eigenen Backend
+- 🏆 **Ranglisten** in sechs Kategorien (Spielzeit, Paldeck, 💀 Hall of
+  Shame, Angeln, Dungeons, Raidbosse) mit Medaillen und EP-Feinsortierung
+- 🗺️ **Live-Karte**: Spieler-Positionen in Echtzeit + Gilden-Basen, mit
+  Filtern und echtem Kartenbild
+- 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
+  Erkundung, alle Erfolge und das **ausgerüstete Pal-Team** (Icons,
+  Kampfwerte, IVs, Passives – per Admin-Schalter abschaltbar)
 - 📈 **Verfügbarkeit & Ausfälle**: Uptime der letzten 24 h / 7 Tage plus eine
   Chronik der letzten Ausfälle – direkt aus den Messpunkten berechnet
-- 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
-  aktive Tage, Erkundung und alle Erfolge – verlinkt aus Leaderboard & Live-Liste
+- 🛠️ **Admin-Seite** (`/admin`): Hauptadmin + Unter-Admins, Kick & Bann
+  (auch offline), Banner, Ansagen, Neustart, Funktions-Schalter,
+  Aktions-Protokoll
+- 🗳️ **Vote-Belohnung**: auf der Serverliste voten, im Spiel Belohnung abholen
+- 🎉 **Event-Wochenenden**: automatische Raten-Events der Gameserver mit
+  Banner **und Popup** auf der Webseite
 - 📣 **Broadcast-Seite** (`/broadcast.html`): passwortgeschützt eine In-Game-Ansage
   an alle Online-Spieler senden
-- 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config)
+- 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config/Admin)
+- ❤️ **Unterstützen-Karte + Ko-fi-Menüpunkt** (nur ein Link, keine externen Skripte)
 - 👀 **Besucher-Zähler** (Aufrufe + eindeutige Besucher) im Footer – ohne Cookies/IP
-- 📋 **Server-Adresse mit Kopier-Button**
-- 🎮 **Beitritts-Anleitung** in 3 Schritten
-- ⚙️ **Raten-Übersicht** (EP, Fangrate, Drops, …)
+- 📋 **Server-Adresse mit Kopier-Button**, 🎮 Beitritts-Anleitung, ⚙️ Raten-Übersicht
 - 📜 **Regeln**, **FAQ** (Akkordeon), **Discord-CTA**
 - 📄 Impressum- & Datenschutz-Vorlagen
 - 📱 Vollständig responsiv, mobiles Menü, Scroll-Animationen
@@ -44,7 +55,11 @@ Browser ──HTTPS──> nginx ──> Node.js (server.js, Port 3000)
 Für die Statistiken fragt das Backend die Palworld REST-API einmal pro Minute ab
 und speichert aggregierte Daten in `data/stats.json` (Spielerzahl in
 5-Minuten-Buckets für 7 Tage, Peak, pro Spieler Name/Level/Spielzeit/zuletzt
-gesehen – bewusst keine IPs oder Account-IDs).
+gesehen – bewusst keine IP-Adressen; die Spieler-ID wird für die
+Offline-Bann-Funktion der Admin-Seite gespeichert und nie öffentlich
+ausgegeben). Basen, Ranglisten und Teams laden die Gameserver per Cron
+hoch (`/api/map/bases`, `/api/rankings/upload`, abgesichert über ein
+Upload-Secret).
 
 ## Voraussetzungen
 
@@ -111,10 +126,10 @@ Auto-Erneuerung. Der Node-Dienst bleibt unberührt:
 
 ```bash
 # Standard-Domain palheim.de:
-sudo bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palheim-https-setup-h7x4r6/deploy/enable-https.sh)
+sudo bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/enable-https.sh)
 
 # mit E-Mail für Ablauf-Warnungen:
-sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palheim-https-setup-h7x4r6/deploy/enable-https.sh)
+sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/enable-https.sh)
 ```
 
 Voraussetzung: Der A-Record von `palheim.de` (und optional `www.palheim.de`)
@@ -384,17 +399,20 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
 - **Server neustarten** (nur Hauptadmin): mit wählbarer Vorwarnzeit
   (10–600 s) und doppelter Bestätigung. Warnt die Spieler im Spiel,
   speichert die Welt und fährt den Server per REST-API herunter – die
-  Docker-Restart-Policy startet ihn automatisch wieder (derselbe
-  Mechanismus wie beim nächtlichen Wartungs-Neustart, Downtime
-  ca. 1–2 Minuten)
+  systemd-Unit (`Restart=always`) startet ihn automatisch wieder
+  (derselbe Mechanismus wie beim morgendlichen Wartungs-Neustart,
+  Downtime ca. 1–2 Minuten)
+- **🧩 Funktionen**: Website-Funktionen für alle Besucher an-/abschalten
+  (aktuell: Team-Anzeige auf Spielerprofilen) – wirkt sofort, überlebt
+  Neustarts (`data/features.json`) und landet im Protokoll
 - **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
   und „zuletzt gesehen" – Online-Spieler zuerst
-- **Kick & Bann**: bei Online-Spielern direkt aus der Liste (mit Grund, der
-  dem Spieler angezeigt wird). Beides geht nur bei Spielern, die gerade
-  online sind – nur dann liefert die REST-API ihre User-ID (die Website
-  speichert bewusst keine IDs). Über die Website ausgesprochene Banns
-  landen in `data/bans.json` und lassen sich auf der Seite wieder aufheben
-  („Entbannen")
+- **Kick & Bann**: direkt aus der Liste, mit Grund, der dem Spieler
+  angezeigt wird. Kick geht nur bei Online-Spielern; **Bann geht auch
+  offline**, sobald die Website die Spieler-ID einmal beim Online-Sein
+  gesehen hat – er greift dann beim nächsten Verbindungsversuch. Über
+  die Website ausgesprochene Banns landen in `data/bans.json` und lassen
+  sich auf der Seite wieder aufheben („Entbannen")
 - **Ping-Spalte**: Live-Ping der Online-Spieler (wer laggt gerade?)
 - **Aktions-Protokoll**: was wurde über die Website ausgeführt (Kicks,
   Banns, Neustarts, Ansagen, Banner, An-/Fehlanmeldungen) – neueste zuerst,
