@@ -445,12 +445,11 @@ log "==> [9/10] Werkzeuge und Skripte nach ${TOOLS_DIR}"
 # =============================================================================
 # install-paltools.sh macht die eigentliche Arbeit: Python-venv unter ${VENV},
 # alle Skripte + Python-Werkzeuge nach ${TOOLS_DIR}, Conf-Vorlage nur, wenn
-# noch keine existiert. SCRIPT_SET=native waehlt die systemd-Variante von
-# autoupdate/watchdog/announce.
+# noch keine existiert.
 INSTALLER="$(mktemp)"
 curl -fsSL -o "$INSTALLER" "${RAW}/deploy/gameserver/install-paltools.sh" \
   || die "install-paltools.sh konnte nicht geladen werden (Branch '${BRANCH}' richtig?)."
-BRANCH="$BRANCH" SCRIPT_SET=native TOOLS_DIR="$TOOLS_DIR" VENV="$VENV" bash "$INSTALLER"
+BRANCH="$BRANCH" TOOLS_DIR="$TOOLS_DIR" VENV="$VENV" bash "$INSTALLER"
 rm -f "$INSTALLER"
 
 [ -f "$CONF_FILE" ] || die "Conf wurde nicht angelegt: ${CONF_FILE}"

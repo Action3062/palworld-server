@@ -2,7 +2,8 @@
 # root-crontab der PalHeim-Gameserver  (Installation: crontab -e)
 # =============================================================================
 # Auf JEDEM Gameserver identisch - bis auf die Neustart-Zeile, die auf dem
-# zweiten Server bewusst versetzt laeuft (siehe unten).
+# zweiten Server bewusst versetzt laeuft (siehe unten). Beide Server laufen
+# nativ (SteamCMD + systemd), Docker gibt es nicht mehr.
 #
 # Uebernehmen:
 #   crontab -l > ~/crontab.backup-$(date +%F)     # vorher sichern!
@@ -13,10 +14,7 @@
 # Alles Serverspezifische (Passwoerter, Adressen, Pfade, Neustart-Zeiten)
 # steht in /etc/palworld/palworld-scripts.conf (chmod 600) - deshalb steht
 # hier kein einziges Geheimnis mehr.
-#
-# Diese Vorlage setzt einen Server im Docker-Container voraus. Fuer eine
-# native Instanz siehe crontab-palworld-server2.txt (Uebergangsstand, bis die
-# Wartungs-Skripte eine Laufzeit-Umschaltung haben).
+
 #
 # Zeitraster, damit sich die Jobs nicht in die Quere kommen:
 #   :00/:30  Update-Check       :10  Basen-Upload       :15/:45  Ansagen

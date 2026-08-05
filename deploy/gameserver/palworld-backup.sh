@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # palworld-backup.sh
-# Regelmaessiges Spielstand-Backup im LAUFENDEN Betrieb (kein Neustart):
+# Regelmaessiges Spielstand-Backup im LAUFENDEN Betrieb (kein Neustart, systemd):
 # Welt per REST-API speichern -> Saved-Verzeichnis in Staging kopieren ->
 # Archiv packen -> alte Live-Backups rotieren.
 #
@@ -35,7 +35,6 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Defaults (werden durch die Conf-Datei ueberschrieben) ---------------------
-COMPOSE_DIR="$SCRIPT_DIR"
 SERVICE="palworld-server"
 ADMIN_PASSWORD="CHANGE_ME"
 REST_PORT=8212
@@ -60,8 +59,10 @@ if [ -z "$CONF" ]; then
 fi
 # shellcheck disable=SC1090
 [ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
-BACKUP_DIR="${BACKUP_DIR:-${COMPOSE_DIR}/backups}"
-SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"
+INSTALL_DIR="${INSTALL_DIR:-/home/palworld/palserver}"
+BACKUP_DIR="${BACKUP_DIR:-/home/palworld/backups}"
+SAVED_DIR="${SAVED_DIR:-${INSTALL_DIR}/Pal/Saved}"
+REST_HOST="${REST_HOST:-127.0.0.1}"
 
 BACKUP_LOCK="/var/lock/palworld-backup.lock"
 
@@ -73,7 +74,6 @@ case "${1:-}" in
 esac
 
 log() { echo "[$(date '+%F %T')] $*"; }
-dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
 
 # Discord-Benachrichtigung als farbiges Embed.
 #   notify_discord <Titel (mit Emoji)> <Text> [Farbe]
@@ -136,21 +136,9 @@ else
 fi
 
 # --- Welt speichern lassen (nur wenn der Server laeuft) --------------------------
-CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
 RUNNING="false"
-if [ -n "$CID" ]; then
-  RUNNING=$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null || echo "false")
-  if [ "$RUNNING" = "true" ] && [ -z "$REST_HOST" ]; then
-    if [ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CID")" = "host" ]; then
-      REST_HOST="127.0.0.1"
-    else
-      REST_HOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CID")
-    fi
-  fi
-elif systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
-  # Native Instanz (systemd) - die REST-API laeuft dann lokal
+if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
   RUNNING="true"
-  REST_HOST="${REST_HOST:-127.0.0.1}"
 fi
 
 if [ "$RUNNING" = "true" ]; then
@@ -168,7 +156,7 @@ if [ "$RUNNING" = "true" ]; then
     log "WARNUNG: API-Save fehlgeschlagen, sichere den letzten Autosave-Stand."
   fi
 else
-  [ "$DRY_RUN" = "true" ] && log "[dry-run] Server laeuft nicht (weder Container noch systemd-Unit) - Sicherung ohne API-Save."
+  [ "$DRY_RUN" = "true" ] && log "[dry-run] Service '${SERVICE}' laeuft nicht - Sicherung ohne API-Save."
 fi
 
 # --- Unveraendert seit dem letzten Live-Backup? Dann sparen wir uns das ----------

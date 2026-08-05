@@ -16,8 +16,9 @@
 #   • discord-status.py   – Status-Nachricht im Discord pflegen
 #
 #   Wartung (Bash, lesen /etc/palworld/palworld-scripts.conf):
-#   • palworld-autoupdate.sh  palworld-watchdog.sh  palworld-backup.sh
-#   • palworld-discord.sh (Bibliothek)  palworld-status.sh  palworld-upload.sh
+#   • palworld-autoupdate.sh  palworld-watchdog.sh  palworld-announce.sh
+#   • palworld-backup.sh  palworld-discord.sh (Bibliothek)
+#   • palworld-status.sh  palworld-upload.sh
 #
 # Ein zweiter Lauf aktualisiert alle Skripte; die palworld-scripts.conf
 # bleibt dabei unangetastet.
@@ -40,40 +41,12 @@ BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 RAW_BASE="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}"
 RAW="${RAW_BASE}/tools"                  # Python-Werkzeuge
 RAW_SRV="${RAW_BASE}/deploy/gameserver"  # Wartungs-Skripte
-# Welche Variante der Server-steuernden Skripte? native = SteamCMD + systemd,
-# docker = Container (compose). Alles andere ist bei beiden identisch.
-# Standard ist "auto": ein vorhandener systemd-Dienst gewinnt, ein Container
-# nur, wenn es wirklich einen gibt. Erzwingen mit SCRIPT_SET=native|docker.
-SCRIPT_SET="${SCRIPT_SET:-auto}"
-DETECTED=""
-if [ "$SCRIPT_SET" = "auto" ]; then
-  if systemctl cat palworld.service >/dev/null 2>&1; then
-    SCRIPT_SET="native"; DETECTED="systemd-Unit palworld.service gefunden"
-  elif command -v docker >/dev/null 2>&1 \
-       && docker ps -a --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi 'palserver\|palworld'; then
-    SCRIPT_SET="docker"; DETECTED="Palworld-Container gefunden"
-  else
-    SCRIPT_SET="native"; DETECTED="weder Unit noch Container gefunden - nehme die native Variante"
-  fi
-fi
-case "$SCRIPT_SET" in
-  docker) RAW_RT="$RAW_SRV";           RT_SCRIPTS="palworld-autoupdate.sh palworld-watchdog.sh" ;;
-  native) RAW_RT="${RAW_SRV}/native";  RT_SCRIPTS="palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh" ;;
-  *) echo "SCRIPT_SET muss 'native', 'docker' oder 'auto' sein (ist: ${SCRIPT_SET})" >&2; exit 2 ;;
-esac
-
 c_red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 c_green()  { printf '\033[32m%s\033[0m\n' "$*"; }
 c_yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
 step()     { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 [ "$(id -u)" -eq 0 ] || { c_red "Bitte als root ausführen (sudo)."; exit 1; }
-
-if [ -n "$DETECTED" ]; then
-  c_green "Laufzeit erkannt: ${SCRIPT_SET} (${DETECTED})"
-else
-  c_yellow "Laufzeit vorgegeben: ${SCRIPT_SET}"
-fi
 
 # ----------------------------------------------------------------------------
 step "1/6 – Systempakete"
@@ -151,13 +124,8 @@ done
 # ----------------------------------------------------------------------------
 step "5/6 – Wartungs-Skripte und Konfiguration"
 # ----------------------------------------------------------------------------
-# Laufzeitabhaengig (Container oder systemd)
-for script in $RT_SCRIPTS; do
-  fetch "${TOOLS_DIR}/${script}" "${RAW_RT}/${script}"
-  chmod 755 "${TOOLS_DIR}/${script}"
-done
-# Laufzeitunabhaengig
-for script in palworld-backup.sh palworld-discord.sh palworld-status.sh palworld-upload.sh; do
+for script in palworld-autoupdate.sh palworld-watchdog.sh palworld-announce.sh \
+              palworld-backup.sh palworld-discord.sh palworld-status.sh palworld-upload.sh; do
   fetch "${TOOLS_DIR}/${script}" "${RAW_SRV}/${script}"
   chmod 755 "${TOOLS_DIR}/${script}"
 done
@@ -168,7 +136,7 @@ c_green "Alle Skripte liegen in ${TOOLS_DIR}/."
 if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
   c_green "Konfiguration bleibt unverändert: ${TOOLS_DIR}/palworld-scripts.conf"
 else
-  fetch "${TOOLS_DIR}/palworld-scripts.conf" "${RAW_RT}/palworld-scripts.conf.example"
+  fetch "${TOOLS_DIR}/palworld-scripts.conf" "${RAW_SRV}/palworld-scripts.conf.example"
   c_yellow "Neue Vorlage: ${TOOLS_DIR}/palworld-scripts.conf – Werte mit [SERVER] anpassen!"
 fi
 chmod 600 "${TOOLS_DIR}/palworld-scripts.conf"
@@ -198,7 +166,7 @@ $(c_green "Fertig.")
 
 1) Konfiguration ausfüllen (dort steht ALLES Serverspezifische):
      nano ${TOOLS_DIR}/palworld-scripts.conf
-   Mindestens: COMPOSE_DIR, SERVICE, ADMIN_PASSWORD, DISCORD_WEBHOOK,
+   Mindestens: SERVICE, INSTALL_DIR, ADMIN_PASSWORD, DISCORD_WEBHOOK,
    DISCORD_SERVER_NAME, RESTART_SCHEDULE, UPLOAD_SECRET$([ -n "$SRV_ARG" ] && echo ", WEB_SERVER_ID=\"${SRV_ARG}\"")
      SAV_GLOB="${SAV_GLOB}"
 

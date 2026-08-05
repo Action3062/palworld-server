@@ -1,51 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-# palworld-autoupdate.sh (v3)
-# Auto-Update + geplanter Neustart fuer den offiziellen Palworld-Container
-# (ghcr.io/pocketpairjp/palserver) mit Ingame-Spielerwarnung via REST-API.
+# palworld-autoupdate.sh (nativ/systemd)
+# Auto-Update + geplanter Neustart fuer den nativen Palworld-Server
+# (SteamCMD, App 2394010) mit Ingame-Spielerwarnung via REST-API.
 #
 # Modi:
-#   (ohne Argumente)   Update-Check gegen die GHCR-Registry; bei neuem
-#                      Versions-Tag: warnen, speichern, Tag wechseln, Neustart
+#   (ohne Argumente)   Update-Check via SteamCMD (Buildid-Vergleich); bei neuem
+#                      Build: warnen, speichern, stoppen, updaten, starten
 #   --force-restart    Neustart ohne Update (gegen RAM-Wachstum), gleiche
-#                      Warn-/Save-Logik, Image-Tag bleibt unveraendert
-#   --if-empty         Nur handeln, wenn 0 Spieler online sind (sonst exit 0)
-#   --once-daily       Hoechstens EIN erfolgreicher Neustart pro Tag: wurde
-#                      heute schon (durch Update oder Force-Restart) neu
-#                      gestartet, beendet sich der Lauf still.
-#   --min-gap H        Neustart nur, wenn der letzte erfolgreiche Neustart
-#                      laenger als H Stunden her ist (fuer mehrere geplante
-#                      Neustarts pro Tag; verhindert z. B., dass kurz nach
-#                      einem Update-Neustart gleich wieder neu gestartet wird)
+#                      Warn-/Save-Logik
+#   --if-empty         Nur handeln, wenn 0 Spieler online sind (sonst exit 0,
+#                      der naechste Cron-Lauf versucht es erneut)
 #   --reason "Text"    Eigener Grund fuer die Ingame-Ankuendigung
-#   --discord-refresh  Nichts am Server tun, nur die Discord-Neustart-Nachricht
-#                      neu zeichnen (naechster Termin). Fuer einen Cronjob.
-#   --discord-restarted  Nichts am Server tun, nur "Neustart war gerade" in der
-#                      Discord-Nachricht vermerken (mit --reason). Fuer Server,
-#                      die noch mit einem eigenen Neustart-Skript laufen.
 #
-# Discord: Neustarts posten KEINE neuen Nachrichten mehr, sondern pflegen eine
-# einzige Nachricht im Kanal ("Letzter Neustart" / "Naechster Neustart"), damit
-# die Status-Nachricht von tools/discord-status.py sichtbar bleibt. Details und
-# Einstellungen: palworld-discord.sh (liegt neben diesem Skript).
+# Hinweis: Anders als beim Docker-Image kann das Update nicht vorab geladen
+# werden - waehrend des SteamCMD-Downloads ist der Server offline.
 #
-# Konfiguration: /etc/palworld/palworld-scripts.conf (oder neben dem Skript,
-# oder $PALWORLD_CONF)
-# COMPOSE_DIR ist standardmaessig das Verzeichnis, in dem dieses Script liegt.
+# Konfiguration: palworld-scripts.conf im Script-Verzeichnis (oder $PALWORLD_CONF)
 #
 # Cron-Beispiele:
-#   */30 * * * * /etc/palworld/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
-#
-#   Fester Neustart um ~05:05 (Warnungen ab 04:55, mit Spielern):
-#   55 4 * * *   /etc/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Täglicher Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
-#
-#   Mehrere Neustarts pro Tag (Zeiten an die Spielerlast anpassen);
-#   --min-gap 4 sorgt dafuer, dass nach Update-/anderen Neustarts
-#   mindestens 4 h Ruhe ist, bevor der naechste geplante greift:
-#   55 10 * * *  /etc/palworld/palworld-autoupdate.sh --force-restart --min-gap 4 --reason "Wartungs-Neustart" >> /var/log/palworld-update.log 2>&1
-#
-#   Discord-Nachricht frisch halten (optional, kostet nichts):
-#   */15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >> /dev/null 2>&1
+#   */30 * * * * /home/scripts/palworld-autoupdate.sh >> /var/log/palworld-update.log 2>&1
+#   10 4-9 * * * /home/scripts/palworld-autoupdate.sh --force-restart --if-empty >> /var/log/palworld-update.log 2>&1
 # =============================================================================
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -53,25 +28,23 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Defaults (werden durch die Conf-Datei ueberschrieben) ---------------------
-COMPOSE_DIR="$SCRIPT_DIR"
-SERVICE="palworld-server"
-IMAGE_REPO="ghcr.io/pocketpairjp/palserver"
+SERVICE="palworld"
+PAL_USER="palworld"
+INSTALL_DIR="/home/palworld/palserver"
+STEAMCMD="/home/palworld/steamcmd/steamcmd.sh"
+APP_ID=2394010
 ADMIN_PASSWORD="CHANGE_ME"
 REST_PORT=8212
-REST_HOST=""
+REST_HOST="127.0.0.1"
 WARN_MINUTES=(10 5)
 FINAL_COUNTDOWN=60
 ALLOW_RESTART_WITHOUT_API=false
-BACKUP_DIR=""
-SAVED_DIR=""
 BACKUP_KEEP=10
 BACKUP_ON_FORCE_RESTART=false
 DISCORD_WEBHOOK=""
 LOCKFILE="/var/lock/palworld-autoupdate.lock"
-RESTART_MARKER="/run/palworld-restart-done"
 
 # Conf-Suche: $PALWORLD_CONF, dann neben dem Skript, dann /etc/palworld.
-# So ueberlebt die Konfiguration ein Neuanlegen des paltools-venv.
 CONF="${PALWORLD_CONF:-}"
 if [ -z "$CONF" ]; then
   for c in "${SCRIPT_DIR}/palworld-scripts.conf" /etc/palworld/palworld-scripts.conf; do
@@ -80,87 +53,87 @@ if [ -z "$CONF" ]; then
 fi
 # shellcheck disable=SC1090
 [ -n "$CONF" ] && [ -f "$CONF" ] && . "$CONF"
-ENV_FILE="${ENV_FILE:-${COMPOSE_DIR}/.env}"
-BACKUP_DIR="${BACKUP_DIR:-${COMPOSE_DIR}/backups}"
-SAVED_DIR="${SAVED_DIR:-${COMPOSE_DIR}/Saved}"
+# Leeres REST_HOST (z. B. aus der Docker-Vorlage, wo es die Container-IP
+# bedeutet) wuerde hier eine kaputte URL "http://:8212" ergeben - und der
+# Watchdog wuerde einen kerngesunden Server neu starten.
+REST_HOST="${REST_HOST:-127.0.0.1}"
+BACKUP_DIR="${BACKUP_DIR-${SCRIPT_DIR}/backups}"   # BACKUP_DIR="" in der Conf = Backups aus
+SAVED_DIR="${SAVED_DIR:-${INSTALL_DIR}/Pal/Saved}"
+MANIFEST="${INSTALL_DIR}/steamapps/appmanifest_${APP_ID}.acf"
+FAIL_STATE="/run/palworld-update-failed"   # Cooldown-Marker nach fehlgeschlagenem Update
+DAILY_STAMP="/var/lib/palworld-daily-restart"   # ein Wartungs-Neustart pro Tag
+RESTART_MARKER="/run/palworld-restart-done"     # Unix-Zeit des letzten Neustarts
+mkdir -p "$(dirname "$DAILY_STAMP")" 2>/dev/null || true
 
 # --- Argumente ------------------------------------------------------------------
 MODE="update"
 IF_EMPTY=false
-ONCE_DAILY=false
 MIN_GAP_HOURS=0
 REASON=""
-# Kopfkommentar als Hilfe ausgeben (bis zur schliessenden ===-Zeile)
-usage() { awk 'NR>2 && /^# ={10,}/{exit} NR>2{sub(/^# ?/,""); print}' "$0"; }
+usage() {
+  cat <<'USAGE_EOF'
+palworld-autoupdate.sh [--force-restart] [--if-empty] [--reason "Text"]
+
+  (ohne Argumente)   Update-Check via SteamCMD; bei neuem Build: warnen,
+                     speichern, stoppen, updaten, starten
+  --force-restart    Neustart ohne Update, gleiche Warn-/Save-Logik
+  --if-empty         Nur handeln, wenn 0 Spieler online sind
+  --min-gap H        Neustart nur, wenn der letzte laenger als H Stunden her
+                     ist (fuer mehrere geplante Neustarts pro Tag)
+  --reason "Text"    Eigener Grund fuer die Ingame-Ankuendigung
+  --discord-refresh  Nichts am Server tun, nur die Discord-Neustart-Nachricht
+                     neu zeichnen (naechster Termin)
+USAGE_EOF
+}
 while [ $# -gt 0 ]; do
   case "$1" in
-    --force-restart)     MODE="restart" ;;
-    --discord-refresh)   MODE="discord-refresh" ;;
-    --discord-restarted) MODE="discord-restarted" ;;
-    --if-empty)        IF_EMPTY=true ;;
-    --once-daily)      ONCE_DAILY=true ;;
-    --min-gap)         MIN_GAP_HOURS="${2:-0}"; shift ;;
-    --reason)          REASON="${2:-}"; shift ;;
-    -h|--help)         usage; exit 0 ;;
+    --force-restart)   MODE="restart" ;;
+    --discord-refresh) MODE="discord-refresh" ;;
+    --if-empty)      IF_EMPTY=true ;;
+    --min-gap)       MIN_GAP_HOURS="${2:-0}"; shift ;;
+    --reason)        REASON="${2:-}"; shift ;;
+    -h|--help)       usage; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; usage; exit 2 ;;
   esac
   shift
 done
 [[ "$MIN_GAP_HOURS" =~ ^[0-9]+$ ]] || { echo "Ungueltiger Wert fuer --min-gap: ${MIN_GAP_HOURS}" >&2; exit 2; }
 
-log() { echo "[$(date '+%F %T')] $*"; }
-dc()  { timeout 180 docker compose --project-directory "$COMPOSE_DIR" "$@"; }
+log()    { echo "[$(date '+%F %T')] $*"; }
+as_pal() { runuser -l "$PAL_USER" -c "$*"; }
 
-# --- Discord ---------------------------------------------------------------------
-# palworld-discord.sh pflegt EINE Neustart-Nachricht (bearbeiten statt neu posten).
-# Fehlt die Datei (aeltere Installation), bleibt es beim alten Verhalten.
-DC_GREEN=3066993; DC_BLUE=3447003; DC_ORANGE=15105570; DC_RED=15158332
+# palworld-discord.sh pflegt EINE Neustart-Nachricht im Kanal (bearbeiten statt
+# neu posten). Fehlt sie, bleibt es bei einfachen Textnachrichten.
 if [ -f "${SCRIPT_DIR}/palworld-discord.sh" ]; then
   # shellcheck disable=SC1091
   . "${SCRIPT_DIR}/palworld-discord.sh"
-  DISCORD_MIN_GAP_HOURS="$MIN_GAP_HOURS"
+  notify_discord_text() { notify_discord "⚠️ Palworld" "${1:-}" "$DC_ORANGE"; }
 else
   DISCORD_RESTART_MESSAGE=false
-  notify_discord() {
+  notify_discord_text() {
     [ -n "$DISCORD_WEBHOOK" ] || return 0
-    local title="$1" desc="${2:-}" color="${3:-$DC_BLUE}"
     curl -fsS -m 10 -H 'Content-Type: application/json' \
-      -d "$(jq -nc --arg t "$title" --arg d "$desc" --argjson c "$color" --arg ts "$(date -u +%FT%TZ)" \
-        '{embeds:[{title:$t, description:$d, color:$c, timestamp:$ts, footer:{text:"PalHeim"}}]}')" \
-      "$DISCORD_WEBHOOK" >/dev/null || true
+      -d "$(jq -nc --arg c "$1" '{content:$c}')" "$DISCORD_WEBHOOK" >/dev/null || true
   }
   discord_restart_event() { :; }
-  discord_alert() { notify_discord "$1" "${2:-}" "$DC_RED"; }
 fi
 
-# --- Nur die Discord-Nachricht anfassen, den Server nicht ------------------------
+# --- Nur die Discord-Nachricht neu zeichnen, den Server nicht anfassen ----------
 if [ "$MODE" = "discord-refresh" ]; then
   discord_restart_event refresh
   exit 0
 fi
-if [ "$MODE" = "discord-restarted" ]; then
-  # Fremder Neustart (eigenes Skript, systemd, von Hand) wird nachgetragen
-  discord_restart_event ok restart "${REASON:-Neustart}" ""
-  exit 0
-fi
 
-# --- Doppelstart verhindern (Watchdog prueft dieses Lock ebenfalls) --------------
+# --- Doppelstart verhindern (Watchdog/Announce pruefen dieses Lock ebenfalls) ----
 exec 9>"$LOCKFILE"
-flock -n 9 || { log "Skript laeuft bereits, Abbruch."; exit 0; }
+# -w 5 statt -n: uebersteht die kurzen Lock-Proben von Watchdog/Announce
+flock -w 5 9 || { log "Skript laeuft bereits, Abbruch."; exit 0; }
 
-# --- Marker des letzten Neustarts pruefen (--once-daily / --min-gap) --------------
-# Der Marker enthaelt die Unix-Zeit des letzten erfolgreichen Neustarts.
-# (Aeltere Marker im Datumsformat werden ignoriert = zaehlen als "kein Marker".)
-if [ "$MODE" = "restart" ]; then
+# --- --min-gap: liegt der letzte Neustart noch nicht lange genug zurueck? --------
+if [ "$MODE" = "restart" ] && [ "$MIN_GAP_HOURS" -gt 0 ]; then
   LAST_RESTART=$(cat "$RESTART_MARKER" 2>/dev/null || true)
   [[ "$LAST_RESTART" =~ ^[0-9]{9,}$ ]] || LAST_RESTART=0
-  if [ "$ONCE_DAILY" = "true" ] && [ "$LAST_RESTART" -gt 0 ] && \
-     [ "$(date -d "@${LAST_RESTART}" +%F)" = "$(date +%F)" ]; then
-    log "Heute wurde bereits neu gestartet, ueberspringe (--once-daily)."
-    discord_restart_event refresh   # naechsten Termin in Discord nachziehen
-    exit 0
-  fi
-  if [ "$MIN_GAP_HOURS" -gt 0 ] && [ "$LAST_RESTART" -gt 0 ] && \
+  if [ "$LAST_RESTART" -gt 0 ] && \
      [ $(( $(date +%s) - LAST_RESTART )) -lt $(( MIN_GAP_HOURS * 3600 )) ]; then
     log "Letzter Neustart ist weniger als ${MIN_GAP_HOURS} h her, ueberspringe (--min-gap)."
     discord_restart_event refresh
@@ -168,67 +141,73 @@ if [ "$MODE" = "restart" ]; then
   fi
 fi
 
-# --- Laufenden Container + aktuelles Tag ermitteln --------------------------------
-CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
-if [ -z "$CID" ]; then
-  log "FEHLER: Service '${SERVICE}' laeuft nicht (COMPOSE_DIR=${COMPOSE_DIR})."
+# --- Laufenden Server + installierten Build ermitteln ----------------------------
+if ! systemctl cat "$SERVICE" >/dev/null 2>&1; then
+  log "FEHLER: systemd-Unit '${SERVICE}' existiert nicht."
   exit 1
 fi
-CURRENT_IMAGE=$(docker inspect -f '{{.Config.Image}}' "$CID")
-CURRENT_TAG="${CURRENT_IMAGE##*:}"
+ACTIVE_STATE="$(systemctl show -p ActiveState --value "$SERVICE" 2>/dev/null || echo unknown)"
+CRASHING=false
+case "$ACTIVE_STATE" in
+  active) ;;
+  activating|deactivating|failed)
+    # Crash-Loop oder haengender Stop: hier hilft ein Update/Neustart gerade am
+    # meisten - Spieler koennen ohnehin nicht drauf sein.
+    CRASHING=true
+    log "Service ist im Zustand '${ACTIVE_STATE}' (Crash-Loop?) - fahre ohne Spielerwarnung fort." ;;
+  *)
+    log "FEHLER: Service '${SERVICE}' laeuft nicht (manuell gestoppt?). Keine Aktion."
+    exit 1 ;;
+esac
 
-# --- Update-Modus: neuestes Versions-Tag aus GHCR ermitteln -----------------------
-TARGET_TAG="$CURRENT_TAG"
+local_build() { awk -F'"' '/"buildid"/{print $4; exit}' "$MANIFEST" 2>/dev/null || true; }
+CURRENT_BUILD="$(local_build)"
+CURRENT_BUILD="${CURRENT_BUILD:-unbekannt}"
+
+# --- Update-Modus: neuesten Build aus Steam ermitteln -----------------------------
+TARGET_BUILD="$CURRENT_BUILD"
 if [ "$MODE" = "update" ]; then
-  REPO_PATH="${IMAGE_REPO#ghcr.io/}"
-  TOKEN=$(curl -fsS -m 20 "https://ghcr.io/token?scope=repository:${REPO_PATH}:pull" | jq -r '.token')
-  NEW_TAG=$(curl -fsS -m 20 -H "Authorization: Bearer ${TOKEN}" \
-    "https://ghcr.io/v2/${REPO_PATH}/tags/list?n=1000" \
-    | jq -r '.tags[]' \
-    | grep -E '^v?[0-9]+(\.[0-9]+){2,3}$' \
-    | awk '{orig=$0; sub(/^v/,""); print $0, orig}' \
-    | sort -V | tail -n1 | awk '{print $2}')
+  # appinfo-Cache loeschen, sonst liefert SteamCMD gern veraltete Buildids
+  rm -f "/home/${PAL_USER}/Steam/appcache/appinfo.vdf" \
+        "$(dirname "$STEAMCMD")/appcache/appinfo.vdf" 2>/dev/null || true
+  APPINFO="$(as_pal "'${STEAMCMD}' +login anonymous +app_info_update 1 +app_info_print ${APP_ID} +quit" 2>/dev/null || true)"
+  REMOTE_BUILD="$(printf '%s\n' "$APPINFO" \
+    | awk -F'"' '/"branches"/{b=1} b && /"public"/{p=1} p && /"buildid"/{print $4; exit}')"
 
-  if [ -z "$NEW_TAG" ]; then
-    log "FEHLER: Konnte kein Versions-Tag aus der Registry lesen."
+  if [ -z "$REMOTE_BUILD" ]; then
+    log "FEHLER: Konnte die aktuelle Buildid nicht aus SteamCMD lesen."
     exit 1
   fi
-
-  if [[ "$CURRENT_TAG" =~ ^v?[0-9]+(\.[0-9]+){2,3}$ ]]; then
-    if [ "${CURRENT_TAG#v}" = "${NEW_TAG#v}" ]; then
-      log "Server ist aktuell (${CURRENT_TAG})."
-      exit 0
-    fi
-    HIGHEST=$(printf '%s\n%s\n' "${CURRENT_TAG#v}" "${NEW_TAG#v}" | sort -V | tail -n1)
-    if [ "$HIGHEST" != "${NEW_TAG#v}" ]; then
-      log "Laufende Version (${CURRENT_TAG}) ist neuer als Registry (${NEW_TAG}), nichts zu tun."
-      exit 0
-    fi
-  else
-    log "Laufendes Tag '${CURRENT_TAG}' ist nicht versioniert, wechsle auf ${NEW_TAG}."
+  if [ "$CURRENT_BUILD" = "$REMOTE_BUILD" ]; then
+    log "Server ist aktuell (Build ${CURRENT_BUILD})."
+    exit 0
   fi
-
-  TARGET_TAG="$NEW_TAG"
-  log "Update gefunden: ${CURRENT_TAG} -> ${NEW_TAG}"
+  TARGET_BUILD="$REMOTE_BUILD"
+  # Cooldown: nach fehlgeschlagenem Update nicht alle 30 min erneut stoppen/warnen,
+  # sondern 6h warten (oder bis Steam einen anderen Build liefert)
+  if [ -f "$FAIL_STATE" ]; then
+    read -r F_BUILD F_TS < "$FAIL_STATE" || true
+    if [ "${F_BUILD:-}" = "$REMOTE_BUILD" ] && [ $(( $(date +%s) - ${F_TS:-0} )) -lt 21600 ]; then
+      log "Update auf Build ${REMOTE_BUILD} ist zuletzt fehlgeschlagen - Cooldown aktiv, ueberspringe."
+      exit 0
+    fi
+  fi
+  log "Update gefunden: Build ${CURRENT_BUILD} -> ${TARGET_BUILD}"
 else
-  log "Geplanter Neustart angefordert (Tag bleibt ${CURRENT_TAG})."
+  log "Geplanter Neustart angefordert (Build bleibt ${CURRENT_BUILD})."
 fi
 
-# --- REST-API vorbereiten ----------------------------------------------------------
-if [ -z "$REST_HOST" ]; then
-  if [ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CID")" = "host" ]; then
-    REST_HOST="127.0.0.1"
-  else
-    REST_HOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CID")
-  fi
-fi
+# --- REST-API vorbereiten ---------------------------------------------------------
 API="http://${REST_HOST}:${REST_PORT}/v1/api"
-api_get()  { curl -fsS -m 10 -u "admin:${ADMIN_PASSWORD}" "${API}/$1"; }
-api_post() { curl -fsS -m 10 -u "admin:${ADMIN_PASSWORD}" -H 'Content-Type: application/json' -X POST -d "$2" "${API}/$1"; }
+# Passwort via stdin-Config statt -u, damit es nicht in der Prozessliste auftaucht
+curl_auth() { printf 'user = "admin:%s"\n' "$ADMIN_PASSWORD"; }
+api_get()  { curl_auth | curl -fsS -m 10 -K - "${API}/$1"; }
+api_post() { curl_auth | curl -fsS -m 10 -K - -H 'Content-Type: application/json' -X POST -d "$2" "${API}/$1"; }
 announce() { api_post announce "$(jq -nc --arg m "$1" '{message:$m}')" >/dev/null 2>&1 || true; }
 
 API_OK=true
-api_get info >/dev/null 2>&1 || API_OK=false
+[ "$CRASHING" = "true" ] && API_OK=false
+[ "$API_OK" = "true" ] && { api_get info >/dev/null 2>&1 || API_OK=false; }
 
 PLAYERS=0
 if [ "$API_OK" = "true" ]; then
@@ -238,38 +217,36 @@ fi
 
 # --- --if-empty: nur bei leerem Server handeln ---------------------------------------
 if [ "$IF_EMPTY" = "true" ]; then
+  # Der Cron probiert es mehrmals in den fruehen Stunden; ein Tagesstempel
+  # sorgt dafuer, dass daraus trotzdem genau ein Neustart pro Tag wird.
+  if [ "$MODE" = "restart" ] && [ "$(cat "$DAILY_STAMP" 2>/dev/null || true)" = "$(date +%F)" ]; then
+    exit 0
+  fi
   if [ "$API_OK" != "true" ]; then
     log "FEHLER: --if-empty gesetzt, aber REST-API nicht erreichbar. Spielerzahl unbekannt, breche ab."
     exit 1
   fi
   if [ "$PLAYERS" -gt 0 ]; then
     log "${PLAYERS} Spieler online, ueberspringe (--if-empty). Naechster Lauf versucht es erneut."
-    discord_restart_event refresh
     exit 0
   fi
+  [ "$MODE" = "restart" ] && date +%F > "$DAILY_STAMP"
 fi
-
-# --- Update-Modus: neues Image vorab ziehen (Server laeuft weiter) --------------------
-if [ "$MODE" = "update" ]; then
-  log "Ziehe ${IMAGE_REPO}:${TARGET_TAG} ..."
-  docker pull "${IMAGE_REPO}:${TARGET_TAG}" >/dev/null
-  log "Image lokal verfuegbar."
-fi
-
-STARTED_BEFORE=$(docker inspect -f '{{.State.StartedAt}}' "$CID")
 
 # --- Spieler warnen + sauber herunterfahren --------------------------------------------
 if [ "$MODE" = "update" ]; then
-  ANNOUNCE_REASON="${REASON:-SERVER UPDATE auf ${TARGET_TAG}}"
-  RESTART_KIND="update"
-  RESTART_NOTE="Palworld \`${CURRENT_TAG}\` → \`${TARGET_TAG}\`"
+  ANNOUNCE_REASON="${REASON:-SERVER UPDATE (Build ${TARGET_BUILD})}"
 else
   ANNOUNCE_REASON="${REASON:-Geplanter Wartungs-Neustart}"
-  RESTART_KIND="restart"
-  RESTART_NOTE="Version \`${CURRENT_TAG}\`"
 fi
 
-# Discord: laufender Neustart (dieselbe Nachricht wird spaeter auf "fertig" gesetzt)
+if [ "$MODE" = "update" ]; then
+  RESTART_KIND="update"
+  RESTART_NOTE="Build \`${CURRENT_BUILD}\` → \`${TARGET_BUILD}\`"
+else
+  RESTART_KIND="restart"
+  RESTART_NOTE="Build \`${CURRENT_BUILD}\`"
+fi
 discord_restart_event running "$RESTART_KIND" "$ANNOUNCE_REASON" \
   "${RESTART_NOTE} · ${PLAYERS} Spieler online"
 
@@ -280,7 +257,7 @@ if [ "$API_OK" = "true" ]; then
     mapfile -t WARNS < <(printf '%s\n' "${WARN_MINUTES[@]}" | sort -rn)
     for i in "${!WARNS[@]}"; do
       M="${WARNS[$i]}"
-      # Umlaute in Ansagen sind okay (UTF-8 über die REST-API)
+      # Ingame-Messages bewusst ohne Umlaute (Anzeige-Sicherheit)
       announce "${ANNOUNCE_REASON}: Neustart in ${M} Minuten! Bitte Fortschritt sichern."
       log "Ingame-Warnung gesendet: Neustart in ${M} min."
       NEXT_IDX=$((i + 1))
@@ -298,75 +275,123 @@ if [ "$API_OK" = "true" ]; then
   api_post shutdown "$(jq -nc \
       --arg m "${ANNOUNCE_REASON}: Neustart in ${FINAL_COUNTDOWN} Sekunden!" \
       --argjson w "$FINAL_COUNTDOWN" '{waittime:$w, message:$m}')" >/dev/null \
-    || { log "WARNUNG: Shutdown-Befehl fehlgeschlagen, stoppe Container per SIGTERM."; dc stop -t 60 "$SERVICE"; }
+    || { log "WARNUNG: Shutdown-Befehl fehlgeschlagen, stoppe Service per systemctl."; systemctl stop "$SERVICE" || true; }
+elif [ "$CRASHING" = "true" ]; then
+  log "Server laeuft nicht sauber - stoppe direkt, keine Spieler zu warnen."
+  systemctl stop "$SERVICE" || true
 else
   if [ "$ALLOW_RESTART_WITHOUT_API" = "true" ]; then
     log "WARNUNG: REST-API nicht erreichbar (${API}). Neustart OHNE Spielerwarnung/Save."
-    dc stop -t 60 "$SERVICE"
+    systemctl stop "$SERVICE" || true
   else
     log "FEHLER: REST-API nicht erreichbar (${API})."
     log "RESTAPIEnabled=True, RESTAPIPort=${REST_PORT} und AdminPassword in PalWorldSettings.ini setzen,"
     log "oder ALLOW_RESTART_WITHOUT_API=true konfigurieren."
-    discord_alert "🔴 Aktion fehlgeschlagen" "Aktion \`${MODE}\` angefordert, aber die REST-API antwortet nicht. Bitte manuell prüfen."
+    notify_discord_text "Palworld: Aktion (${MODE}) angefordert, aber REST-API nicht erreichbar. Bitte manuell pruefen."
     exit 1
   fi
 fi
 
+# Ab hier ist der Server (gleich) aus. Egal wie das Script endet - Fehler,
+# Kill, Reboot-Signal - der Server muss wieder hochkommen: sonst bemerkt es
+# niemand, weil Watchdog und Cron bei gestopptem Service bewusst nichts tun.
+resume_service() {
+  systemctl is-active --quiet "$SERVICE" || {
+    log "Abbruch erkannt - starte '${SERVICE}' wieder."
+    systemctl start "$SERVICE" || true
+    notify_discord_text "Palworld: Update/Neustart wurde unerwartet abgebrochen, Server wurde wieder gestartet. Bitte Log pruefen."
+  }
+}
+trap resume_service EXIT INT TERM
+
 # --- Warten bis der Serverprozess beendet ist ---------------------------------------------
 log "Warte auf Server-Shutdown..."
+INV_BEFORE="$(systemctl show -p InvocationID --value "$SERVICE" 2>/dev/null || true)"
 DEADLINE=$(( $(date +%s) + FINAL_COUNTDOWN + 180 ))
-while :; do
-  RUNNING=$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null || echo "false")
-  STARTED_NOW=$(docker inspect -f '{{.State.StartedAt}}' "$CID" 2>/dev/null || echo "")
-  # Container gestoppt ODER von der Restart-Policy bereits neu gestartet -> weiter
-  if [ "$RUNNING" != "true" ] || [ "$STARTED_NOW" != "$STARTED_BEFORE" ]; then
+while systemctl is-active --quiet "$SERVICE"; do
+  INV_NOW="$(systemctl show -p InvocationID --value "$SERVICE" 2>/dev/null || true)"
+  if [ -n "$INV_BEFORE" ] && [ -n "$INV_NOW" ] && [ "$INV_NOW" != "$INV_BEFORE" ]; then
+    # systemd hat den Prozess bereits neu gestartet (Restart-Policy) -> weiter
     break
   fi
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-    log "WARNUNG: Server hat nicht selbststaendig gestoppt, erzwinge Recreate."
+    log "WARNUNG: Server hat nicht selbststaendig gestoppt, erzwinge Stopp."
     break
   fi
   sleep 5
 done
+systemctl stop "$SERVICE" >/dev/null 2>&1 || true   # idempotent, normalisiert alle Faelle
 
 # --- Optionales Backup des Spielstands (Server ist jetzt aus = konsistent) -----------------
 DO_BACKUP=false
 if [ "$MODE" = "update" ]; then DO_BACKUP=true; fi
 if [ "$MODE" = "restart" ] && [ "$BACKUP_ON_FORCE_RESTART" = "true" ]; then DO_BACKUP=true; fi
 if [ "$DO_BACKUP" = "true" ] && [ -n "$BACKUP_DIR" ] && [ -d "$SAVED_DIR" ]; then
-  mkdir -p "$BACKUP_DIR"
-  BFILE="${BACKUP_DIR}/palworld-saved-$(date +%Y%m%d-%H%M%S)-${TARGET_TAG}.tar.gz"
-  tar -czf "$BFILE" -C "$(dirname "$SAVED_DIR")" "$(basename "$SAVED_DIR")"
-  log "Backup erstellt: ${BFILE}"
-  ls -1t "${BACKUP_DIR}"/palworld-saved-*.tar.gz 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f
-fi
-
-# --- Neues Tag persistieren (nur Update) + Container (neu) starten ---------------------------
-if [ "$MODE" = "update" ]; then
-  if [ -f "$ENV_FILE" ] && grep -q '^PALSERVER_TAG=' "$ENV_FILE"; then
-    sed -i "s|^PALSERVER_TAG=.*|PALSERVER_TAG=${TARGET_TAG}|" "$ENV_FILE"
+  # Ein Backup-Fehler (z.B. volle Platte) darf den Neustart NIEMALS verhindern
+  BFILE="${BACKUP_DIR}/palworld-saved-$(date +%Y%m%d-%H%M%S)-build${TARGET_BUILD}.tar.gz"
+  # umask 077: die Tarballs enthalten auch die INI mit dem Admin-Passwort
+  if (umask 077; mkdir -p "$BACKUP_DIR") \
+     && (umask 077; tar -czf "$BFILE" -C "$(dirname "$SAVED_DIR")" "$(basename "$SAVED_DIR")"); then
+    log "Backup erstellt: ${BFILE}"
+    ls -1t "${BACKUP_DIR}"/palworld-saved-*.tar.gz 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f || true
   else
-    echo "PALSERVER_TAG=${TARGET_TAG}" >> "$ENV_FILE"
+    rm -f "$BFILE" 2>/dev/null || true
+    log "WARNUNG: Backup fehlgeschlagen (Plattenplatz?) - fahre trotzdem mit dem Neustart fort."
+    notify_discord_text "Palworld: Backup vor dem Neustart FEHLGESCHLAGEN (Plattenplatz pruefen!)."
   fi
 fi
 
-log "Starte Container mit ${IMAGE_REPO}:${TARGET_TAG} ..."
-dc up -d "$SERVICE"
+# --- Update einspielen (nur Update-Modus) ---------------------------------------------------
+UPDATE_OK=true
+if [ "$MODE" = "update" ]; then
+  log "SteamCMD-Update auf Build ${TARGET_BUILD} ..."
+  UPDATE_OK=false
+  for ATTEMPT in 1 2 3; do
+    OUT="$(as_pal "'${STEAMCMD}' +force_install_dir '${INSTALL_DIR}' +login anonymous +app_update ${APP_ID} validate +quit" 2>&1 || true)"
+    if printf '%s' "$OUT" | grep -q "Success! App '${APP_ID}'"; then
+      NOW_BUILD="$(local_build)"
+      [ -n "$NOW_BUILD" ] && TARGET_BUILD="$NOW_BUILD"
+      UPDATE_OK=true
+      break
+    fi
+    log "WARNUNG: SteamCMD-Update fehlgeschlagen (Versuch ${ATTEMPT}/3)."
+    sleep 10
+  done
+  if [ "$UPDATE_OK" = "true" ]; then
+    rm -f "$FAIL_STATE" 2>/dev/null || true
+  else
+    echo "${TARGET_BUILD} $(date +%s)" > "$FAIL_STATE"
+    log "FEHLER: Update konnte nicht eingespielt werden, starte Server mit altem Stand (Cooldown 6h)."
+    notify_discord_text "Palworld: Update auf Build ${TARGET_BUILD} FEHLGESCHLAGEN, Server laeuft mit altem Stand weiter (naechster Versuch in ~6h). Bitte manuell pruefen."
+  fi
+fi
 
-# Erfolgreichen Neustart vermerken (fuer --once-daily / --min-gap; gilt auch
-# fuer Updates: ein Update-Neustart ersetzt den naechsten geplanten Neustart)
-date +%s > "$RESTART_MARKER" 2>/dev/null || true
-
+# --- Server (wieder) starten -----------------------------------------------------------------
+log "Starte Service '${SERVICE}' ..."
+systemctl start "$SERVICE" || true   # Fehler meldet der Check unten (inkl. Discord)
 sleep 10
-NEW_CID=$(dc ps -q "$SERVICE" 2>/dev/null || true)
-RUNNING_IMAGE=$([ -n "$NEW_CID" ] && docker inspect -f '{{.Config.Image}}' "$NEW_CID" || echo "unbekannt")
-log "Fertig. Laufendes Image: ${RUNNING_IMAGE}"
-if [ "${DISCORD_RESTART_MESSAGE:-false}" = "true" ]; then
-  # Eine gepflegte Nachricht statt einer neuen pro Neustart
-  discord_restart_event ok "$RESTART_KIND" "$ANNOUNCE_REASON" \
-    "${RESTART_NOTE} · ${PLAYERS} Spieler waren online"
-elif [ "$MODE" = "update" ]; then
-  notify_discord "⬆️ Update installiert" "Palworld \`${CURRENT_TAG}\` → \`${TARGET_TAG}\`" "$DC_BLUE"
+trap - EXIT INT TERM                 # ab hier meldet der Check unten selbst
+if systemctl is-active --quiet "$SERVICE"; then
+  log "Fertig. Server laeuft (Build $(local_build))."
+  # Fuer --min-gap: Zeitpunkt des erfolgreichen Neustarts vermerken
+  date +%s > "$RESTART_MARKER" 2>/dev/null || true
+  DISCORD_MIN_GAP_HOURS="$MIN_GAP_HOURS"
+  if [ "${DISCORD_RESTART_MESSAGE:-false}" = "true" ]; then
+    # Eine gepflegte Nachricht statt einer neuen pro Neustart
+    if [ "$MODE" = "update" ] && [ "$UPDATE_OK" != "true" ]; then
+      discord_restart_event ok "$RESTART_KIND" "$ANNOUNCE_REASON" \
+        "Update fehlgeschlagen - Server laeuft mit Build \`${CURRENT_BUILD}\` weiter"
+    else
+      discord_restart_event ok "$RESTART_KIND" "$ANNOUNCE_REASON" \
+        "${RESTART_NOTE} · ${PLAYERS} Spieler waren online"
+    fi
+  elif [ "$MODE" = "update" ] && [ "$UPDATE_OK" = "true" ]; then
+    notify_discord_text "Palworld-Server aktualisiert: Build ${CURRENT_BUILD} -> ${TARGET_BUILD}"
+  elif [ "$MODE" = "restart" ]; then
+    notify_discord_text "Palworld-Server neu gestartet (geplanter Neustart, Build ${CURRENT_BUILD})."
+  fi
 else
-  notify_discord "🔄 Server neu gestartet" "**${ANNOUNCE_REASON}** · ${PLAYERS} Spieler waren online · Version \`${CURRENT_TAG}\`" "$DC_GREEN"
+  log "FEHLER: Service laeuft nach dem Start nicht. Bitte 'journalctl -u ${SERVICE}' pruefen!"
+  notify_discord_text "Palworld: Server startet nach Aktion (${MODE}) NICHT. Bitte manuell eingreifen!"
+  exit 1
 fi

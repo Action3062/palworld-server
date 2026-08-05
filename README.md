@@ -240,9 +240,9 @@ Farben und Namen sind ebenfalls frei (nichts ist auf PvP festgelegt).
    Das Skript legt vorher eine Sicherung an, prüft nach dem Neustart die
    Verbindung und testet, ob die REST-API über den Tunnel antwortet.
 
-3. Auf dem neuen Spielserver `RESTAPIEnabled=True` setzen und den REST-Port im
-   Docker-Container veröffentlichen (`ports: ["10.88.0.3:8212:8212"]`, Container
-   danach **neu erstellen** – nachträglich lassen sich Ports nicht öffnen).
+3. Auf dem neuen Spielserver `RESTAPIEnabled=True` setzen und den REST-Port für
+   den Tunnel freigeben – beim Setup über `--trusted-net 10.88.0.0/24`, sonst
+   ist Port 8212 nur lokal erreichbar.
 
 ## Palworld auf separatem Server? → WireGuard-Tunnel
 
@@ -592,12 +592,12 @@ sollte auf dem zweiten Server **versetzt** laufen (`55 5,10,18` statt
 `RESTART_SCHEDULE` in der Conf entsprechend mitziehen (Cron-Zeit +
 Vorwarnzeit).
 
-### Native Instanz (systemd + SteamCMD, ohne Docker)
+### Einrichtung einer Gameserver-Maschine
 
-`deploy/gameserver/setup-palworld.sh` richtet einen kompletten Gameserver
-ohne Docker ein: SteamCMD, Palworld (App 2394010), `PalWorldSettings.ini`
-mit **REST-API und RCON**, systemd-Unit, Portschutz per nftables, alle
-Skripte nach `/etc/palworld`, root-crontab und Logrotate.
+`deploy/gameserver/setup-palworld.sh` richtet einen kompletten Server ein:
+SteamCMD, Palworld (App 2394010), `PalWorldSettings.ini` mit **REST-API und
+RCON**, systemd-Unit, Portschutz per nftables, alle Skripte nach
+`/etc/palworld`, root-crontab und Logrotate.
 
 ```bash
 bash setup-palworld.sh --server-name "PalHeim" --trusted-net 10.88.0.0/24
@@ -608,25 +608,10 @@ den Tunnel zum Web-Server); ohne die Angabe sind beide nur lokal erreichbar.
 Der Spiel-Port bleibt immer offen. RCON braucht die Webseite für die
 Vote-Belohnungen (`lib/rcon.js`), Passwort ist das AdminPassword.
 
-Die Wartungs-Skripte gibt es deshalb in zwei Varianten. `install-paltools.sh`
-erkennt die Laufzeit selbst (systemd-Unit `palworld.service` → nativ, sonst
-Container, sonst nativ) und lässt sich mit `SCRIPT_SET=native|docker`
-überstimmen:
-
-| | Container | Native Instanz |
-|---|---|---|
-| `palworld-autoupdate.sh` | `deploy/gameserver/` (GHCR-Tag) | `deploy/gameserver/native/` (SteamCMD-Buildid) |
-| `palworld-watchdog.sh` | `docker compose restart` | `systemctl restart` |
-| `palworld-announce.sh` | – | `deploy/gameserver/native/` |
-| Rest (`-discord`, `-backup`, `-status`, `-upload`) | für beide identisch | |
-
-Beide Varianten kennen dieselben Optionen (`--force-restart`, `--if-empty`,
-`--min-gap`, `--reason`, `--discord-refresh`) und pflegen dieselbe
-Discord-Neustart-Nachricht – der Cron kann auf beiden Servern gleich sein.
-
-> **Noch offen:** Läuft auf der Maschine noch ein Palworld-Container, meldet
-> das Setup das und startet den Dienst nicht automatisch – Spielstand
-> vorher kopieren (`<compose-dir>/Saved` → `/home/palworld/palserver/Pal/Saved`).
+> **Kein Docker mehr.** Beide Gameserver laufen als native Instanz
+> (SteamCMD + `palworld.service`). Die früheren Container-Varianten von
+> `palworld-autoupdate.sh` und `palworld-watchdog.sh` sind entfernt; wer sie
+> braucht, findet sie in der Git-Historie.
 
 ## Server-Status im Discord (tools/discord-status.py)
 
@@ -657,19 +642,12 @@ eigene Nachricht (unterschieden über `--name`). Die Nachrichten-ID merkt
 sich das Skript in `~/.palheim-discord-status.json`; wird die Nachricht im
 Discord gelöscht, legt der nächste Lauf automatisch eine neue an.
 
-**Läuft der Server im Docker-Container?** Dann antwortet die REST-API oft
-nicht auf `127.0.0.1` – typischer Fehler:
-`Spielserver nicht erreichbar: <urlopen error [Errno 111] Connection refused>`.
-Das Skript sucht die API in dem Fall selbst am Container: Host-Netz,
-veröffentlichte Ports **samt Host-IP** (wer `10.88.0.2:8212:8212` in den
-WireGuard-Tunnel veröffentlicht, ist über `127.0.0.1` eben nicht erreichbar)
-und zuletzt die Container-IP. Die gefundene Adresse meldet es einmal im Log
-und merkt sie sich für die nächsten Läufe – `--api` kann man dann
-weglassen oder auf die gemeldete Adresse setzen. Steuerbar mit
-`--container <name>` (falls die Automatik den falschen Container erwischt),
-`--port 8212` (REST-Port im Container) und `--no-docker` (Suche aus).
-Kommt stattdessen `HTTP 401`, ist die API erreichbar und nur das
-`--password` passt nicht zum `AdminPassword` der `PalWorldSettings.ini`.
+Antwortet die API nicht, listet das Skript alle probierten Adressen auf und
+merkt sich die erste, die funktioniert hat. Kommt `HTTP 401`, ist die API
+erreichbar und nur das `--password` passt nicht zum `AdminPassword` der
+`PalWorldSettings.ini`. (Die eingebaute Container-Suche stammt aus der
+Docker-Zeit und bleibt wirkungslos, wenn kein Docker installiert ist –
+abschaltbar mit `--no-docker`.)
 
 ### Neustarts im selben Kanal (ohne Nachrichten-Spam)
 
