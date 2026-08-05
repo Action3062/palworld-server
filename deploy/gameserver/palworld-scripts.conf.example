@@ -68,6 +68,24 @@ SERVER_ADDRESS="pve.palheim.de:8211"             # [SERVER] Join-Adresse
 # STATUS_CONTAINER=""      # nur noetig, wenn die Automatik danebengreift
 # STATUS_STATE="/var/lib/palworld/discord-status.json"
 
+# --- Event-Wochenenden (palworld-event.sh) ------------------------------------
+# Rotiert automatisch nach Monat durch EVENT_LIST (Jan=1, Feb=2, ...).
+# Aenderungs-Syntax: KEY*FAKTOR (multipliziert den aktuellen Ini-Wert,
+# skaliert also auf beiden Servern richtig) oder KEY=FESTWERT.
+# Originalwerte merkt sich das Skript und setzt sie EXAKT zurueck.
+EVENT_ENABLED=true
+# EVENT_INI=""                 # leer = automatisch unter $SAVED_DIR/Config suchen
+# EVENT_STATE="/var/lib/palworld/event.json"
+# EVENT_MAX_HOURS=70           # Waechter: laenger aktiv -> Zwangs-Ruecksetzung
+# EVENT_BANNER=true            # Website-Banner automatisch setzen/entfernen
+# EVENT_LIST=(
+#   "Drop-Wochenende|💰 Event-Wochenende: Doppelte Drops von Gegnern – bis Montag früh!|EnemyDropItemRate*2"
+#   "Ranch-Wochenende|🥚 Event-Wochenende: Farm-Pals produzieren 3x so schnell – bis Montag früh!|MonsterFarmActionSpeedRate*3"
+#   "Safari-Wochenende|🎯 Event-Wochenende: Fangrate um 50 % erhöht – bis Montag früh!|PalCaptureRate*1.5"
+#   "Sammler-Wochenende|⛏️ Event-Wochenende: Doppelte Sammel-Erträge & halbes Gewicht – bis Montag früh!|CollectionDropRate*2 ItemWeightRate*0.5"
+#   "Supply-Wochenende|📦 Event-Wochenende: Versorgungsabwürfe alle 10 Minuten – bis Montag früh!|SupplyDropSpan=10"
+# )
+
 # --- Python-Werkzeuge (palworld-status.sh, palworld-upload.sh) ----------------
 # Standard: .py-Dateien neben den Skripten, Interpreter aus dem venv.
 # Nur setzen, wenn davon abgewichen wird:

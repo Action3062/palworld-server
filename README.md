@@ -526,6 +526,7 @@ wegwerfen kann.
   palworld-autoupdate.sh           #   Update + geplante Neustarts
   palworld-watchdog.sh             #   Haenger-Erkennung, jede Minute
   palworld-backup.sh               #   Live-Backup ohne Neustart
+  palworld-event.sh                #   automatische Event-Wochenenden
   palworld-announce.sh             #   Ingame-Ansagen
   palworld-discord.sh              #   Bibliothek: eine Neustart-Nachricht
   palworld-status.sh               #   Wrapper → discord-status.py
@@ -590,6 +591,27 @@ sollte auf dem zweiten Server **versetzt** laufen (`55 5,10,18` statt
 `55 4,9,17`), damit nie beide Welten gleichzeitig offline sind – und
 `RESTART_SCHEDULE` in der Conf entsprechend mitziehen (Cron-Zeit +
 Vorwarnzeit).
+
+### Event-Wochenenden (palworld-event.sh)
+
+Am **ersten Wochenende im Monat** dreht `palworld-event.sh` automatisch
+ausgewählte Raten hoch und setzt sie danach exakt zurück – rotierend durch
+fünf Events (`EVENT_LIST` in der Conf): 💰 doppelte Gegner-Drops, 🥚 Ranch
+×3, 🎯 Fangrate ×1,5, ⛏️ Sammel-Erträge ×2 + halbes Gewicht, 📦
+Versorgungsabwürfe alle 10 Minuten. Änderungen sind als **Faktoren**
+definiert (`KEY*2`) und skalieren damit auf beiden Servern richtig;
+Festwerte gehen mit `KEY=10`.
+
+Ablauf: Freitag 17:50 patcht `start` die Ini und startet mit den üblichen
+Vorwarnungen neu (übernimmt `palworld-autoupdate.sh`); Discord-Embed und
+Website-Banner (Endpunkt `/api/banner/event`, Auth per `UPLOAD_SECRET`)
+gehen automatisch raus. Montag früh setzt `stop` nur die Werte zurück –
+**ohne eigenen Neustart**, den erledigt der reguläre Wartungs-Neustart
+danach (Server 2: Stopp-Cron auf `45 5` legen). Ein täglicher
+`guard`-Lauf setzt hängengebliebene Events zwangsweise zurück. Alle
+Aufrufe sind idempotent; `palworld-event.sh status` zeigt das aktive bzw.
+nächste Event. Manuell: `start --event Safari-Wochenende`,
+`stop --restart` für sofortiges Ende mit Neustart.
 
 > **Noch offen:** `palworld-autoupdate.sh`, `palworld-watchdog.sh` und
 > `palworld-backup.sh` steuern den Server ausschließlich über

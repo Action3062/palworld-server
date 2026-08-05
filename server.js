@@ -1278,6 +1278,37 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Event-Banner (POST, von palworld-event.sh auf den Gameservern) ----
+  // Gleiche Auth wie die Uploads (uploadSecret). Setzt bzw. entfernt das
+  // Seiten-Banner, ohne dass sich jemand an der Admin-Seite anmelden muss.
+  if (req.method === 'POST' && pathname === '/api/banner/event') {
+    const secret = searchParams.get('secret') || req.headers['x-upload-secret'] || '';
+    const srv = SERVERS.find((s) => s.uploadSecret && s.uploadSecret === secret);
+    if (!srv) {
+      sendJson(res, 403, { ok: false, message: 'Upload-Secret stimmt nicht.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const enabled = Boolean(body.enabled);
+      const text = String(body.text || '').trim().slice(0, 160);
+      if (enabled && !text) {
+        sendJson(res, 400, { ok: false, message: 'Banner-Text fehlt.' });
+        return;
+      }
+      const level = ['info', 'event', 'warn'].includes(body.level) ? body.level : 'event';
+      bannerOverride = { enabled, text, level, updatedAt: new Date().toISOString() };
+      saveBannerOverride();
+      adminLog('Banner', enabled
+        ? `[Event-Automatik] „${text.slice(0, 60)}" (${level})`
+        : '[Event-Automatik] Banner ausgeblendet', `Event (${srv.id})`);
+      sendJson(res, 200, { ok: true, enabled });
+    } catch {
+      sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+    }
+    return;
+  }
+
   // ---- Ranglisten-Upload (POST, vom Palworld-Server via Cronjob) ----
   if (req.method === 'POST' && pathname === '/api/rankings/upload') {
     // Auth wie beim Basen-Upload: uploadSecret je Server, Klartext-Fehler
