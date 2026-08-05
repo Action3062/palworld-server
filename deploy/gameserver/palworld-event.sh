@@ -49,6 +49,10 @@ EVENT_STATE="/var/lib/palworld/event.json"
 EVENT_MAX_HOURS=70                             # Fr 18 -> Mo 5 sind 59 h + Puffer
 EVENT_BANNER=true                              # Website-Banner setzen/entfernen?
 EVENT_OFFSET=0                                 # verschiebt die Wochen-Rotation
+LOCKFILE="/var/lock/palworld-autoupdate.lock"  # Lock des Update-Skripts
+RESTART_MARKER="/run/palworld-restart-done"    # wie in palworld-autoupdate.sh
+EVENT_LOCK_WAIT=600                            # so lange auf ein laufendes
+                                               # Update/Neustart warten
 # Rotation nach Kalenderwoche: Eintrag = "Name|Ansage-/Banner-Text|Aenderungen"
 # Aenderungen: KEY*FAKTOR (multipliziert den aktuellen Wert) oder KEY=WERT
 EVENT_LIST=(
@@ -152,12 +156,19 @@ banner() {  # banner true|false [TEXT]
 }
 
 # --- Neustart ueber das Update-Skript -------------------------------------------
-restart_server() {  # restart_server GRUND
+# palworld-autoupdate.sh endet auch dann mit 0, wenn es wegen eines belegten
+# Locks gar nichts getan hat. Deshalb den Neustart-Marker vorher/nachher
+# vergleichen - nur eine neue Zeitmarke heisst "wirklich neu gestartet".
+restart_server() {  # restart_server GRUND -> 0 = neu gestartet, 1 = nicht
   if [ "${EVENT_SKIP_RESTART:-false}" = "true" ]; then
     log "Test-Modus: Neustart uebersprungen (${1})"
     return 0
   fi
-  "${SCRIPT_DIR}/palworld-autoupdate.sh" --force-restart --reason "$1"
+  local before after
+  before=$(cat "$RESTART_MARKER" 2>/dev/null || echo 0)
+  "${SCRIPT_DIR}/palworld-autoupdate.sh" --force-restart --reason "$1" || true
+  after=$(cat "$RESTART_MARKER" 2>/dev/null || echo 0)
+  [ "$after" != "$before" ]
 }
 
 # --- Kommandos ------------------------------------------------------------------
@@ -179,6 +190,15 @@ cmd_start() {
   fi
   if [ -f "$EVENT_STATE" ]; then
     log "Event laeuft bereits ($(jq -r .name "$EVENT_STATE" 2>/dev/null || echo '?')) - nichts zu tun."
+    return 0
+  fi
+
+  # Waehrend Update/Neustart nicht an der Ini schrauben - der Server liest sie
+  # beim Start. Das Lock wird VOR dem eigenen Neustart wieder freigegeben,
+  # sonst wuerde palworld-autoupdate.sh am eigenen Lock haengenbleiben.
+  exec 9>"$LOCKFILE"
+  if ! flock -w "$EVENT_LOCK_WAIT" 9; then
+    log "Update/Neustart laeuft seit ueber ${EVENT_LOCK_WAIT}s - Event-Start verschoben."
     return 0
   fi
 
@@ -219,7 +239,13 @@ cmd_start() {
   done
   log "Ini gepatcht: $(jq -r '[.changes[] | "\(.key) \(.old)->\(.new)"] | join(", ")' "$EVENT_STATE")"
 
-  restart_server "Event-Start: ${EV_NAME}"
+  flock -u 9   # freigeben, damit das Update-Skript neu starten kann
+  if restart_server "Event-Start: ${EV_NAME}"; then
+    log "Server mit den Event-Werten neu gestartet."
+  else
+    log "WARNUNG: Neustart kam nicht zustande (laeuft gerade ein Update?)."
+    log "Die Werte stehen in der Ini und greifen beim naechsten Neustart."
+  fi
   banner true "$EV_TEXT"
   notify_discord "🎉 ${EV_NAME} gestartet${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
     "${EV_TEXT}"$'\n'"$(jq -r '[.changes[] | "\(.key): \(.old) → \(.new)"] | join("\n")' "$EVENT_STATE")" \
@@ -234,6 +260,12 @@ cmd_stop() {
     log "Kein Event aktiv - nichts zu tun."
     return 0
   fi
+  exec 9>"$LOCKFILE"
+  if ! flock -w "$EVENT_LOCK_WAIT" 9; then
+    log "Update/Neustart laeuft seit ueber ${EVENT_LOCK_WAIT}s - Event-Ende verschoben."
+    return 0
+  fi
+
   local name ini n
   name=$(jq -r .name "$EVENT_STATE")
   ini=$(jq -r .ini "$EVENT_STATE")
@@ -243,8 +275,9 @@ cmd_stop() {
   done
   rm -f "$EVENT_STATE" "${ini}.pre-event"
   banner false
+  flock -u 9   # vor dem Neustart freigeben (siehe cmd_start)
   if [ "$do_restart" = "true" ]; then
-    restart_server "Event-Ende: ${name}"
+    restart_server "Event-Ende: ${name}" || log "WARNUNG: Neustart kam nicht zustande."
     notify_discord "🏁 ${name} beendet${DISCORD_SERVER_NAME:+ – $DISCORD_SERVER_NAME}" \
       "Die Raten sind wieder normal. Danke fürs Mitspielen!" "$DC_ORANGE" || true
   else
