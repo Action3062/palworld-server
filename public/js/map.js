@@ -459,7 +459,7 @@
 
       footnote.textContent = data.basesUpdatedAt
         ? `Basen zuletzt aktualisiert: ${new Date(data.basesUpdatedAt).toLocaleString('de-DE')}`
-        : 'Noch keine Basendaten hochgeladen (siehe README: tools/upload-bases.py).';
+        : 'Noch keine Basendaten vorhanden – sie erscheinen hier in Kürze.';
 
       lastData = data;
       render();
