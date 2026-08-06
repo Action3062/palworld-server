@@ -557,6 +557,23 @@
           </form>
 
           <p class="vote-message" id="voteMessage" role="status" hidden></p>
+
+          <!-- Erscheint nach dem Abholen, wenn noch keine Discord-ID hinterlegt ist -->
+          <div class="vote-discord" id="voteDiscord" hidden>
+            <p class="vote-discord__text">
+              🎖️ Hol dir die <strong>Voter-Rolle</strong> im Discord: Tippe dort
+              einmal <code>/verknuepfen</code> – oder trag hier deine Discord-ID
+              ein (Rechtsklick auf deinen Namen in Discord → „ID kopieren",
+              Entwicklermodus muss aktiv sein).
+            </p>
+            <form class="vote-form__row" id="voteDiscordForm">
+              <input class="vote-form__input" id="voteDiscordId" maxlength="21"
+                     inputmode="numeric" pattern="[0-9]*" required
+                     autocomplete="off" placeholder="Deine Discord-ID">
+              <button class="btn btn--ghost" type="submit">Verknüpfen</button>
+            </form>
+            <p class="vote-message" id="voteDiscordMsg" role="status" hidden></p>
+          </div>
         </div>
       </div>
     </section>

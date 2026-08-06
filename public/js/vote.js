@@ -90,6 +90,11 @@
       });
       const result = await res.json();
       showMessage(result.message || 'Unbekannte Antwort.', Boolean(result.ok));
+      // Voter-Rolle möglich, aber noch keine Discord-ID hinterlegt?
+      const discordBox = document.getElementById('voteDiscord');
+      if (discordBox) {
+        discordBox.hidden = !(result.ok && result.suggestLink);
+      }
     } catch {
       showMessage('Server nicht erreichbar – versuch es gleich nochmal.', false);
     } finally {
@@ -97,6 +102,35 @@
       button.textContent = 'Belohnung abholen';
     }
   });
+
+  // ---- Discord-ID nachreichen (Voter-Rolle) ----
+  const discordForm = document.getElementById('voteDiscordForm');
+  if (discordForm) {
+    const discordMsg = document.getElementById('voteDiscordMsg');
+    discordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const discordId = document.getElementById('voteDiscordId').value.trim();
+      const name = input.value.trim();
+      if (!discordId || name.length < 2) return;
+      try {
+        const res = await fetch('/api/vote/discord-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, discordId })
+        });
+        const result = await res.json();
+        discordMsg.textContent = result.message || 'Unbekannte Antwort.';
+        discordMsg.classList.toggle('is-ok', Boolean(result.ok));
+        discordMsg.classList.toggle('is-error', !result.ok);
+        discordMsg.hidden = false;
+        if (result.ok) discordForm.hidden = true; // erledigt
+      } catch {
+        discordMsg.textContent = 'Server nicht erreichbar – versuch es gleich nochmal.';
+        discordMsg.classList.add('is-error');
+        discordMsg.hidden = false;
+      }
+    });
+  }
 
   init();
 })();

@@ -923,11 +923,30 @@ Einrichtung der Voter-Rolle (einmalig):
 4. **IDs kopieren** (Entwicklermodus in Discord aktivieren): Rechtsklick auf
    den Server → Server-ID (`guildId`); Rollen-Liste → Rolle → ID kopieren
    (`roleId`).
-5. **Spieler verknüpfen**: Admin-Interface → „🎖️ Vote-Rolle: Discord
-   verknüpfen“ – In-Game-Name plus Discord-ID des Spielers (Rechtsklick auf
-   den Nutzer → ID kopieren). Die Verknüpfungen liegen in
-   `data/discord-links.json`. Nicht verknüpfte Spieler bekommen die
-   Kanal-Meldung trotzdem; die Rolle kommt beim ersten Claim nach dem
+5. **Selbstverknüpfung aktivieren** (empfohlen – dann verknüpfen sich die
+   Spieler selbst per Slash-Befehl im Discord):
+   - Im Developer-Portal unter *General Information* die **Application ID**
+     und den **Public Key** kopieren → in der Config als `applicationId`
+     und `publicKey` eintragen.
+   - Ebenfalls dort als **Interactions Endpoint URL** eintragen:
+     `https://deinedomain.de/api/discord/interactions` (die Webseite muss
+     dabei schon mit `publicKey` laufen, denn Discord prüft die URL sofort).
+   - Beim nächsten Start registriert die Webseite automatisch den Befehl
+     **`/verknuepfen`** auf eurem Discord-Server. Jeder Spieler tippt ihn
+     einmal mit seinem In-Game-Namen – fertig, ab dann kommt die Rolle
+     automatisch. Die Antwort sieht nur der Spieler selbst; einen Namen,
+     der schon einem anderen Discord-Konto gehört, kann niemand übernehmen.
+6. **Verknüpfen über die Webseite**: Holt ein noch nicht verknüpfter
+   Spieler seine Belohnung ab, blendet die Webseite darunter ein kleines
+   Formular ein – Discord-ID eintragen, fertig. Wurde heute schon
+   abgeholt, reicht die Webseite die Rolle sofort nach. Es gelten dieselben
+   Schutzregeln wie beim Slash-Befehl (fremde, schon verknüpfte Namen kann
+   niemand übernehmen), der Endpunkt ist rate-limitiert.
+7. **Manuell verknüpfen** (Sonderfälle, Korrekturen): Admin-Interface →
+   „🎖️ Vote-Rolle: Discord verknüpfen“ – In-Game-Name plus Discord-ID des
+   Spielers (Rechtsklick auf den Nutzer → ID kopieren). Die Verknüpfungen
+   liegen in `data/discord-links.json`. Nicht verknüpfte Spieler bekommen
+   die Kanal-Meldung trotzdem; die Rolle kommt beim ersten Claim nach dem
    Verknüpfen.
 
 **`"mode": "rcon"`** – echte Item-Belohnungen. Voraussetzung: Auf dem

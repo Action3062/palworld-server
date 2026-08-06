@@ -1437,6 +1437,29 @@ code {
   margin-top: -8px;
 }
 
+/* Discord-ID nachreichen (Voter-Rolle) – erscheint nach dem Abholen */
+.vote-discord {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vote-discord__text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.vote-discord__text code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .vote-form__label {
   display: block;
   font-size: 0.8rem;

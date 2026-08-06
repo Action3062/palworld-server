@@ -66,6 +66,8 @@
       "discord": {
         "webhookUrl": "",
         "botToken": "",
+        "applicationId": "",
+        "publicKey": "",
         "guildId": "",
         "roleId": "",
         "message": "🗳️ **{name}** hat auf {list} für PalHeim gevotet – danke! ({count}. Belohnung)"

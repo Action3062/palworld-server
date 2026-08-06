@@ -727,6 +727,7 @@ if (config.statsEnabled) {
 // ---------------------------------------------------------------------------
 
 const { VoteSystem } = require('./lib/votes');
+const { verifySignature, registerLinkCommand } = require('./lib/discord');
 
 let voteSystem = null;
 if (config.votes && config.votes.enabled) {
@@ -738,6 +739,16 @@ if (config.votes && config.votes.enabled) {
     palworldPost: (endpoint, body) => palworldPost(DEFAULT_SERVER, endpoint, body)
   });
   console.log('[votes] Vote-Belohnungssystem aktiv');
+
+  // Slash-Befehl /verknuepfen bei Discord registrieren (idempotent).
+  // Schlaegt das fehl (Token/Netz), laeuft der Rest trotzdem weiter.
+  const rewardCfg = config.votes.reward || {};
+  const discordCfg = rewardCfg.discord || {};
+  if (rewardCfg.mode === 'discord' && discordCfg.botToken && discordCfg.applicationId) {
+    registerLinkCommand(discordCfg)
+      .then(() => console.log('[votes] Discord-Befehl /verknuepfen registriert'))
+      .catch((err) => console.error(`[votes] Discord-Befehl nicht registriert: ${err.message}`));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -894,6 +905,26 @@ function rateLimited(ip, limit = 10, windowMs = 60_000) {
   rateBuckets.set(ip, recent);
   if (rateBuckets.size > 10_000) rateBuckets.clear(); // Speicher-Backstop
   return false;
+}
+
+// Unveraenderter Body als Buffer - noetig, wenn eine Signatur ueber die
+// Roh-Bytes geprueft werden muss (Discord-Interactions)
+function readRawBody(req, maxBytes = 65536) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error('Body zu groß'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 function readJsonBody(req, maxBytes = 4096) {
@@ -1367,6 +1398,60 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Discord-Interactions: /verknuepfen-Slash-Befehl ----
+  // Discord ruft diesen Endpunkt direkt auf (Interactions Endpoint URL im
+  // Developer-Portal). Jede Anfrage ist Ed25519-signiert; ungueltige
+  // Signaturen MUESSEN mit 401 beantwortet werden (Discord testet das).
+  if (req.method === 'POST' && pathname === '/api/discord/interactions') {
+    const discordCfg = ((config.votes || {}).reward || {}).discord || {};
+    if (!voteSystem || !discordCfg.publicKey) {
+      sendJson(res, 404, { message: 'Nicht konfiguriert.' });
+      return;
+    }
+    let raw;
+    try {
+      raw = await readRawBody(req);
+    } catch {
+      sendJson(res, 400, { message: 'Ungültige Anfrage.' });
+      return;
+    }
+    const sig = req.headers['x-signature-ed25519'];
+    const ts = req.headers['x-signature-timestamp'];
+    if (!sig || !ts || !verifySignature(discordCfg.publicKey, sig, ts, raw)) {
+      sendJson(res, 401, { message: 'invalid request signature' });
+      return;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(raw.toString('utf8'));
+    } catch {
+      sendJson(res, 400, { message: 'Ungültige Anfrage.' });
+      return;
+    }
+    if (payload.type === 1) { // PING beim Speichern der URL im Portal
+      sendJson(res, 200, { type: 1 });
+      return;
+    }
+    if (payload.type === 2 && payload.data && payload.data.name === 'verknuepfen') {
+      const opt = (payload.data.options || []).find((o) => o.name === 'name');
+      const userId = payload.member?.user?.id || payload.user?.id || '';
+      let result;
+      try {
+        result = voteSystem.linkFromDiscord(opt && opt.value, userId);
+      } catch (err) {
+        result = { ok: false, message: err.message || 'Das hat leider nicht geklappt.' };
+      }
+      if (result.ok) {
+        adminLog('Discord-Link', `per /verknuepfen selbst verknüpft (ID ${userId})`, 'Discord');
+      }
+      // flags 64 = ephemer, nur der Aufrufer sieht die Antwort
+      sendJson(res, 200, { type: 4, data: { content: result.message, flags: 64 } });
+      return;
+    }
+    sendJson(res, 200, { type: 4, data: { content: 'Unbekannter Befehl.', flags: 64 } });
+    return;
+  }
+
   // ---- Vote-Endpunkte (POST) ----
   if (req.method === 'POST' && pathname.startsWith('/api/vote/')) {
     const ip = req.socket.remoteAddress || 'unknown';
@@ -1383,6 +1468,29 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readJsonBody(req);
         const result = await voteSystem.claim(body.name);
+        sendJson(res, result.ok ? 200 : 400, result);
+      } catch {
+        sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+      }
+      return;
+    }
+
+    // Discord-ID nach dem Abholen selbst hinterlegen (fuer die Voter-Rolle)
+    if (pathname === '/api/vote/discord-link') {
+      if (!voteSystem) {
+        sendJson(res, 404, { ok: false, message: 'Vote-System ist nicht aktiviert.' });
+        return;
+      }
+      if (rateLimited(ip)) {
+        sendJson(res, 429, { ok: false, message: 'Zu viele Versuche – bitte kurz warten.' });
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const result = await voteSystem.linkFromWebsite(body.name, body.discordId);
+        if (result.ok) {
+          adminLog('Discord-Link', `„${String(body.name || '').slice(0, 32)}" hat sich auf der Webseite verknüpft`, 'Webseite');
+        }
         sendJson(res, result.ok ? 200 : 400, result);
       } catch {
         sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
