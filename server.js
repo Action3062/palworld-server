@@ -1682,6 +1682,44 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Admin: Discord-Verknuepfung fuer die Voter-Rolle (nur mit Login) ----
+  if (pathname === '/api/admin/discord-links') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    if (!voteSystem) {
+      sendJson(res, 404, { ok: false, message: 'Vote-System ist nicht aktiviert.' });
+      return;
+    }
+    if (req.method === 'GET') {
+      sendJson(res, 200, { ok: true, links: voteSystem.loadLinks() });
+      return;
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = await readJsonBody(req);
+        const name = String(body.name || '').trim().slice(0, 32);
+        const discordId = String(body.discordId || '').trim();
+        const links = voteSystem.setLink(name, discordId);
+        adminLog('Discord-Link', discordId
+          ? `„${name}" mit Discord-ID ${discordId} verknüpft`
+          : `Verknüpfung von „${name}" entfernt`, session.user);
+        sendJson(res, 200, {
+          ok: true,
+          links,
+          message: discordId
+            ? `„${name}" ist jetzt verknüpft.`
+            : `Verknüpfung von „${name}" entfernt.`
+        });
+      } catch (err) {
+        sendJson(res, 400, { ok: false, message: err.message || 'Ungültige Anfrage.' });
+      }
+      return;
+    }
+  }
+
   // ---- Admin: Seiten-Banner setzen (POST, nur mit Login) ----
   if (req.method === 'POST' && pathname === '/api/admin/banner') {
     const session = adminEnabled() && adminSessionFromReq(req);
@@ -1980,7 +2018,10 @@ const server = http.createServer(async (req, res) => {
       enabled: Boolean(voteSystem),
       // voteUrl bleibt fuer alte Clients (gecachtes vote.js) erhalten
       voteUrl: providers.length ? providers[0].voteUrl : '',
-      providers
+      providers,
+      // false = Belohnung kommt ausserhalb des Spiels an (z. B. Discord-
+      // Rolle), der "einloggen"-Schritt entfaellt auf der Webseite
+      requireOnline: !config.votes || config.votes.requireOnline !== false
     });
     return;
   }

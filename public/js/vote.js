@@ -45,6 +45,17 @@
       } else if (info.voteUrl) {
         voteLink.href = info.voteUrl;
       }
+
+      // Belohnung kommt ausserhalb des Spiels an (z. B. Discord-Rolle)?
+      // Dann entfaellt der "einloggen"-Schritt
+      if (info.requireOnline === false) {
+        const step = document.getElementById('voteStepLogin');
+        if (step) step.remove();
+        // Schritt-Nummern wieder lueckenlos machen (1, 2 statt 1, 3)
+        section.querySelectorAll('.vote-steps__num').forEach((el, i) => {
+          el.textContent = String(i + 1);
+        });
+      }
       section.hidden = false;
       if (navLink) navLink.hidden = false;
 

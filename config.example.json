@@ -62,11 +62,17 @@
     ],
     "webhookSecret": "",
     "reward": {
-      "mode": "announce",
-      "rcon": { "host": "127.0.0.1", "port": 25575, "password": "RCON-ADMIN-PASSWORT" },
-      "commands": ["giveitem {steamid} Money 1000"],
-      "announce": "{name} hat fuer den Server gevotet - danke!"
+      "mode": "discord",
+      "discord": {
+        "webhookUrl": "",
+        "botToken": "",
+        "guildId": "",
+        "roleId": "",
+        "message": "🗳️ **{name}** hat auf {list} für PalHeim gevotet – danke! ({count}. Belohnung)"
+      },
+      "successMessage": "",
+      "announce": ""
     },
-    "requireOnline": true
+    "requireOnline": false
   }
 }

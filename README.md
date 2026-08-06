@@ -882,7 +882,53 @@ nach, ohne einen neuen Vote zu verlangen. Außerdem gilt der Claim nur
 **innerhalb von 2 Stunden nach dem Vote** – die Webseite weist die
 Spieler darauf hin.
 
-### Belohnung – zwei Modi
+### Belohnung – drei Modi
+
+**`"mode": "discord"`** – nichts im Spiel (kein Chat-Spam): stattdessen
+eine Meldung in einen Discord-Kanal und/oder eine **Voter-Rolle** per
+Discord-Bot:
+
+```json
+"reward": {
+  "mode": "discord",
+  "discord": {
+    "webhookUrl": "https://discord.com/api/webhooks/…",
+    "botToken": "BOT-TOKEN",
+    "guildId": "DISCORD-SERVER-ID",
+    "roleId": "ROLLEN-ID",
+    "message": "🗳️ **{name}** hat auf {list} für PalHeim gevotet – danke! ({count}. Belohnung)"
+  },
+  "successMessage": "Danke fürs Voten! 🎉 Verknüpfte Spieler bekommen die Voter-Rolle im Discord."
+},
+"requireOnline": false
+```
+
+Beide Teile sind optional: nur `webhookUrl` = nur Kanal-Meldung, nur
+Bot-Daten = nur Rolle. Platzhalter in `message`: `{name}`, `{list}`
+(Serverliste), `{count}` (wievielte Belohnung). `successMessage` ersetzt
+den Danke-Text auf der Webseite. `requireOnline: false` passt hier: die
+Belohnung kommt ja nicht im Spiel an, also muss niemand eingeloggt sein –
+die Webseite blendet den „einloggen“-Schritt dann automatisch aus.
+
+Einrichtung der Voter-Rolle (einmalig):
+
+1. **Bot anlegen**: [discord.com/developers/applications](https://discord.com/developers/applications)
+   → *New Application* → Reiter *Bot* → *Reset Token* → Token kopieren
+   (keine Intents nötig).
+2. **Bot einladen**: Reiter *OAuth2 → URL Generator* → Scope `bot` →
+   Berechtigung **Manage Roles** → erzeugte URL öffnen, euren Server wählen.
+3. **Rolle anlegen** (z. B. „🗳️ Voter“). Wichtig: In den Server-Einstellungen
+   muss die **Bot-Rolle über der Voter-Rolle** stehen, sonst darf er sie
+   nicht vergeben.
+4. **IDs kopieren** (Entwicklermodus in Discord aktivieren): Rechtsklick auf
+   den Server → Server-ID (`guildId`); Rollen-Liste → Rolle → ID kopieren
+   (`roleId`).
+5. **Spieler verknüpfen**: Admin-Interface → „🎖️ Vote-Rolle: Discord
+   verknüpfen“ – In-Game-Name plus Discord-ID des Spielers (Rechtsklick auf
+   den Nutzer → ID kopieren). Die Verknüpfungen liegen in
+   `data/discord-links.json`. Nicht verknüpfte Spieler bekommen die
+   Kanal-Meldung trotzdem; die Rolle kommt beim ersten Claim nach dem
+   Verknüpfen.
 
 **`"mode": "rcon"`** – echte Item-Belohnungen. Voraussetzung: Auf dem
 Palworld-Server läuft ein Mod wie **PalDefender**/**PalGuard** (Vanilla-Palworld
@@ -905,7 +951,9 @@ Die genaue Befehls-Syntax hängt vom Mod ab (PalDefender: `giveitem`,
 
 **`"mode": "announce"`** – funktioniert ohne Mods: nur eine
 Broadcast-Danksagung über die offizielle REST-API; die eigentliche Belohnung
-verteilt ihr manuell oder sie bleibt symbolisch.
+verteilt ihr manuell oder sie bleibt symbolisch. (`announce` funktioniert
+als Zusatz-Zeile übrigens in jedem Modus – leer lassen, wenn im Spiel
+nichts erscheinen soll.)
 
 ## Inhalte anpassen
 

@@ -276,6 +276,47 @@
   });
 
   // ---- Funktionen an-/abschalten ----
+  // ---- Discord-Verknüpfungen für die Voter-Rolle ----
+  const linkForm = $('admLinkForm');
+  if (linkForm) {
+    const renderLinks = (links) => {
+      const out = $('admLinkList');
+      const entries = Object.entries(links || {});
+      if (!entries.length) { out.hidden = true; return; }
+      out.textContent = 'Verknüpft: ' + entries
+        .map(([n, id]) => `${n} → ${id}`)
+        .join(' · ');
+      out.hidden = false;
+    };
+    // Bestehende Verknüpfungen einmalig laden
+    fetch('/api/admin/discord-links')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.ok) renderLinks(d.links); })
+      .catch(() => { /* Anzeige ist optional */ });
+
+    linkForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = $('admLinkName').value.trim();
+      const discordId = $('admLinkId').value.trim();
+      try {
+        const res = await fetch('/api/admin/discord-links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, discordId })
+        });
+        const data = await res.json();
+        setMsg($('admLinkMsg'), data.message || (res.ok ? 'Gespeichert.' : 'Fehler.'), res.ok);
+        if (res.ok) {
+          renderLinks(data.links);
+          $('admLinkName').value = '';
+          $('admLinkId').value = '';
+        }
+      } catch {
+        setMsg($('admLinkMsg'), 'Netzwerkfehler – nicht gespeichert.', false);
+      }
+    });
+  }
+
   const featTeamBox = $('admFeatTeam');
   if (featTeamBox) {
     featTeamBox.addEventListener('change', async () => {

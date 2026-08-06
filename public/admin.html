@@ -170,6 +170,27 @@
               Team-Anzeige auf Spielerprofilen
             </label>
             <p class="vote-message" id="admFeatMsg" role="status" hidden></p>
+
+            <hr class="adm-sep">
+            <h2 class="adm-card-title">🎖️ Vote-Rolle: Discord verknüpfen</h2>
+            <p class="adm-hint">
+              In-Game-Name ↔ Discord-ID, damit die Voter-Rolle automatisch
+              vergeben wird. Discord-ID: Rechtsklick auf den Nutzer →
+              „ID kopieren" (Entwicklermodus nötig). Leere ID entfernt die
+              Verknüpfung.
+            </p>
+            <form class="vote-form" id="admLinkForm">
+              <div class="vote-form__row">
+                <input class="vote-form__input" id="admLinkName" maxlength="32"
+                       placeholder="In-Game-Name" required autocomplete="off">
+                <input class="vote-form__input" id="admLinkId" maxlength="21"
+                       placeholder="Discord-ID" autocomplete="off"
+                       inputmode="numeric" pattern="[0-9]*">
+                <button class="btn btn--ghost" type="submit">Speichern</button>
+              </div>
+            </form>
+            <p class="vote-message" id="admLinkMsg" role="status" hidden></p>
+            <p class="adm-hint" id="admLinkList" hidden></p>
           </div>
         </div>
 
