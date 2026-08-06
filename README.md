@@ -871,13 +871,16 @@ deines Servereintrags:
 }
 ```
 
-Besonderheit dieser API: Der Abruf
+Besonderheiten dieser API: Der Abruf
 (`GET /v1/votes/claim-username?server_token=…&playername=…`) prüft den
-ältesten offenen Vote **und löst ihn dabei direkt bei der Liste ein**
-(Antwort `"claimed": 1`). Das Backend ruft ihn deshalb erst nach dem
-Online-Check auf – und merkt sich einen eingelösten Vote als „pending“,
-falls die Belohnung danach fehlschlägt: der nächste Versuch des Spielers
-holt dann nur die Belohnung nach, ohne einen neuen Vote zu verlangen.
+Vote **und löst ihn dabei direkt bei der Liste ein** (Antwort
+`"claimed": 1`; `2` heißt „schon früher eingelöst“, `0` „kein Vote“).
+Das Backend ruft ihn deshalb erst nach dem Online-Check auf – und merkt
+sich einen eingelösten Vote als „pending“, falls die Belohnung danach
+fehlschlägt: der nächste Versuch des Spielers holt dann nur die Belohnung
+nach, ohne einen neuen Vote zu verlangen. Außerdem gilt der Claim nur
+**innerhalb von 2 Stunden nach dem Vote** – die Webseite weist die
+Spieler darauf hin.
 
 ### Belohnung – zwei Modi
 

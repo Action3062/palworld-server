@@ -1430,6 +1430,13 @@ code {
 }
 .vote-links .btn--accent { align-self: auto; }
 
+.vote-note {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: -8px;
+}
+
 .vote-form__label {
   display: block;
   font-size: 0.8rem;
