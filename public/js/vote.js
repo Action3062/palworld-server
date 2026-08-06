@@ -91,9 +91,10 @@
       const result = await res.json();
       showMessage(result.message || 'Unbekannte Antwort.', Boolean(result.ok));
       // Voter-Rolle möglich, aber noch keine Discord-ID hinterlegt?
+      // (auch bei "heute schon abgeholt" anbieten)
       const discordBox = document.getElementById('voteDiscord');
       if (discordBox) {
-        discordBox.hidden = !(result.ok && result.suggestLink);
+        discordBox.hidden = !result.suggestLink;
       }
     } catch {
       showMessage('Server nicht erreichbar – versuch es gleich nochmal.', false);
