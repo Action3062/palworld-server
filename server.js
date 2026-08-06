@@ -1402,7 +1402,11 @@ const server = http.createServer(async (req, res) => {
       }
       try {
         const body = await readJsonBody(req);
-        const nameField = config.votes.check.nameField || 'username';
+        // nameField der Webhook-Liste (neue providers-Config oder Alt-Config)
+        const webhookCheck =
+          (config.votes.providers || []).map((p) => p.check || {})
+            .find((c) => c.mode === 'webhook') || config.votes.check || {};
+        const nameField = webhookCheck.nameField || 'username';
         const name = body[nameField] ?? body.username ?? body.name ?? body.player;
         voteSystem.registerVote(name);
         sendJson(res, 200, { ok: true });
@@ -1965,11 +1969,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Frontend-Infos zum Vote-System (Link, aktiv ja/nein)
+  // Frontend-Infos zum Vote-System (Listen-Links, aktiv ja/nein)
   if (pathname === '/api/vote/info') {
+    const providers = voteSystem
+      ? voteSystem.providers
+          .filter((p) => p.voteUrl)
+          .map((p) => ({ id: p.id, label: p.label, voteUrl: p.voteUrl }))
+      : [];
     sendJson(res, 200, {
       enabled: Boolean(voteSystem),
-      voteUrl: config.votes ? config.votes.voteUrl : ''
+      // voteUrl bleibt fuer alte Clients (gecachtes vote.js) erhalten
+      voteUrl: providers.length ? providers[0].voteUrl : '',
+      providers
     });
     return;
   }

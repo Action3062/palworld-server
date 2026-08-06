@@ -14,6 +14,7 @@
   const button = document.getElementById('voteClaim');
   const message = document.getElementById('voteMessage');
   const voteLink = document.getElementById('voteLink');
+  const voteLinks = document.getElementById('voteLinks');
 
   function showMessage(text, ok) {
     message.textContent = text;
@@ -29,7 +30,21 @@
       const info = await res.json();
       if (!info.enabled) return;
 
-      if (info.voteUrl) voteLink.href = info.voteUrl;
+      // Ein Vote-Button je Serverliste; Fallback: der statische Einzel-Link
+      if (Array.isArray(info.providers) && info.providers.length && voteLinks) {
+        voteLinks.textContent = '';
+        for (const p of info.providers) {
+          const a = document.createElement('a');
+          a.className = 'btn btn--accent';
+          a.href = p.voteUrl;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = `Jetzt voten (${p.label || 'Serverliste'})`;
+          voteLinks.appendChild(a);
+        }
+      } else if (info.voteUrl) {
+        voteLink.href = info.voteUrl;
+      }
       section.hidden = false;
       if (navLink) navLink.hidden = false;
 

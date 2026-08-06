@@ -813,18 +813,23 @@ wenn ein Lauf wegen `--if-empty` übersprungen wurde):
 */15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
 ```
 
-## Vote-Belohnung (Serverlisten wie palserver.de)
+## Vote-Belohnung (Serverlisten wie palserver.de, top-games.net)
 
-Spieler voten auf der Serverliste und holen sich auf der Webseite eine
+Spieler voten auf einer der Serverlisten und holen sich auf der Webseite eine
 In-Game-Belohnung ab (Sektion „Vote & Belohnung“, erscheint automatisch,
 sobald `votes.enabled: true` gesetzt ist).
 
 **Ablauf:** Spieler votet (mit In-Game-Namen) → loggt sich auf dem Server ein
-→ trägt seinen Namen auf der Webseite ein → Backend prüft Vote + Online-Status
-→ Belohnung wird vergeben. Pro Spieler und Tag nur ein Claim; Claim-Anfragen
-sind pro IP rate-limitiert.
+→ trägt seinen Namen auf der Webseite ein → Backend prüft Online-Status +
+Votes → Belohnung wird vergeben. **Jede Liste zählt einzeln**: pro Liste und
+Tag ein Claim; ein Klick auf „Belohnung abholen“ prüft alle Listen auf einmal.
+Claim-Anfragen sind pro IP rate-limitiert.
 
-### Vote-Prüfung – zwei Modi
+Mehrere Listen stehen als `"providers"`-Liste in der Config (siehe
+`config.example.json`); die alte Einzel-Konfiguration (`voteUrl` + `check`
+direkt im `votes`-Block) funktioniert weiterhin.
+
+### Vote-Prüfung – drei Modi
 
 **`"mode": "list"`** – die Serverliste bietet eine API, die die letzten Votes
 als JSON liefert. Die URL findest du im Dashboard deiner Serverliste
@@ -854,6 +859,25 @@ https://deinedomain.de/api/vote/webhook?secret=DEIN-GEHEIMES-TOKEN
 ```
 
 und in der `config.json` dasselbe Token als `"webhookSecret"` setzen.
+
+**`"mode": "topgames"`** – für top-games.net (und andere Listen des
+Top-Serveurs-Netzwerks). Den Server-Token findest du im top-games-Panel
+deines Servereintrags:
+
+```json
+"check": {
+  "mode": "topgames",
+  "serverToken": "TOKEN-AUS-DEM-TOP-GAMES-PANEL"
+}
+```
+
+Besonderheit dieser API: Der Abruf
+(`GET /v1/votes/claim-username?server_token=…&playername=…`) prüft den
+ältesten offenen Vote **und löst ihn dabei direkt bei der Liste ein**
+(Antwort `"claimed": 1`). Das Backend ruft ihn deshalb erst nach dem
+Online-Check auf – und merkt sich einen eingelösten Vote als „pending“,
+falls die Belohnung danach fehlschlägt: der nächste Versuch des Spielers
+holt dann nur die Belohnung nach, ohne einen neuen Vote zu verlangen.
 
 ### Belohnung – zwei Modi
 

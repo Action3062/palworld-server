@@ -1422,6 +1422,14 @@ code {
 
 .vote-card .btn--accent { align-self: flex-start; }
 
+/* Ein Vote-Button je Serverliste */
+.vote-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.vote-links .btn--accent { align-self: auto; }
+
 .vote-form__label {
   display: block;
   font-size: 0.8rem;
