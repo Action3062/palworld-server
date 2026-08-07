@@ -949,6 +949,10 @@ Einrichtung der Voter-Rolle (einmalig):
    die Kanal-Meldung trotzdem; die Rolle kommt beim ersten Claim nach dem
    Verknüpfen.
 
+Eine fertige Discord-Einbettung, die die Vote-Links und den Ablauf im Server
+erklärt (MEE6-Bot, JSON zum Importieren), liegt in
+**[docs/discord-vote-embed.md](docs/discord-vote-embed.md)**.
+
 **`"mode": "rcon"`** – echte Item-Belohnungen. Voraussetzung: Auf dem
 Palworld-Server läuft ein Mod wie **PalDefender**/**PalGuard** (Vanilla-Palworld
 hat keinen Give-Befehl!) und RCON ist aktiviert
