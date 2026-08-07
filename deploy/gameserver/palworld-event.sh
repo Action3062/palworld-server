@@ -22,12 +22,22 @@
 # Alles idempotent: start bei laufendem Event und stop ohne Event sind stille
 # No-Ops - doppelt feuernde Crons koennen nichts kaputt machen.
 #
+# WICHTIG - der Server schreibt die Ini beim Stoppen selbst neu (mit seinen
+# geladenen Werten) und macht Laufzeit-Patches damit rueckgaengig. Deshalb
+# MUSS einmalig der systemd-Hook installiert werden:
+#   palworld-event.sh install-hook
+# Er ruft vor jedem Server-Start "apply" auf, das den gewuenschten Zustand
+# (Event-Werte bzw. Originalwerte nach Event-Ende) in der Ini erzwingt -
+# NACH dem Rueckschreiben des Servers, VOR dem Einlesen beim Start.
+#
 # Aufrufe:
 #   palworld-event.sh start [--first-weekend-only] [--event NAME|NR]
 #                           [--no-restart] [--dry-run]
 #   palworld-event.sh stop [--restart] [--dry-run]  # --restart = sofort neu starten
 #   palworld-event.sh guard
 #   palworld-event.sh status
+#   palworld-event.sh apply         # nur fuer den systemd-Hook gedacht
+#   palworld-event.sh install-hook  # richtet den ExecStartPre-Hook ein (einmalig)
 #
 # --dry-run zeigt nur, was passieren wuerde (Event, Ini, alte -> neue Werte)
 # und fasst weder Ini noch Server an.
@@ -52,9 +62,11 @@ DISCORD_SERVER_NAME=""
 UPLOAD_URL=""
 UPLOAD_SECRET=""
 
+SERVICE="palworld"                             # systemd-Unit (fuer install-hook)
 EVENT_ENABLED=true
 EVENT_INI=""                                   # leer = automatisch suchen
 EVENT_STATE="/var/lib/palworld/event.json"
+EVENT_RESTORE="/var/lib/palworld/event-restore.json"  # Ruecksetzung wartet auf Neustart
 EVENT_MAX_HOURS=70                             # Fr 18 -> Mo 5 sind 59 h + Puffer
 EVENT_APPLY_GRACE_H=12                         # so lange darf ein gepatchtes
                                                # Event auf seinen Neustart warten
@@ -232,6 +244,13 @@ cmd_start() {
 
   pick_event "$want"
   local ini; ini=$(find_ini)
+  # Haengt noch eine Ruecksetzung vom letzten Event in der Ini? Erst
+  # aufraeumen, sonst wuerden Event-Werte als "Originale" gemerkt.
+  if [ "$DRY_RUN" != "true" ] && [ -f "$EVENT_RESTORE" ]; then
+    log "Wende ausstehende Ruecksetzung an, bevor das neue Event startet."
+    apply_values "$EVENT_RESTORE" old
+    rm -f "$EVENT_RESTORE"
+  fi
   [ "$DRY_RUN" = "true" ] || log "Starte ${EV_NAME}: ${EV_CHANGES} (Ini: ${ini})"
 
   # Aenderungen berechnen (Originalwerte VOR dem Patchen einsammeln)
@@ -337,6 +356,10 @@ cmd_stop() {
   for n in $(jq -c '.changes[]' "$EVENT_STATE"); do
     ini_set "$ini" "$(jq -r .key <<< "$n")" "$(jq -r .old <<< "$n")"
   done
+  # Der Server schreibt die Ini beim Stoppen mit den GELADENEN (Event-)
+  # Werten neu - die Ruecksetzung merken, damit der apply-Hook sie
+  # unmittelbar vor dem naechsten Start erneut erzwingt.
+  jq -c '{name:.name, ini:.ini, changes:.changes}' "$EVENT_STATE" > "$EVENT_RESTORE"
   rm -f "$EVENT_STATE" "${ini}.pre-event"
   banner false
   flock -u 9   # vor dem Neustart freigeben (siehe cmd_start)
@@ -350,6 +373,57 @@ cmd_stop() {
       "$DC_ORANGE" || true
   fi
   log "${name} beendet."
+}
+
+# Werte aus einer Zustandsdatei in die Ini schreiben (FIELD: new|old).
+# Bewusst tolerant: eine kaputte Zeile darf weder den Hook noch den
+# Serverstart reissen - Probleme landen im Log.
+apply_values() {  # apply_values ZUSTANDSDATEI FELD
+  local file="$1" field="$2" ini n key val
+  ini=$(jq -r .ini "$file" 2>/dev/null || true)
+  [ -n "$ini" ] && [ -f "$ini" ] || { log "apply-WARNUNG: Ini aus ${file} fehlt (${ini:-?})."; return 0; }
+  for n in $(jq -c '.changes[]' "$file" 2>/dev/null || true); do
+    key=$(jq -r .key <<< "$n"); val=$(jq -r ".${field}" <<< "$n")
+    [ -n "$key" ] && [ -n "$val" ] || continue
+    [ "$(ini_get "$ini" "$key")" = "$val" ] && continue
+    if ini_set "$ini" "$key" "$val" 2>/dev/null; then
+      log "apply: ${key}=${val}"
+    else
+      log "apply-WARNUNG: ${key} liess sich nicht auf ${val} setzen."
+    fi
+  done
+}
+
+# Laeuft als systemd-ExecStartPre unmittelbar vor JEDEM Server-Start:
+# Der Server hat die Ini beim Stoppen mit seinen geladenen Werten neu
+# geschrieben - hier wird der gewuenschte Zustand wieder erzwungen.
+# Darf den Serverstart niemals verhindern -> endet immer mit 0.
+cmd_apply() {
+  set +e
+  if [ -f "$EVENT_STATE" ]; then
+    apply_values "$EVENT_STATE" new
+  elif [ -f "$EVENT_RESTORE" ]; then
+    apply_values "$EVENT_RESTORE" old
+    rm -f "$EVENT_RESTORE"
+    log "apply: ausstehende Ruecksetzung angewendet."
+  fi
+  exit 0
+}
+
+# Richtet den ExecStartPre-Hook als systemd-Drop-in ein (einmalig, idempotent).
+cmd_install_hook() {
+  local dir="/etc/systemd/system/${SERVICE}.service.d"
+  mkdir -p "$dir"
+  cat > "${dir}/palworld-event.conf" <<EOF
+# Von palworld-event.sh install-hook erzeugt - nicht von Hand pflegen.
+# Der Palworld-Server schreibt die PalWorldSettings.ini beim Stoppen mit
+# seinen geladenen Werten neu und macht Laufzeit-Patches rueckgaengig.
+# Dieser Hook erzwingt den Event-Zustand unmittelbar vor jedem Start.
+[Service]
+ExecStartPre=-+${SCRIPT_DIR}/palworld-event.sh apply
+EOF
+  systemctl daemon-reload
+  log "systemd-Hook installiert: ${dir}/palworld-event.conf (Unit: ${SERVICE}.service)"
 }
 
 cmd_guard() {
@@ -398,8 +472,15 @@ cmd_status() {
       && echo "Sicherheitskopie der Ini vor dem Event: ${ini}.pre-event"
   else
     echo "Kein Event aktiv."
+    [ -f "$EVENT_RESTORE" ] \
+      && echo "Ruecksetzung wartet auf den naechsten Neustart ($(jq -r .name "$EVENT_RESTORE" 2>/dev/null || echo '?'))."
     pick_event
     echo "Naechstes Event laut Rotation (KW $(today_week)): ${EV_NAME}"
+  fi
+  local hook="/etc/systemd/system/${SERVICE}.service.d/palworld-event.conf"
+  if [ ! -f "$hook" ]; then
+    echo "WARNUNG: systemd-Hook fehlt - Event-Werte ueberleben den Neustart nicht!"
+    echo "         Einmalig einrichten: $0 install-hook"
   fi
 }
 
@@ -408,6 +489,8 @@ case "${1:-}" in
   stop)   shift; cmd_stop "$@" ;;
   guard)  cmd_guard ;;
   status) cmd_status ;;
-  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] [--dry-run] | stop [--restart] [--dry-run] | guard | status" >&2
+  apply)  cmd_apply ;;
+  install-hook) cmd_install_hook ;;
+  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] [--dry-run] | stop [--restart] [--dry-run] | guard | status | apply | install-hook" >&2
      exit 2 ;;
 esac

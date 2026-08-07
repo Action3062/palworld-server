@@ -721,11 +721,27 @@ verschiebt die Rotation (kalibriert: KW 32/2026 = Supply). Änderungen
 sind als **Faktoren** definiert (`KEY*2`) und skalieren damit auf beiden
 Servern richtig; Festwerte gehen mit `KEY=10`.
 
+**Einmalig pro Server nötig – der systemd-Hook:**
+
+```bash
+/etc/palworld/palworld-event.sh install-hook
+```
+
+Hintergrund: Der Palworld-Server **schreibt die PalWorldSettings.ini beim
+Stoppen selbst neu** (mit den Werten, die er geladen hatte) und macht damit
+jeden Patch rückgängig, der während der Laufzeit gesetzt wurde. Der Hook
+(`ExecStartPre` als Drop-in an der `palworld.service`) ruft vor **jedem**
+Server-Start `palworld-event.sh apply` auf und erzwingt so den gewünschten
+Zustand – Event-Werte während des Events, Originalwerte nach dessen Ende –
+genau zwischen dem Rückschreiben des Servers und dem Einlesen beim Start.
+`status` warnt, wenn der Hook fehlt.
+
 Ablauf – **ohne zusätzlichen Neustart**, beide Schritte hängen sich an die
 regulären Wartungs-Neustarts: Freitag 17:50 patcht `start --no-restart` nur
-die Ini, der 17:55-Neustart trägt die Werte mit seiner üblichen Vorwarnung
-ein. Montag 04:45 setzt `stop` zurück, der 04:55-Neustart macht die Raten
-wieder normal (Server 2: Stopp-Cron auf `45 5`). Discord-Embed und
+die Ini, der 17:55-Neustart trägt die Werte (per Hook) mit seiner üblichen
+Vorwarnung ein. Montag 04:45 setzt `stop` zurück und merkt die Rücksetzung
+in `event-restore.json` vor, der 04:55-Neustart macht die Raten wieder
+normal (Server 2: Stopp-Cron auf `45 5`). Discord-Embed und
 Website-Banner (Endpunkt `/api/banner/event`, Auth per `UPLOAD_SECRET`)
 gehen beim Patchen automatisch raus. Der tägliche `guard`-Lauf setzt
 hängengebliebene Events zurück **und** meldet, wenn ein gepatchtes Event
