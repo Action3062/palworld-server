@@ -192,7 +192,11 @@ step "6/6 – Spielstand suchen"
 # Steht der Pfad schon in der Conf, ist die Suche ueberfluessig.
 SAV_GLOB=""
 if [ -f "${TOOLS_DIR}/palworld-scripts.conf" ]; then
-  CONF_GLOB="$(sed -n 's/^SAV_GLOB="\([^"]*\)".*/\1/p' "${TOOLS_DIR}/palworld-scripts.conf" | head -n1)"
+  # In einer Subshell einlesen statt die Zeile nur auszuschneiden: Werte wie
+  # SAV_GLOB="${SAVED_DIR}/SaveGames/..." muessen aufgeloest sein, sonst stehen
+  # in den Hinweisen am Ende Befehle mit literalem ${SAVED_DIR} drin.
+  CONF_GLOB="$( . "${TOOLS_DIR}/palworld-scripts.conf" >/dev/null 2>&1; printf '%s' "${SAV_GLOB:-}" )" || CONF_GLOB=""
+  [ -n "$CONF_GLOB" ] || CONF_GLOB="$(sed -n 's/^SAV_GLOB="\([^"]*\)".*/\1/p' "${TOOLS_DIR}/palworld-scripts.conf" | head -n1)"
   case "$CONF_GLOB" in
     ''|*CHANGE_ME*|*pfad/zu*) ;;
     *) SAV_GLOB="$CONF_GLOB"; c_green "Aus der Conf uebernommen: ${SAV_GLOB}" ;;
