@@ -30,6 +30,11 @@
 #   bash install-paltools.sh                 # Standard-Server (erster in der config)
 #   bash install-paltools.sh classic         # Server-ID der Webseite (Mehrserver)
 #
+# Privates Repo: raw.githubusercontent.com verlangt dann einen Token
+# (Fine-grained PAT, nur dieses Repo, Contents: Read-only). Das Skript nimmt
+# ihn aus $GITHUB_TOKEN oder aus /etc/palworld/github-token (chmod 600) und
+# merkt ihn sich dort fuer die naechsten Laeufe. Einzeiler siehe README.
+#
 # Warum ein eigenes venv?  Seit Debian 12 ist das System-Python geschützt
 # (PEP 668), pip-Installationen landen deshalb in /opt/paltools.
 # Warum die MRHRTZ-Forks?  Seit Palworld 0.6 sind Spielstände Oodle-komprimiert
@@ -44,6 +49,15 @@ BRANCH="${BRANCH:-claude/palworld-server-website-j2gox0}"
 RAW_BASE="https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/${BRANCH}"
 RAW="${RAW_BASE}/tools"                  # Python-Werkzeuge
 RAW_SRV="${RAW_BASE}/deploy/gameserver"  # Wartungs-Skripte
+
+# Privates Repo: Token aus Umgebung oder Datei; ohne Token laeuft alles wie
+# bisher (oeffentliches Repo). tr entfernt Zeilenumbrueche aus der Datei.
+TOKEN_FILE="${TOKEN_FILE:-/etc/palworld/github-token}"
+if [ -z "${GITHUB_TOKEN:-}" ] && [ -f "$TOKEN_FILE" ]; then
+  GITHUB_TOKEN="$(tr -d ' \t\r\n' < "$TOKEN_FILE")"
+fi
+CURL_AUTH=()
+[ -n "${GITHUB_TOKEN:-}" ] && CURL_AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 c_red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 c_green()  { printf '\033[32m%s\033[0m\n' "$*"; }
 c_yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
@@ -107,7 +121,8 @@ step "4/6 – Werkzeuge holen (${TOOLS_DIR})"
 # ----------------------------------------------------------------------------
 fetch() {  # fetch <ziel> <url> - erst nach Temp, dann verschieben
   local tmp; tmp="$(mktemp)"
-  if curl -fsSLo "$tmp" "$2" && [ -s "$tmp" ]; then
+  # ${CURL_AUTH[@]+...}: leeres Array wuerde unter set -u aeltere Bashs reissen
+  if curl -fsSLo "$tmp" ${CURL_AUTH[@]+"${CURL_AUTH[@]}"} "$2" && [ -s "$tmp" ]; then
     mv "$tmp" "$1"
     chmod 644 "$1"          # mktemp legt 600 an; Rechte danach explizit setzen
     echo "  $(basename "$1")"
@@ -116,10 +131,21 @@ fetch() {  # fetch <ziel> <url> - erst nach Temp, dann verschieben
     c_red "  $(basename "$1") konnte nicht geladen werden."
     c_red "  URL: $2"
     c_red "  (Branch falsch? Dann mit BRANCH=<branch> bash install-paltools.sh starten.)"
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      c_red "  (Repo privat: Token abgelaufen oder ohne Leserecht auf dieses Repo?)"
+    else
+      c_red "  (Repo privat? Dann Token nach ${TOKEN_FILE} legen - siehe README.)"
+    fi
     exit 1
   fi
 }
 mkdir -p "$TOOLS_DIR"; chmod 750 "$TOOLS_DIR"
+# Token merken, damit der naechste Lauf ihn aus der Datei nehmen kann
+if [ -n "${GITHUB_TOKEN:-}" ] && [ ! -f "$TOKEN_FILE" ]; then
+  mkdir -p "$(dirname "$TOKEN_FILE")"
+  ( umask 077; printf '%s\n' "$GITHUB_TOKEN" > "$TOKEN_FILE" )
+  c_green "  Token gespeichert: ${TOKEN_FILE} (nur root lesbar)"
+fi
 for script in upload-bases.py upload-rankings.py base-report.py discord-status.py; do
   fetch "${TOOLS_DIR}/${script}" "${RAW}/${script}"
 done

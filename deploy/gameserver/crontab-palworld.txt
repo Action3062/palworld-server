@@ -51,6 +51,9 @@ MAILTO=""
 40   *      * * * /etc/palworld/palworld-upload.sh rankings >> /var/log/palworld-upload.log 2>&1
 
 # Event-Wochenende (JEDES Wochenende, Rotation nach Kalenderwoche).
+# VORAUSSETZUNG (einmalig): /etc/palworld/palworld-event.sh install-hook
+#   - der Server schreibt die Ini beim Stoppen selbst neu, der Hook erzwingt
+#   die Event-Werte deshalb unmittelbar vor jedem Start.
 # Beide Schritte haengen sich an die regulaeren Wartungs-Neustarts, es gibt
 # also KEINEN zusaetzlichen Neustart:
 #   Fr 17:50  patcht nur die Ini  -> der 17:55-Neustart traegt die Werte ein

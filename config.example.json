@@ -36,22 +36,45 @@
 
   "votes": {
     "enabled": false,
-    "voteUrl": "https://palserver.de/server/palheim-251",
-    "check": {
-      "mode": "list",
-      "url": "HIER-DIE-VOTE-API-URL-AUS-DEM-SERVERLISTEN-DASHBOARD",
-      "apiKey": "",
-      "nameField": "username",
-      "timeField": "",
-      "maxAgeHours": 24
-    },
+    "providers": [
+      {
+        "id": "palserver",
+        "label": "palserver.de",
+        "voteUrl": "https://palserver.de/server/palheim-251",
+        "check": {
+          "mode": "list",
+          "url": "HIER-DIE-VOTE-API-URL-AUS-DEM-SERVERLISTEN-DASHBOARD",
+          "apiKey": "",
+          "nameField": "username",
+          "timeField": "",
+          "maxAgeHours": 24
+        }
+      },
+      {
+        "id": "topgames",
+        "label": "top-games.net",
+        "voteUrl": "https://de.top-games.net/palworld/HIER-DER-EINTRAG",
+        "check": {
+          "mode": "topgames",
+          "serverToken": "HIER-DER-SERVER-TOKEN-AUS-DEM-TOP-GAMES-PANEL"
+        }
+      }
+    ],
     "webhookSecret": "",
     "reward": {
-      "mode": "announce",
-      "rcon": { "host": "127.0.0.1", "port": 25575, "password": "RCON-ADMIN-PASSWORT" },
-      "commands": ["giveitem {steamid} Money 1000"],
-      "announce": "{name} hat fuer den Server gevotet - danke!"
+      "mode": "discord",
+      "discord": {
+        "webhookUrl": "",
+        "botToken": "",
+        "applicationId": "",
+        "publicKey": "",
+        "guildId": "",
+        "roleId": "",
+        "message": "🗳️ **{name}** hat auf {list} für PalHeim gevotet – danke! ({count}. Belohnung)"
+      },
+      "successMessage": "",
+      "announce": ""
     },
-    "requireOnline": true
+    "requireOnline": false
   }
 }

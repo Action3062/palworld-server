@@ -528,19 +528,23 @@
         <span class="section__label">Unterstütze uns</span>
         <h2 class="section__title">Vote &amp; Belohnung</h2>
         <p class="section__intro">
-          Vote einmal am Tag für PalHeim auf der Serverliste und hol dir dafür
-          eine Belohnung im Spiel ab – so einfach geht's:
+          Vote einmal am Tag für PalHeim auf unseren Serverlisten und hol dir
+          dafür eine Belohnung im Spiel ab – jede Liste zählt einzeln:
         </p>
 
         <div class="vote-card reveal">
           <ol class="vote-steps">
-            <li><span class="vote-steps__num">1</span><span>Auf der Serverliste für uns voten – dabei deinen <strong>In-Game-Namen</strong> angeben</span></li>
-            <li><span class="vote-steps__num">2</span><span>Auf dem Server <strong>einloggen</strong></span></li>
+            <li><span class="vote-steps__num">1</span><span>Auf einer Serverliste für uns voten (gern auf allen!) – dabei deinen <strong>In-Game-Namen</strong> angeben</span></li>
+            <li id="voteStepLogin"><span class="vote-steps__num">2</span><span>Auf dem Server <strong>einloggen</strong></span></li>
             <li><span class="vote-steps__num">3</span><span>Hier deinen Namen eintragen und die Belohnung abholen</span></li>
           </ol>
+          <p class="vote-note">💡 Am besten direkt nach dem Voten abholen –
+            auf top-games.net verfällt ein Vote nach 2 Stunden.</p>
 
-          <a id="voteLink" class="btn btn--accent" href="https://palserver.de/server/palheim-251"
-             target="_blank" rel="noopener">Jetzt voten (palserver.de)</a>
+          <div class="vote-links" id="voteLinks">
+            <a id="voteLink" class="btn btn--accent" href="https://palserver.de/server/palheim-251"
+               target="_blank" rel="noopener">Jetzt voten (palserver.de)</a>
+          </div>
 
           <form class="vote-form" id="voteForm">
             <label class="vote-form__label" for="voteName">Dein In-Game-Name</label>
@@ -553,6 +557,23 @@
           </form>
 
           <p class="vote-message" id="voteMessage" role="status" hidden></p>
+
+          <!-- Erscheint nach dem Abholen, wenn noch keine Discord-ID hinterlegt ist -->
+          <div class="vote-discord" id="voteDiscord" hidden>
+            <p class="vote-discord__text">
+              🎖️ Hol dir die <strong>Voter-Rolle</strong> im Discord: Tippe dort
+              einmal <code>/verknuepfen</code> – oder trag hier deine Discord-ID
+              ein (Rechtsklick auf deinen Namen in Discord → „ID kopieren",
+              Entwicklermodus muss aktiv sein).
+            </p>
+            <form class="vote-form__row" id="voteDiscordForm">
+              <input class="vote-form__input" id="voteDiscordId" maxlength="21"
+                     inputmode="numeric" pattern="[0-9]*" required
+                     autocomplete="off" placeholder="Deine Discord-ID">
+              <button class="btn btn--ghost" type="submit">Verknüpfen</button>
+            </form>
+            <p class="vote-message" id="voteDiscordMsg" role="status" hidden></p>
+          </div>
         </div>
       </div>
     </section>

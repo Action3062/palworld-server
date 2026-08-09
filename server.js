@@ -275,7 +275,7 @@ function buildServers() {
         (i === 0 ? ((config.map && config.map.uploadSecret) || '') : ''),
       // Laufzeit-Zustand (pro Server)
       statusCache: { data: null, fetchedAt: 0 },
-      stats: { samples: [], peak: null, players: {}, inGameDays: null },
+      stats: { samples: [], peak: null, players: {}, inGameDays: null, since: null },
       statsDirty: false,
       lastStatsSave: 0,
       prevOnline: new Set(),
@@ -463,6 +463,24 @@ function loadStats(srv) {
     if (raw.peak && typeof raw.peak.count === 'number') srv.stats.peak = raw.peak;
     if (raw.players && typeof raw.players === 'object') srv.stats.players = raw.players;
     if (typeof raw.inGameDays === 'number') srv.stats.inGameDays = raw.inGameDays;
+    if (typeof raw.since === 'number') srv.stats.since = raw.since;
+    // Migration: "since" (Geburtsdatum des Servers, fuer den Erfolg
+    // "Gruendungsmitglied") aus dem aeltesten bekannten Spieler ableiten -
+    // die Messpunkte taugen nicht, sie sind nur ein 7-Tage-Fenster
+    if (!srv.stats.since) {
+      let oldest = Infinity;
+      for (const rec of Object.values(srv.stats.players)) {
+        const t = Date.parse(rec.firstSeen || '');
+        if (!Number.isNaN(t)) oldest = Math.min(oldest, t / 1000);
+      }
+      if (oldest === Infinity && srv.stats.samples.length > 0) {
+        oldest = srv.stats.samples[0][0];
+      }
+      if (oldest !== Infinity) {
+        srv.stats.since = Math.floor(oldest);
+        srv.statsDirty = true;
+      }
+    }
     console.log(`[stats:${srv.id}] ${srv.stats.samples.length} Messpunkte, ` +
       `${Object.keys(srv.stats.players).length} Spieler geladen`);
   } catch {
@@ -517,6 +535,11 @@ async function pollStats(srv) {
     count = metrics.currentplayernum ?? 0;
     fps = typeof metrics.serverfps === 'number' ? metrics.serverfps : null;
     if (typeof metrics.days === 'number') stats.inGameDays = metrics.days;
+    // Geburtsdatum des Servers beim allerersten erfolgreichen Poll festhalten
+    if (!stats.since) {
+      stats.since = Math.floor(Date.now() / 1000);
+      srv.statsDirty = true;
+    }
 
     if (count > 0) {
       const data = await palworldGet(srv, '/v1/api/players');
@@ -604,7 +627,9 @@ function achievementContext(srv, name) {
     // erst nach dem vollständigen Laden des Moduls (async/Intervall).
     // Votes zählen community-weit (eine Serverliste), daher serverunabhängig.
     voteCount: voteSystem ? voteSystem.getVoteCount(name) : 0,
-    firstSampleT: srv.stats.samples.length > 0 ? srv.stats.samples[0][0] : null,
+    // Geburtsdatum des Servers (persistent) - NICHT samples[0], das ist
+    // nur ein rollierendes 7-Tage-Fenster und wandert mit
+    serverSinceT: srv.stats.since || null,
     peakPlayers: (srv.stats.peak && srv.stats.peak.players) || []
   };
 }
@@ -727,6 +752,7 @@ if (config.statsEnabled) {
 // ---------------------------------------------------------------------------
 
 const { VoteSystem } = require('./lib/votes');
+const { verifySignature, registerLinkCommand } = require('./lib/discord');
 
 let voteSystem = null;
 if (config.votes && config.votes.enabled) {
@@ -738,6 +764,16 @@ if (config.votes && config.votes.enabled) {
     palworldPost: (endpoint, body) => palworldPost(DEFAULT_SERVER, endpoint, body)
   });
   console.log('[votes] Vote-Belohnungssystem aktiv');
+
+  // Slash-Befehl /verknuepfen bei Discord registrieren (idempotent).
+  // Schlaegt das fehl (Token/Netz), laeuft der Rest trotzdem weiter.
+  const rewardCfg = config.votes.reward || {};
+  const discordCfg = rewardCfg.discord || {};
+  if (rewardCfg.mode === 'discord' && discordCfg.botToken && discordCfg.applicationId) {
+    registerLinkCommand(discordCfg)
+      .then(() => console.log('[votes] Discord-Befehl /verknuepfen registriert'))
+      .catch((err) => console.error(`[votes] Discord-Befehl nicht registriert: ${err.message}`));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -894,6 +930,26 @@ function rateLimited(ip, limit = 10, windowMs = 60_000) {
   rateBuckets.set(ip, recent);
   if (rateBuckets.size > 10_000) rateBuckets.clear(); // Speicher-Backstop
   return false;
+}
+
+// Unveraenderter Body als Buffer - noetig, wenn eine Signatur ueber die
+// Roh-Bytes geprueft werden muss (Discord-Interactions)
+function readRawBody(req, maxBytes = 65536) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error('Body zu groß'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 function readJsonBody(req, maxBytes = 4096) {
@@ -1367,6 +1423,60 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Discord-Interactions: /verknuepfen-Slash-Befehl ----
+  // Discord ruft diesen Endpunkt direkt auf (Interactions Endpoint URL im
+  // Developer-Portal). Jede Anfrage ist Ed25519-signiert; ungueltige
+  // Signaturen MUESSEN mit 401 beantwortet werden (Discord testet das).
+  if (req.method === 'POST' && pathname === '/api/discord/interactions') {
+    const discordCfg = ((config.votes || {}).reward || {}).discord || {};
+    if (!voteSystem || !discordCfg.publicKey) {
+      sendJson(res, 404, { message: 'Nicht konfiguriert.' });
+      return;
+    }
+    let raw;
+    try {
+      raw = await readRawBody(req);
+    } catch {
+      sendJson(res, 400, { message: 'Ungültige Anfrage.' });
+      return;
+    }
+    const sig = req.headers['x-signature-ed25519'];
+    const ts = req.headers['x-signature-timestamp'];
+    if (!sig || !ts || !verifySignature(discordCfg.publicKey, sig, ts, raw)) {
+      sendJson(res, 401, { message: 'invalid request signature' });
+      return;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(raw.toString('utf8'));
+    } catch {
+      sendJson(res, 400, { message: 'Ungültige Anfrage.' });
+      return;
+    }
+    if (payload.type === 1) { // PING beim Speichern der URL im Portal
+      sendJson(res, 200, { type: 1 });
+      return;
+    }
+    if (payload.type === 2 && payload.data && payload.data.name === 'verknuepfen') {
+      const opt = (payload.data.options || []).find((o) => o.name === 'name');
+      const userId = payload.member?.user?.id || payload.user?.id || '';
+      let result;
+      try {
+        result = voteSystem.linkFromDiscord(opt && opt.value, userId);
+      } catch (err) {
+        result = { ok: false, message: err.message || 'Das hat leider nicht geklappt.' };
+      }
+      if (result.ok) {
+        adminLog('Discord-Link', `per /verknuepfen selbst verknüpft (ID ${userId})`, 'Discord');
+      }
+      // flags 64 = ephemer, nur der Aufrufer sieht die Antwort
+      sendJson(res, 200, { type: 4, data: { content: result.message, flags: 64 } });
+      return;
+    }
+    sendJson(res, 200, { type: 4, data: { content: 'Unbekannter Befehl.', flags: 64 } });
+    return;
+  }
+
   // ---- Vote-Endpunkte (POST) ----
   if (req.method === 'POST' && pathname.startsWith('/api/vote/')) {
     const ip = req.socket.remoteAddress || 'unknown';
@@ -1390,6 +1500,29 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Discord-ID nach dem Abholen selbst hinterlegen (fuer die Voter-Rolle)
+    if (pathname === '/api/vote/discord-link') {
+      if (!voteSystem) {
+        sendJson(res, 404, { ok: false, message: 'Vote-System ist nicht aktiviert.' });
+        return;
+      }
+      if (rateLimited(ip)) {
+        sendJson(res, 429, { ok: false, message: 'Zu viele Versuche – bitte kurz warten.' });
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const result = await voteSystem.linkFromWebsite(body.name, body.discordId);
+        if (result.ok) {
+          adminLog('Discord-Link', `„${String(body.name || '').slice(0, 32)}" hat sich auf der Webseite verknüpft`, 'Webseite');
+        }
+        sendJson(res, result.ok ? 200 : 400, result);
+      } catch {
+        sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
+      }
+      return;
+    }
+
     if (pathname === '/api/vote/webhook') {
       if (!voteSystem || !config.votes.webhookSecret) {
         res.writeHead(404).end();
@@ -1402,7 +1535,11 @@ const server = http.createServer(async (req, res) => {
       }
       try {
         const body = await readJsonBody(req);
-        const nameField = config.votes.check.nameField || 'username';
+        // nameField der Webhook-Liste (neue providers-Config oder Alt-Config)
+        const webhookCheck =
+          (config.votes.providers || []).map((p) => p.check || {})
+            .find((c) => c.mode === 'webhook') || config.votes.check || {};
+        const nameField = webhookCheck.nameField || 'username';
         const name = body[nameField] ?? body.username ?? body.name ?? body.player;
         voteSystem.registerVote(name);
         sendJson(res, 200, { ok: true });
@@ -1676,6 +1813,44 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { ok: false, message: 'Ungültige Anfrage.' });
     }
     return;
+  }
+
+  // ---- Admin: Discord-Verknuepfung fuer die Voter-Rolle (nur mit Login) ----
+  if (pathname === '/api/admin/discord-links') {
+    const session = adminEnabled() && adminSessionFromReq(req);
+    if (!session) {
+      sendJson(res, 401, { ok: false, message: 'Nicht angemeldet.' });
+      return;
+    }
+    if (!voteSystem) {
+      sendJson(res, 404, { ok: false, message: 'Vote-System ist nicht aktiviert.' });
+      return;
+    }
+    if (req.method === 'GET') {
+      sendJson(res, 200, { ok: true, links: voteSystem.loadLinks() });
+      return;
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = await readJsonBody(req);
+        const name = String(body.name || '').trim().slice(0, 32);
+        const discordId = String(body.discordId || '').trim();
+        const links = voteSystem.setLink(name, discordId);
+        adminLog('Discord-Link', discordId
+          ? `„${name}" mit Discord-ID ${discordId} verknüpft`
+          : `Verknüpfung von „${name}" entfernt`, session.user);
+        sendJson(res, 200, {
+          ok: true,
+          links,
+          message: discordId
+            ? `„${name}" ist jetzt verknüpft.`
+            : `Verknüpfung von „${name}" entfernt.`
+        });
+      } catch (err) {
+        sendJson(res, 400, { ok: false, message: err.message || 'Ungültige Anfrage.' });
+      }
+      return;
+    }
   }
 
   // ---- Admin: Seiten-Banner setzen (POST, nur mit Login) ----
@@ -1965,11 +2140,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Frontend-Infos zum Vote-System (Link, aktiv ja/nein)
+  // Frontend-Infos zum Vote-System (Listen-Links, aktiv ja/nein)
   if (pathname === '/api/vote/info') {
+    const providers = voteSystem
+      ? voteSystem.providers
+          .filter((p) => p.voteUrl)
+          .map((p) => ({ id: p.id, label: p.label, voteUrl: p.voteUrl }))
+      : [];
     sendJson(res, 200, {
       enabled: Boolean(voteSystem),
-      voteUrl: config.votes ? config.votes.voteUrl : ''
+      // voteUrl bleibt fuer alte Clients (gecachtes vote.js) erhalten
+      voteUrl: providers.length ? providers[0].voteUrl : '',
+      providers,
+      // false = Belohnung kommt ausserhalb des Spiels an (z. B. Discord-
+      // Rolle), der "einloggen"-Schritt entfaellt auf der Webseite
+      requireOnline: !config.votes || config.votes.requireOnline !== false
     });
     return;
   }

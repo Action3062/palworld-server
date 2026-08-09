@@ -116,6 +116,98 @@ code {
 
 .btn--large { padding: 16px 34px; font-size: 1.1rem; }
 
+/* ---------------- Event-Popup (einmalig bei Event-Bannern) ---------------- */
+
+.event-pop__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(9, 28, 46, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: evFade 0.25s ease;
+}
+@keyframes evFade { from { opacity: 0; } }
+.event-pop {
+  position: relative;
+  background: var(--surface);
+  border-radius: 22px;
+  max-width: 430px;
+  width: 100%;
+  padding: 30px 28px 26px;
+  text-align: center;
+  box-shadow: 0 24px 70px rgba(9, 28, 46, 0.45);
+  border-top: 6px solid var(--green, #2e7d35);
+  animation: evPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes evPop { from { transform: scale(0.85) translateY(14px); opacity: 0; } }
+.event-pop__deco { position: absolute; font-size: 1.6rem; pointer-events: none; }
+.event-pop__deco--l { top: 14px; left: 16px; transform: rotate(-15deg); }
+.event-pop__deco--r { top: 14px; right: 46px; transform: rotate(15deg); }
+.event-pop__close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  padding: 6px;
+}
+.event-pop__emoji {
+  font-size: 52px;
+  line-height: 1;
+  display: inline-block;
+  animation: evBounce 1.6s ease infinite;
+}
+@keyframes evBounce {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-9px) rotate(-6deg); }
+  60% { transform: translateY(-4px) rotate(5deg); }
+}
+.event-pop__title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.55rem;
+  color: var(--text);
+  margin-top: 8px;
+}
+.event-pop__title em { font-style: normal; color: #2e7d35; }
+.event-pop__text {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1rem;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+.event-pop__sub { color: var(--text-muted); font-size: 0.85rem; font-weight: 700; margin-top: 8px; }
+.event-pop__btn {
+  margin-top: 18px;
+  display: inline-block;
+  background: linear-gradient(180deg, #ffb454, #f98a1b);
+  color: #0f334f;
+  font-weight: 800;
+  font-size: 1rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 30px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #b3610b, 0 6px 16px rgba(0, 0, 0, 0.25);
+  font-family: var(--font-body);
+}
+.event-pop__btn:hover { filter: brightness(1.05); }
+@media (max-width: 480px) {
+  .event-pop { padding: 24px 18px 20px; }
+  .event-pop__title { font-size: 1.3rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .event-pop__backdrop, .event-pop, .event-pop__emoji { animation: none; }
+}
+
 /* ---------------- Hinweis-Banner (Wartung/Events) ---------------- */
 
 .site-banner {
@@ -1329,6 +1421,44 @@ code {
 }
 
 .vote-card .btn--accent { align-self: flex-start; }
+
+/* Ein Vote-Button je Serverliste */
+.vote-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.vote-links .btn--accent { align-self: auto; }
+
+.vote-note {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: -8px;
+}
+
+/* Discord-ID nachreichen (Voter-Rolle) – erscheint nach dem Abholen */
+.vote-discord {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vote-discord__text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.vote-discord__text code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-weight: 700;
+  color: var(--text);
+}
 
 .vote-form__label {
   display: block;

@@ -10,22 +10,33 @@ Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 ## Features
 
 - ⚡ **Live-Status**: Online/Offline, Spielerzahl, Version, Uptime – automatisch alle 30 s aktualisiert
+- 🖥️ **Mehrserver-Betrieb**: mehrere Spielserver mit Server-Karten und
+  Umschalt-Tabs auf Status, Statistiken, Karte, Profilen und Admin-Seite
 - 👥 **Spielerliste**: zeigt, wer gerade online ist (abschaltbar per Config)
 - 📊 **Statistiken**: Verlauf von Spielerzahl **und Server-FPS** (24 h / 7 Tage)
   als interaktives Chart, Peak heute & Rekord, Spieler gesamt, Gesamtspielzeit,
-  In-Game-Tage und Ranglisten in sechs Kategorien (Spielzeit, Paldeck,
-  💀 Hall of Shame, Angeln u. a.) – gesammelt vom eigenen Backend
+  In-Game-Tage – gesammelt vom eigenen Backend
+- 🏆 **Ranglisten** in sechs Kategorien (Spielzeit, Paldeck, 💀 Hall of
+  Shame, Angeln, Dungeons, Raidbosse) mit Medaillen und EP-Feinsortierung
+- 🗺️ **Live-Karte**: Spieler-Positionen in Echtzeit + Gilden-Basen, mit
+  Filtern und echtem Kartenbild
+- 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
+  Erkundung, alle Erfolge und das **ausgerüstete Pal-Team** (Icons,
+  Kampfwerte, IVs, Passives – per Admin-Schalter abschaltbar)
 - 📈 **Verfügbarkeit & Ausfälle**: Uptime der letzten 24 h / 7 Tage plus eine
   Chronik der letzten Ausfälle – direkt aus den Messpunkten berechnet
-- 🧑‍🚀 **Spieler-Profile** (`/spieler/<name>`): Level, Spielzeit, Distanz,
-  aktive Tage, Erkundung und alle Erfolge – verlinkt aus Leaderboard & Live-Liste
+- 🛠️ **Admin-Seite** (`/admin`): Hauptadmin + Unter-Admins, Kick & Bann
+  (auch offline), Banner, Ansagen, Neustart, Funktions-Schalter,
+  Aktions-Protokoll
+- 🗳️ **Vote-Belohnung**: auf der Serverliste voten, im Spiel Belohnung abholen
+- 🎉 **Event-Wochenenden**: automatische Raten-Events der Gameserver mit
+  Banner **und Popup** auf der Webseite
 - 📣 **Broadcast-Seite** (`/broadcast.html`): passwortgeschützt eine In-Game-Ansage
   an alle Online-Spieler senden
-- 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config)
+- 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config/Admin)
+- ❤️ **Unterstützen-Karte + Ko-fi-Menüpunkt** (nur ein Link, keine externen Skripte)
 - 👀 **Besucher-Zähler** (Aufrufe + eindeutige Besucher) im Footer – ohne Cookies/IP
-- 📋 **Server-Adresse mit Kopier-Button**
-- 🎮 **Beitritts-Anleitung** in 3 Schritten
-- ⚙️ **Raten-Übersicht** (EP, Fangrate, Drops, …)
+- 📋 **Server-Adresse mit Kopier-Button**, 🎮 Beitritts-Anleitung, ⚙️ Raten-Übersicht
 - 📜 **Regeln**, **FAQ** (Akkordeon), **Discord-CTA**
 - 📄 Impressum- & Datenschutz-Vorlagen
 - 📱 Vollständig responsiv, mobiles Menü, Scroll-Animationen
@@ -44,7 +55,11 @@ Browser ──HTTPS──> nginx ──> Node.js (server.js, Port 3000)
 Für die Statistiken fragt das Backend die Palworld REST-API einmal pro Minute ab
 und speichert aggregierte Daten in `data/stats.json` (Spielerzahl in
 5-Minuten-Buckets für 7 Tage, Peak, pro Spieler Name/Level/Spielzeit/zuletzt
-gesehen – bewusst keine IPs oder Account-IDs).
+gesehen – bewusst keine IP-Adressen; die Spieler-ID wird für die
+Offline-Bann-Funktion der Admin-Seite gespeichert und nie öffentlich
+ausgegeben). Basen, Ranglisten und Teams laden die Gameserver per Cron
+hoch (`/api/map/bases`, `/api/rankings/upload`, abgesichert über ein
+Upload-Secret).
 
 ## Voraussetzungen
 
@@ -111,10 +126,10 @@ Auto-Erneuerung. Der Node-Dienst bleibt unberührt:
 
 ```bash
 # Standard-Domain palheim.de:
-sudo bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palheim-https-setup-h7x4r6/deploy/enable-https.sh)
+sudo bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/enable-https.sh)
 
 # mit E-Mail für Ablauf-Warnungen:
-sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palheim-https-setup-h7x4r6/deploy/enable-https.sh)
+sudo LE_EMAIL=du@example.de bash <(curl -sL https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/enable-https.sh)
 ```
 
 Voraussetzung: Der A-Record von `palheim.de` (und optional `www.palheim.de`)
@@ -296,6 +311,76 @@ sudo git pull
 sudo systemctl restart palworld-web
 ```
 
+### Privates Repo: Zugriff für die Server
+
+Ist das GitHub-Repo **privat**, gibt es zwei Wege – je nachdem, wie der
+Server die Dateien holt:
+
+#### Gameserver (curl-Einzeiler): Fine-grained Token
+
+Die Gameserver klonen kein Repo, sie laden nur einzelne Dateien per
+`raw.githubusercontent.com`. Dafür reicht ein **Fine-grained Personal
+Access Token**, der nur dieses eine Repo lesen darf:
+
+1. GitHub → **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**
+2. **Repository access**: „Only select repositories" → dieses Repo
+3. **Permissions → Contents: Read-only** (sonst nichts)
+4. Laufzeit nach Geschmack (z. B. 1 Jahr) – GitHub erinnert vor Ablauf.
+
+Den Token auf **jedem Gameserver** einmalig ablegen:
+
+```bash
+install -m 600 /dev/null /etc/palworld/github-token
+nano /etc/palworld/github-token    # Token einfügen, eine Zeile, speichern
+```
+
+Danach funktioniert der Einzeiler wieder – nur der äußere `curl` braucht
+jetzt den Header, alles Weitere liest `install-paltools.sh` selbst aus
+der Datei:
+
+```bash
+bash <(curl -sL -H "Authorization: Bearer $(cat /etc/palworld/github-token)" https://raw.githubusercontent.com/Action3062/palworld-server/refs/heads/claude/palworld-server-website-j2gox0/deploy/gameserver/install-paltools.sh)
+```
+
+Läuft der Token ab oder wird ein Server ausgemustert, den Token auf
+GitHub widerrufen und ggf. einen neuen in die Datei legen – mehr ist
+nicht zu tun.
+
+#### Web-Server (git pull): Deploy-Key
+
+Der Web-Server zieht Updates per `git pull` und braucht dafür einen
+eigenen **Deploy-Key** – ein SSH-Schlüssel, der nur für dieses Repo
+gilt und nur lesen darf. Auf dem Server als der Benutzer, der
+`git pull` ausführt:
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "palheim-$(hostname)" -f ~/.ssh/palheim-repo
+cat ~/.ssh/palheim-repo.pub   # kopieren
+```
+
+Den öffentlichen Schlüssel auf GitHub eintragen: Repo → **Settings →
+Deploy keys → Add deploy key** (pro Server ein Eintrag, „Allow write
+access" **nicht** anhaken). Dann auf dem Server:
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/palheim-repo
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+cd /pfad/zum/repo
+git remote set-url origin git@github.com:Action3062/palworld-server.git
+git pull
+```
+
+Ein Server, der ausgemustert wird, verliert den Zugriff durch Löschen
+seines einen Deploy-Keys. Hinweis: Die übrigen `curl`-Einzeiler weiter
+oben (Schnellinstallation, WireGuard) funktionieren beim privaten Repo
+ebenfalls mit dem Token-Header aus dem Gameserver-Abschnitt – oder man
+führt die Skripte aus dem geklonten Repo aus (`bash deploy/setup.sh`).
+
 ## Konfiguration
 
 `config.json` (siehe `config.example.json`) – wird **nicht** eingecheckt (`.gitignore`):
@@ -341,6 +426,13 @@ ohne Neustart. Alternativ statisch in der `config.json` (gilt nur, solange
 Besucher können das Banner wegklicken; eine neue/​geänderte Nachricht erscheint
 wieder.
 
+Banner mit der Optik **„Grün – Event"** bekommen zusätzlich einmalig ein
+**Event-Popup** (zentrierte Karte mit dem Emoji aus dem Banner-Text):
+mehr Aufmerksamkeit beim ersten Besuch, danach erinnert nur noch das
+Banner. Das Wegklicken merkt sich der Browser pro Event-Text; die
+Event-Wochenenden (`palworld-event.sh`) lösen das Popup damit automatisch
+aus, es funktioniert aber genauso für von Hand gesetzte Event-Banner.
+
 ### Admin-Seite (`/admin`)
 
 `https://palheim.de/admin` ist das Cockpit fürs Server-Team – absichtlich
@@ -377,17 +469,20 @@ Web-Diensts meldet ab; max. 5 Login-Versuche pro 10 Minuten) zeigt die Seite:
 - **Server neustarten** (nur Hauptadmin): mit wählbarer Vorwarnzeit
   (10–600 s) und doppelter Bestätigung. Warnt die Spieler im Spiel,
   speichert die Welt und fährt den Server per REST-API herunter – die
-  Docker-Restart-Policy startet ihn automatisch wieder (derselbe
-  Mechanismus wie beim nächtlichen Wartungs-Neustart, Downtime
-  ca. 1–2 Minuten)
+  systemd-Unit (`Restart=always`) startet ihn automatisch wieder
+  (derselbe Mechanismus wie beim morgendlichen Wartungs-Neustart,
+  Downtime ca. 1–2 Minuten)
+- **🧩 Funktionen**: Website-Funktionen für alle Besucher an-/abschalten
+  (aktuell: Team-Anzeige auf Spielerprofilen) – wirkt sofort, überlebt
+  Neustarts (`data/features.json`) und landet im Protokoll
 - **Spielerliste**: alle bekannten Spieler mit Level, Spielzeit, Sessions
   und „zuletzt gesehen" – Online-Spieler zuerst
-- **Kick & Bann**: bei Online-Spielern direkt aus der Liste (mit Grund, der
-  dem Spieler angezeigt wird). Beides geht nur bei Spielern, die gerade
-  online sind – nur dann liefert die REST-API ihre User-ID (die Website
-  speichert bewusst keine IDs). Über die Website ausgesprochene Banns
-  landen in `data/bans.json` und lassen sich auf der Seite wieder aufheben
-  („Entbannen")
+- **Kick & Bann**: direkt aus der Liste, mit Grund, der dem Spieler
+  angezeigt wird. Kick geht nur bei Online-Spielern; **Bann geht auch
+  offline**, sobald die Website die Spieler-ID einmal beim Online-Sein
+  gesehen hat – er greift dann beim nächsten Verbindungsversuch. Über
+  die Website ausgesprochene Banns landen in `data/bans.json` und lassen
+  sich auf der Seite wieder aufheben („Entbannen")
 - **Ping-Spalte**: Live-Ping der Online-Spieler (wer laggt gerade?)
 - **Aktions-Protokoll**: was wurde über die Website ausgeführt (Kicks,
   Banns, Neustarts, Ansagen, Banner, An-/Fehlanmeldungen) – neueste zuerst,
@@ -626,11 +721,27 @@ verschiebt die Rotation (kalibriert: KW 32/2026 = Supply). Änderungen
 sind als **Faktoren** definiert (`KEY*2`) und skalieren damit auf beiden
 Servern richtig; Festwerte gehen mit `KEY=10`.
 
+**Einmalig pro Server nötig – der systemd-Hook:**
+
+```bash
+/etc/palworld/palworld-event.sh install-hook
+```
+
+Hintergrund: Der Palworld-Server **schreibt die PalWorldSettings.ini beim
+Stoppen selbst neu** (mit den Werten, die er geladen hatte) und macht damit
+jeden Patch rückgängig, der während der Laufzeit gesetzt wurde. Der Hook
+(`ExecStartPre` als Drop-in an der `palworld.service`) ruft vor **jedem**
+Server-Start `palworld-event.sh apply` auf und erzwingt so den gewünschten
+Zustand – Event-Werte während des Events, Originalwerte nach dessen Ende –
+genau zwischen dem Rückschreiben des Servers und dem Einlesen beim Start.
+`status` warnt, wenn der Hook fehlt.
+
 Ablauf – **ohne zusätzlichen Neustart**, beide Schritte hängen sich an die
 regulären Wartungs-Neustarts: Freitag 17:50 patcht `start --no-restart` nur
-die Ini, der 17:55-Neustart trägt die Werte mit seiner üblichen Vorwarnung
-ein. Montag 04:45 setzt `stop` zurück, der 04:55-Neustart macht die Raten
-wieder normal (Server 2: Stopp-Cron auf `45 5`). Discord-Embed und
+die Ini, der 17:55-Neustart trägt die Werte (per Hook) mit seiner üblichen
+Vorwarnung ein. Montag 04:45 setzt `stop` zurück und merkt die Rücksetzung
+in `event-restore.json` vor, der 04:55-Neustart macht die Raten wieder
+normal (Server 2: Stopp-Cron auf `45 5`). Discord-Embed und
 Website-Banner (Endpunkt `/api/banner/event`, Auth per `UPLOAD_SECRET`)
 gehen beim Patchen automatisch raus. Der tägliche `guard`-Lauf setzt
 hängengebliebene Events zurück **und** meldet, wenn ein gepatchtes Event
@@ -751,18 +862,23 @@ wenn ein Lauf wegen `--if-empty` übersprungen wurde):
 */15 * * * * /etc/palworld/palworld-autoupdate.sh --discord-refresh >/dev/null 2>&1
 ```
 
-## Vote-Belohnung (Serverlisten wie palserver.de)
+## Vote-Belohnung (Serverlisten wie palserver.de, top-games.net)
 
-Spieler voten auf der Serverliste und holen sich auf der Webseite eine
+Spieler voten auf einer der Serverlisten und holen sich auf der Webseite eine
 In-Game-Belohnung ab (Sektion „Vote & Belohnung“, erscheint automatisch,
 sobald `votes.enabled: true` gesetzt ist).
 
 **Ablauf:** Spieler votet (mit In-Game-Namen) → loggt sich auf dem Server ein
-→ trägt seinen Namen auf der Webseite ein → Backend prüft Vote + Online-Status
-→ Belohnung wird vergeben. Pro Spieler und Tag nur ein Claim; Claim-Anfragen
-sind pro IP rate-limitiert.
+→ trägt seinen Namen auf der Webseite ein → Backend prüft Online-Status +
+Votes → Belohnung wird vergeben. **Jede Liste zählt einzeln**: pro Liste und
+Tag ein Claim; ein Klick auf „Belohnung abholen“ prüft alle Listen auf einmal.
+Claim-Anfragen sind pro IP rate-limitiert.
 
-### Vote-Prüfung – zwei Modi
+Mehrere Listen stehen als `"providers"`-Liste in der Config (siehe
+`config.example.json`); die alte Einzel-Konfiguration (`voteUrl` + `check`
+direkt im `votes`-Block) funktioniert weiterhin.
+
+### Vote-Prüfung – drei Modi
 
 **`"mode": "list"`** – die Serverliste bietet eine API, die die letzten Votes
 als JSON liefert. Die URL findest du im Dashboard deiner Serverliste
@@ -793,7 +909,94 @@ https://deinedomain.de/api/vote/webhook?secret=DEIN-GEHEIMES-TOKEN
 
 und in der `config.json` dasselbe Token als `"webhookSecret"` setzen.
 
-### Belohnung – zwei Modi
+**`"mode": "topgames"`** – für top-games.net (und andere Listen des
+Top-Serveurs-Netzwerks). Den Server-Token findest du im top-games-Panel
+deines Servereintrags:
+
+```json
+"check": {
+  "mode": "topgames",
+  "serverToken": "TOKEN-AUS-DEM-TOP-GAMES-PANEL"
+}
+```
+
+Besonderheiten dieser API: Der Abruf
+(`GET /v1/votes/claim-username?server_token=…&playername=…`) prüft den
+Vote **und löst ihn dabei direkt bei der Liste ein** (Antwort
+`"claimed": 1`; `2` heißt „schon früher eingelöst“, `0` „kein Vote“).
+Das Backend ruft ihn deshalb erst nach dem Online-Check auf – und merkt
+sich einen eingelösten Vote als „pending“, falls die Belohnung danach
+fehlschlägt: der nächste Versuch des Spielers holt dann nur die Belohnung
+nach, ohne einen neuen Vote zu verlangen. Außerdem gilt der Claim nur
+**innerhalb von 2 Stunden nach dem Vote** – die Webseite weist die
+Spieler darauf hin.
+
+### Belohnung – drei Modi
+
+**`"mode": "discord"`** – nichts im Spiel (kein Chat-Spam): stattdessen
+eine Meldung in einen Discord-Kanal und/oder eine **Voter-Rolle** per
+Discord-Bot:
+
+```json
+"reward": {
+  "mode": "discord",
+  "discord": {
+    "webhookUrl": "https://discord.com/api/webhooks/…",
+    "botToken": "BOT-TOKEN",
+    "guildId": "DISCORD-SERVER-ID",
+    "roleId": "ROLLEN-ID",
+    "message": "🗳️ **{name}** hat auf {list} für PalHeim gevotet – danke! ({count}. Belohnung)"
+  },
+  "successMessage": "Danke fürs Voten! 🎉 Verknüpfte Spieler bekommen die Voter-Rolle im Discord."
+},
+"requireOnline": false
+```
+
+Beide Teile sind optional: nur `webhookUrl` = nur Kanal-Meldung, nur
+Bot-Daten = nur Rolle. Platzhalter in `message`: `{name}`, `{list}`
+(Serverliste), `{count}` (wievielte Belohnung). `successMessage` ersetzt
+den Danke-Text auf der Webseite. `requireOnline: false` passt hier: die
+Belohnung kommt ja nicht im Spiel an, also muss niemand eingeloggt sein –
+die Webseite blendet den „einloggen“-Schritt dann automatisch aus.
+
+Einrichtung der Voter-Rolle (einmalig):
+
+1. **Bot anlegen**: [discord.com/developers/applications](https://discord.com/developers/applications)
+   → *New Application* → Reiter *Bot* → *Reset Token* → Token kopieren
+   (keine Intents nötig).
+2. **Bot einladen**: Reiter *OAuth2 → URL Generator* → Scope `bot` →
+   Berechtigung **Manage Roles** → erzeugte URL öffnen, euren Server wählen.
+3. **Rolle anlegen** (z. B. „🗳️ Voter“). Wichtig: In den Server-Einstellungen
+   muss die **Bot-Rolle über der Voter-Rolle** stehen, sonst darf er sie
+   nicht vergeben.
+4. **IDs kopieren** (Entwicklermodus in Discord aktivieren): Rechtsklick auf
+   den Server → Server-ID (`guildId`); Rollen-Liste → Rolle → ID kopieren
+   (`roleId`).
+5. **Selbstverknüpfung aktivieren** (empfohlen – dann verknüpfen sich die
+   Spieler selbst per Slash-Befehl im Discord):
+   - Im Developer-Portal unter *General Information* die **Application ID**
+     und den **Public Key** kopieren → in der Config als `applicationId`
+     und `publicKey` eintragen.
+   - Ebenfalls dort als **Interactions Endpoint URL** eintragen:
+     `https://deinedomain.de/api/discord/interactions` (die Webseite muss
+     dabei schon mit `publicKey` laufen, denn Discord prüft die URL sofort).
+   - Beim nächsten Start registriert die Webseite automatisch den Befehl
+     **`/verknuepfen`** auf eurem Discord-Server. Jeder Spieler tippt ihn
+     einmal mit seinem In-Game-Namen – fertig, ab dann kommt die Rolle
+     automatisch. Die Antwort sieht nur der Spieler selbst; einen Namen,
+     der schon einem anderen Discord-Konto gehört, kann niemand übernehmen.
+6. **Verknüpfen über die Webseite**: Holt ein noch nicht verknüpfter
+   Spieler seine Belohnung ab, blendet die Webseite darunter ein kleines
+   Formular ein – Discord-ID eintragen, fertig. Wurde heute schon
+   abgeholt, reicht die Webseite die Rolle sofort nach. Es gelten dieselben
+   Schutzregeln wie beim Slash-Befehl (fremde, schon verknüpfte Namen kann
+   niemand übernehmen), der Endpunkt ist rate-limitiert.
+7. **Manuell verknüpfen** (Sonderfälle, Korrekturen): Admin-Interface →
+   „🎖️ Vote-Rolle: Discord verknüpfen“ – In-Game-Name plus Discord-ID des
+   Spielers (Rechtsklick auf den Nutzer → ID kopieren). Die Verknüpfungen
+   liegen in `data/discord-links.json`. Nicht verknüpfte Spieler bekommen
+   die Kanal-Meldung trotzdem; die Rolle kommt beim ersten Claim nach dem
+   Verknüpfen.
 
 **`"mode": "rcon"`** – echte Item-Belohnungen. Voraussetzung: Auf dem
 Palworld-Server läuft ein Mod wie **PalDefender**/**PalGuard** (Vanilla-Palworld
@@ -816,7 +1019,9 @@ Die genaue Befehls-Syntax hängt vom Mod ab (PalDefender: `giveitem`,
 
 **`"mode": "announce"`** – funktioniert ohne Mods: nur eine
 Broadcast-Danksagung über die offizielle REST-API; die eigentliche Belohnung
-verteilt ihr manuell oder sie bleibt symbolisch.
+verteilt ihr manuell oder sie bleibt symbolisch. (`announce` funktioniert
+als Zusatz-Zeile übrigens in jedem Modus – leer lassen, wenn im Spiel
+nichts erscheinen soll.)
 
 ## Inhalte anpassen
 
