@@ -275,7 +275,7 @@ function buildServers() {
         (i === 0 ? ((config.map && config.map.uploadSecret) || '') : ''),
       // Laufzeit-Zustand (pro Server)
       statusCache: { data: null, fetchedAt: 0 },
-      stats: { samples: [], peak: null, players: {}, inGameDays: null },
+      stats: { samples: [], peak: null, players: {}, inGameDays: null, since: null },
       statsDirty: false,
       lastStatsSave: 0,
       prevOnline: new Set(),
@@ -463,6 +463,24 @@ function loadStats(srv) {
     if (raw.peak && typeof raw.peak.count === 'number') srv.stats.peak = raw.peak;
     if (raw.players && typeof raw.players === 'object') srv.stats.players = raw.players;
     if (typeof raw.inGameDays === 'number') srv.stats.inGameDays = raw.inGameDays;
+    if (typeof raw.since === 'number') srv.stats.since = raw.since;
+    // Migration: "since" (Geburtsdatum des Servers, fuer den Erfolg
+    // "Gruendungsmitglied") aus dem aeltesten bekannten Spieler ableiten -
+    // die Messpunkte taugen nicht, sie sind nur ein 7-Tage-Fenster
+    if (!srv.stats.since) {
+      let oldest = Infinity;
+      for (const rec of Object.values(srv.stats.players)) {
+        const t = Date.parse(rec.firstSeen || '');
+        if (!Number.isNaN(t)) oldest = Math.min(oldest, t / 1000);
+      }
+      if (oldest === Infinity && srv.stats.samples.length > 0) {
+        oldest = srv.stats.samples[0][0];
+      }
+      if (oldest !== Infinity) {
+        srv.stats.since = Math.floor(oldest);
+        srv.statsDirty = true;
+      }
+    }
     console.log(`[stats:${srv.id}] ${srv.stats.samples.length} Messpunkte, ` +
       `${Object.keys(srv.stats.players).length} Spieler geladen`);
   } catch {
@@ -517,6 +535,11 @@ async function pollStats(srv) {
     count = metrics.currentplayernum ?? 0;
     fps = typeof metrics.serverfps === 'number' ? metrics.serverfps : null;
     if (typeof metrics.days === 'number') stats.inGameDays = metrics.days;
+    // Geburtsdatum des Servers beim allerersten erfolgreichen Poll festhalten
+    if (!stats.since) {
+      stats.since = Math.floor(Date.now() / 1000);
+      srv.statsDirty = true;
+    }
 
     if (count > 0) {
       const data = await palworldGet(srv, '/v1/api/players');
@@ -604,7 +627,9 @@ function achievementContext(srv, name) {
     // erst nach dem vollständigen Laden des Moduls (async/Intervall).
     // Votes zählen community-weit (eine Serverliste), daher serverunabhängig.
     voteCount: voteSystem ? voteSystem.getVoteCount(name) : 0,
-    firstSampleT: srv.stats.samples.length > 0 ? srv.stats.samples[0][0] : null,
+    // Geburtsdatum des Servers (persistent) - NICHT samples[0], das ist
+    // nur ein rollierendes 7-Tage-Fenster und wandert mit
+    serverSinceT: srv.stats.since || null,
     peakPlayers: (srv.stats.peak && srv.stats.peak.players) || []
   };
 }
