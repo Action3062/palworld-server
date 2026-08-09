@@ -528,7 +528,7 @@ wegwerfen kann.
   palworld-backup.sh               #   Live-Backup ohne Neustart
   palworld-event.sh                #   automatische Event-Wochenenden
   palworld-announce.sh             #   Ingame-Ansagen
-  palworld-discord.sh              #   Bibliothek: eine Neustart-Nachricht
+  palworld-discord.sh              #   Bibliothek: Neustart-Zustand für Discord
   palworld-status.sh               #   Wrapper → discord-status.py
   palworld-upload.sh               #   Wrapper → upload-bases/-rankings.py
   discord-status.py  upload-bases.py  upload-rankings.py  base-report.py
@@ -674,36 +674,69 @@ merkt sich die erste, die funktioniert hat – `--api` ist damit nur der
 Startwert. Kommt `HTTP 401`, ist die API erreichbar und nur das `--password`
 passt nicht zum `AdminPassword` der `PalWorldSettings.ini`.
 
-### Neustarts im selben Kanal (ohne Nachrichten-Spam)
+### Neustarts und Events in derselben Nachricht
 
 Früher hat jeder Neustart eine **neue** Nachricht gepostet – dadurch rutschte
 die Status-Nachricht mit Spielern, FPS und CPU/RAM nach und nach nach oben aus
-dem Blick. Jetzt pflegen `palworld-autoupdate.sh` und `palworld-watchdog.sh`
-über `deploy/gameserver/palworld-discord.sh` **eine** Neustart-Nachricht, die
-bearbeitet statt neu gepostet wird:
+dem Blick. Heute gibt es pro Server **genau eine** Nachricht, die alles trägt:
 
-> 🔄 **Neustarts · Server 1 · PvE 4x** · 🟢 Server läuft.
-> **🕒 Letzter Neustart** – 4. Aug 2026, 05:05 · *vor 6 Std* · ⬆️ Update ·
-> `v0.6.1` → `v0.6.2` · 3 Spieler waren online
-> **⏭️ Nächster Neustart** – 4. Aug 2026, 17:05 · *in 6 Std*
+> 🟢 **Server 1 · PvE 4x** · `pve.palheim.de:8211`
+> 👥 Spieler 7/32 · 🎯 FPS 59 · ⏱️ Uptime 4 Std 44 min · 🖥️ CPU · 🧠 RAM
+> **🗓️ Nächstes Event** – 📦 Supply-Wochenende, ab Freitagabend
+> **🕒 Letzter Neustart** – *vor 6 Std* · ⬆️ Update · 3 Spieler waren online
+> **⏭️ Nächster Neustart** – *in 6 Std*
+
+Wer schreibt was:
+
+| Quelle | liefert | wie |
+|---|---|---|
+| `discord-status.py` | Spieler, FPS, Hardware – **und besitzt die Nachricht** | Cron alle 5 min |
+| `palworld-discord.sh` | letzter/nächster Neustart | schreibt nur `DISCORD_STATE_FILE` |
+| `palworld-event.sh next` | laufendes bzw. kommendes Event | wird beim Zeichnen abgefragt |
+
+Eine Discord-Nachricht verträgt nur **einen** Schreiber – bearbeiten beide
+Skripte dieselbe Nachricht, überschreiben sie sich gegenseitig. Deshalb postet
+`palworld-discord.sh` nicht mehr selbst, sondern legt seinen Zustand ab und
+lässt `palworld-status.sh` sofort neu zeichnen; ohne das hinge ein Neustart bis
+zu 5 Minuten hinter der Anzeige zurück. Die Rotation der Events bleibt aus
+demselben Grund allein in `palworld-event.sh` – `discord-status.py` stellt sie
+nur dar.
 
 Die Zeiten gehen als Discord-Zeitstempel (`<t:…:R>`) raus – Discord rechnet
 sie im Client selbst um, „vor 6 Std“ bleibt also aktuell, ohne dass ein
-Cronjob die Nachricht ständig neu schreiben muss. Während eines Neustarts wird
-die Nachricht orange („Neustart läuft“), bei Fehlern rot.
+Cronjob die Nachricht ständig neu schreiben muss.
 
-Damit das läuft, muss `palworld-discord.sh` neben den beiden Skripten liegen
-(gleiches Verzeichnis, meist `/root/palworld/`). Fehlt die Datei, bleibt alles
-beim alten Verhalten. Einstellungen in der `palworld-scripts.conf`:
+Farben und Zustände:
+
+| Lage | Anzeige |
+|---|---|
+| alles normal | 🟢 blau |
+| Vorwarnung läuft, Server noch oben | 🟠 „Neustart läuft“ |
+| Server weg, Neustart gemeldet (bis 10 min) | 🟠 „startet gerade neu“ |
+| Server weg, kein Neustart bekannt | 🔴 OFFLINE (+ Hinweis, falls der Prozess fehlt) |
+| letzte Wartung fehlgeschlagen | ⚠️ orange mit Fehlertext |
+
+Damit das läuft, müssen `palworld-discord.sh`, `palworld-status.sh`,
+`palworld-event.sh` und `discord-status.py` **im selben Verzeichnis** liegen
+(`/etc/palworld`). Fehlt eine Datei, fällt nur das jeweilige Feld weg.
+Einstellungen in der `palworld-scripts.conf`:
 
 ```bash
 DISCORD_WEBHOOK="https://discord.com/api/webhooks/…"  # derselbe Kanal wie oben
 DISCORD_SERVER_NAME="Server 1 · PvE 4x"    # Titelzusatz, optional
 RESTART_SCHEDULE="05:05 17:05"             # geplante Neustarts (lokale Zeit)
-# DISCORD_RESTART_MESSAGE=false            # zurück zum alten Verhalten
+# DISCORD_COMBINED_MESSAGE=false           # Neustarts wieder als eigene Nachricht
+# DISCORD_RESTART_MESSAGE=false            # Neustarts gar nicht mitführen
 # DISCORD_ALERT_NEW_MESSAGE=true           # Fehler zusätzlich als eigene Nachricht
 # DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
+# EVENT_WEBHOOK="https://…"                # „Event gestartet/beendet“ in einen
+                                           # anderen Kanal (sonst schieben diese
+                                           # Ankündigungen die Nachricht hoch)
 ```
+
+Beim ersten Lauf nach der Umstellung löscht `palworld-discord.sh` die alte,
+separate Neustart-Nachricht selbst – sonst bliebe sie für immer eingefroren
+im Kanal stehen.
 
 `RESTART_SCHEDULE` ist die Zeit, zu der der Server **wirklich** runtergeht,
 also Cron-Zeit + Vorwarnzeit (Cron `55 4 * * *` + 10 min Warnung → `05:05`).

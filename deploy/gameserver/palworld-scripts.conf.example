@@ -48,12 +48,16 @@ ANNOUNCE_ONLY_WITH_PLAYERS=true
 
 # --- Discord ------------------------------------------------------------------
 # Beide Server duerfen denselben Webhook/Kanal nutzen: jeder Host pflegt seine
-# eigenen Nachrichten (Status + Neustarts), erkennbar am Namen.
+# EINE Nachricht, erkennbar am Namen. Status (Spieler/FPS/CPU), letzter und
+# naechster Neustart sowie das Event-Wochenende stehen zusammen darin.
 DISCORD_WEBHOOK=""                             # [SERVER] (oder identisch)
 DISCORD_SERVER_NAME="Server 1 · PvE 4x"        # [SERVER] Titel/--name
 # Zeiten, zu denen der Server WIRKLICH runtergeht = Cron-Zeit + Vorwarnzeit.
 # Cron "55 4,9,17" + 10 min Warnung -> "05:05 10:05 18:05"
 RESTART_SCHEDULE="05:05 10:05 18:05"           # [SERVER]
+# DISCORD_COMBINED_MESSAGE=false               # Neustarts wieder als EIGENE
+                                               # Nachricht statt in der Status-
+                                               # Nachricht (dann sind es zwei)
 # DISCORD_RESTART_MESSAGE=false                # zurueck zum Nachrichten-Spam
 # DISCORD_ALERT_NEW_MESSAGE=true               # Fehler extra posten (Ping)
 # DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
@@ -72,6 +76,10 @@ EVENT_ENABLED=true
 # Verschiebt die Rotation. 2 = Kalibrierung "KW 32/2026 -> Supply-Wochenende"
 # (danach laeuft die Reihenfolge einfach weiter: Drop, Ranch, Safari, ...).
 EVENT_OFFSET=2
+# EVENT_WEBHOOK=""             # eigener Kanal fuer "Event gestartet/beendet";
+                               # leer = derselbe wie DISCORD_WEBHOOK. Im Status-
+                               # Kanal schieben diese Ankuendigungen die
+                               # Status-Nachricht sonst nach oben.
 # EVENT_INI=""                 # leer = automatisch unter $SAVED_DIR/Config suchen
 # EVENT_STATE="/var/lib/palworld/event.json"
 # EVENT_MAX_HOURS=70           # Waechter: laenger aktiv -> Zwangs-Ruecksetzung

@@ -56,4 +56,23 @@ ARGS=(--password "$ADMIN_PASSWORD" --webhook "$DISCORD_WEBHOOK"
 [ -n "$STATUS_API"       ] && ARGS+=(--api       "$STATUS_API")
 [ -n "$STATUS_STATE"     ] && ARGS+=(--state     "$STATUS_STATE")
 
+# --- Neustarts und Event in dieselbe Nachricht ---------------------------------
+# Zusammengelegte Nachricht: die Neustart-Daten pflegt palworld-discord.sh in
+# seiner Zustandsdatei, die Event-Rotation kennt nur palworld-event.sh. Beides
+# wird hier nur eingesammelt und durchgereicht - faellt eine Quelle aus, fehlt
+# das jeweilige Feld, die Status-Nachricht laeuft normal weiter.
+if [ "${DISCORD_COMBINED_MESSAGE:-true}" = "true" ]; then
+  if [ -f "${SCRIPT_DIR}/palworld-discord.sh" ]; then
+    # shellcheck disable=SC1091
+    . "${SCRIPT_DIR}/palworld-discord.sh"
+    ARGS+=(--restart-state "$DISCORD_STATE_FILE")
+    NEXT_TS="$(next_restart_ts || true)"
+    [ -n "$NEXT_TS" ] && ARGS+=(--next-restart "$NEXT_TS")
+  fi
+  if [ -x "${SCRIPT_DIR}/palworld-event.sh" ]; then
+    EV_LINE="$(timeout 20 "${SCRIPT_DIR}/palworld-event.sh" next 2>/dev/null || true)"
+    [ -n "$EV_LINE" ] && ARGS+=(--event "$EV_LINE")
+  fi
+fi
+
 exec "$PYTHON" "$SCRIPT" "${ARGS[@]}" "$@"

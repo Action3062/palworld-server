@@ -8,6 +8,12 @@ FPS, Uptime, API-Latenz – plus CPU und RAM der Maschine und des
 PalServer-Prozesses. Die Nachricht wird bearbeitet statt neu gepostet,
 der Kanal bleibt also sauber.
 
+Mit --restart-state und --event stehen zusätzlich der letzte/nächste Neustart
+und das laufende bzw. kommende Event-Wochenende in derselben Nachricht – damit
+gibt es pro Server nur noch EIN Embed im Kanal. Die Daten dafür kommen von
+palworld-discord.sh (Zustandsdatei) und palworld-event.sh (Rotation); dieses
+Skript rechnet sie nur nicht selbst aus, sondern stellt sie dar.
+
 Einrichtung:
   1. Discord: Kanal-Einstellungen → Integrationen → Webhooks → Neuer Webhook,
      URL kopieren.
@@ -40,7 +46,18 @@ import urllib.request
 
 BLUE = 0x2F9DE4    # palheim.de-Blau (online)
 RED = 0xC0392B     # offline
+ORANGE = 0xE67E22  # Neustart laeuft / Server startet gerade
 UA = "PalHeim-DiscordStatus/1.0 (+https://palheim.de)"
+
+# So lange nach einem gemeldeten Neustart gilt ein stummer Server als
+# "startet gerade" und nicht als Ausfall - die Welt braucht ein paar Minuten.
+BOOT_GRACE_SECONDS = 600
+
+KIND_LABELS = {
+    "update": "⬆️ Update",
+    "watchdog": "⚠️ Watchdog",
+    "restart": "🔧 Wartung",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +217,57 @@ def bar(pct, width=10):
     return "▰" * min(width, filled) + "▱" * max(0, width - filled)
 
 
-def build_embed(args, info, metrics, latency_ms, hw):
+def restart_fields(restart_state, fallback_next=0):
+    """Die zwei Neustart-Felder aus dem Zustand von palworld-discord.sh.
+
+    Der gespeicherte Termin gewinnt, denn nur er kennt ein evtl. gesetztes
+    --min-gap. Liegt er in der Vergangenheit (Skript lief noch nie, oder der
+    Lauf ist ausgefallen), springt der frisch berechnete Termin ein.
+    """
+    now = int(time.time())
+    last_ts = int(restart_state.get("last_ts") or 0)
+    stored = int(restart_state.get("next_ts") or 0)
+    nxt = stored if stored > now else int(fallback_next or 0)
+
+    if last_ts:
+        parts = [f"<t:{last_ts}:f>", f"**<t:{last_ts}:R>**"]
+        extras = (KIND_LABELS.get(restart_state.get("last_kind") or ""),
+                  restart_state.get("last_reason"),
+                  restart_state.get("last_detail"))
+        parts += [str(x) for x in extras if x]
+        last_val = "\n".join(parts)
+    else:
+        last_val = "noch keiner erfasst"
+
+    if nxt:
+        next_val = (f"<t:{nxt}:f>\n**<t:{nxt}:R>**\n"
+                    "Vorwarnung im Spiel läuft rechtzeitig.")
+    else:
+        next_val = "kein fester Termin\n(`RESTART_SCHEDULE` in `palworld-scripts.conf`)"
+
+    return [
+        {"name": "🕒 Letzter Neustart", "inline": True, "value": last_val[:1024]},
+        {"name": "⏭️ Nächster Neustart", "inline": True, "value": next_val[:1024]},
+    ]
+
+
+def event_field(spec):
+    """'active|Name|Text' bzw. 'next|Name|Text' von palworld-event.sh next."""
+    state, _, rest = spec.partition("|")
+    name, _, text = rest.partition("|")
+    if not name:
+        return None
+    if state == "active":
+        return {"name": "🎉 Event läuft", "inline": False,
+                "value": f"**{name}**\n{text}"[:1024]}
+    return {"name": "🗓️ Nächstes Event", "inline": False,
+            "value": f"**{name}** – ab Freitagabend\n{text}"[:1024]}
+
+
+def build_embed(args, info, metrics, latency_ms, hw,
+                restart_state=None, event_spec=""):
     online = metrics is not None
+    restart_state = restart_state or {}
     fields = []
 
     if online:
@@ -239,14 +305,46 @@ def build_embed(args, info, metrics, latency_ms, hw):
         {"name": "🧠 RAM", "inline": True, "value": ram_line},
     ]
 
+    if event_spec:
+        ev = event_field(event_spec)
+        if ev:
+            fields.append(ev)
+
+    if args.restart_state or restart_state:
+        fields += restart_fields(restart_state, args.next_restart)
+
     if online and info and info.get("worldguid"):
         fields.append({"name": "🌍 Welt-GUID", "inline": False,
                        "value": f"`{info['worldguid']}`"})
 
+    phase = restart_state.get("status") or ""
+    last_ts = int(restart_state.get("last_ts") or 0)
+    addr = f"`{args.address}` · [palheim.de](https://palheim.de)"
+
     if online:
         title = f"🟢 {args.name}"
-        desc = f"`{args.address}` · [palheim.de](https://palheim.de)"
+        desc = addr
         color = BLUE
+        if phase == "running":
+            title = f"🟠 {args.name}"
+            desc += "\n🟠 **Neustart läuft** – die Vorwarnung im Spiel läuft bereits."
+            color = ORANGE
+        elif phase == "failed":
+            title = f"⚠️ {args.name}"
+            desc += "\n⚠️ **Letzte Wartung ist fehlgeschlagen** – bitte prüfen."
+            if restart_state.get("note"):
+                desc += f"\n{restart_state['note']}"
+            color = ORANGE
+    elif phase == "running" or (
+            phase == "ok" and last_ts
+            and time.time() - last_ts < BOOT_GRACE_SECONDS):
+        # Kein Ausfall, sondern die geplante Auszeit: waehrend des Neustarts
+        # und in den Minuten danach laedt die Welt noch, die API schweigt.
+        title = f"🟠 {args.name} – Neustart"
+        desc = f"{addr}\nDer Server startet gerade neu und ist gleich zurück."
+        if restart_state.get("note"):
+            desc += f"\n{restart_state['note']}"
+        color = ORANGE
     else:
         title = f"🔴 {args.name} – OFFLINE"
         desc = (f"`{args.address}` · Spielserver antwortet nicht"
@@ -258,7 +356,7 @@ def build_embed(args, info, metrics, latency_ms, hw):
         "description": desc,
         "color": color,
         "fields": fields,
-        "footer": {"text": "PalHeim Status · aktualisiert alle 5 Minuten"},
+        "footer": {"text": "PalHeim · wird aktualisiert, nicht neu gepostet"},
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
     }
 
@@ -330,6 +428,15 @@ def main():
     parser.add_argument("--address", default="", help="Join-Adresse, z. B. pve.palheim.de:8211")
     parser.add_argument("--state", default="~/.palheim-discord-status.json",
                         help="Datei für die gemerkte Nachrichten-ID")
+    parser.add_argument("--restart-state", default="",
+                        help="Zustandsdatei von palworld-discord.sh; setzt die "
+                             "Felder 'Letzter/Nächster Neustart' in dieselbe Nachricht")
+    parser.add_argument("--next-restart", type=int, default=0,
+                        help="Unixzeit des nächsten geplanten Neustarts "
+                             "(Rückfall, falls die Zustandsdatei keinen kennt)")
+    parser.add_argument("--event", default="",
+                        help="Ausgabe von 'palworld-event.sh next', also "
+                             "'active|Name|Text' oder 'next|Name|Text'")
     parser.add_argument("--dry-run", action="store_true",
                         help="Embed nur ausgeben, nichts an Discord senden")
     args = parser.parse_args()
@@ -340,17 +447,23 @@ def main():
     bases = list(dict.fromkeys(bases))
     used, info, metrics, latency_ms, errors = try_bases(bases, args.password)
 
+    # Diagnose nach stderr, damit --dry-run reines JSON liefert (Cron loggt
+    # ohnehin beides in dieselbe Datei).
     if used is None:
-        print("Spielserver nicht erreichbar:")
+        print("Spielserver nicht erreichbar:", file=sys.stderr)
         for line in errors:
-            print(f"  {line}")
-        print("  Prüfen: RESTAPIEnabled=True und RESTAPIPort in PalWorldSettings.ini.")
+            print(f"  {line}", file=sys.stderr)
+        print("  Prüfen: RESTAPIEnabled=True und RESTAPIPort in PalWorldSettings.ini.",
+              file=sys.stderr)
     elif used != args.api and used != remembered:
         # nur beim ersten Fund melden, sonst steht das alle 5 min im Log
-        print(f"REST-API gefunden unter {used} – dauerhaft: --api '{used}'")
+        print(f"REST-API gefunden unter {used} – dauerhaft: --api '{used}'",
+              file=sys.stderr)
 
     hw = hardware_stats()
-    embed = build_embed(args, info, metrics, latency_ms, hw)
+    restart_state = load_state(args.restart_state) if args.restart_state else {}
+    embed = build_embed(args, info, metrics, latency_ms, hw,
+                        restart_state, args.event)
 
     if args.dry_run:
         print(json.dumps(embed, ensure_ascii=False, indent=2))

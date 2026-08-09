@@ -28,6 +28,7 @@
 #   palworld-event.sh stop [--restart] [--dry-run]  # --restart = sofort neu starten
 #   palworld-event.sh guard
 #   palworld-event.sh status
+#   palworld-event.sh next    # "active|Name|Text" bzw. "next|Name|Text"
 #
 # --dry-run zeigt nur, was passieren wuerde (Event, Ini, alte -> neue Werte)
 # und fasst weder Ini noch Server an.
@@ -98,6 +99,14 @@ else
 fi
 DC_GREEN=3066993
 DC_ORANGE=15105570
+
+# Start/Ende eines Events sind Ankuendigungen und werden als eigene Nachricht
+# gepostet. Im Status-Kanal wuerden sie die (dort bearbeitete) Status-Nachricht
+# nach oben schieben - deshalb laesst sich dafuer ein eigener Kanal setzen.
+# Leer = derselbe Webhook wie fuer alles andere.
+if [ -n "${EVENT_WEBHOOK:-}" ]; then
+  DISCORD_WEBHOOK="$EVENT_WEBHOOK"
+fi
 
 # --- Ini finden ----------------------------------------------------------------
 find_ini() {
@@ -406,11 +415,28 @@ cmd_status() {
   fi
 }
 
+# Maschinenlesbar fuer die Discord-Nachricht: "active|Name|Text" waehrend eines
+# Events, sonst "next|Name|Text" fuer das kommende Wochenende. Absichtlich hier
+# und nicht in discord-status.py, damit die Rotation nur EINE Quelle hat.
+# Ein Wochenende liegt immer in derselben ISO-Woche wie sein Montags-Ende,
+# deshalb stimmt die laufende Kalenderwoche in beiden Faellen.
+cmd_next() {
+  [ "$EVENT_ENABLED" = "true" ] || return 0
+  if [ -f "$EVENT_STATE" ]; then
+    printf 'active|%s|%s\n' \
+      "$(jq -r '.name // ""' "$EVENT_STATE")" "$(jq -r '.text // ""' "$EVENT_STATE")"
+    return 0
+  fi
+  pick_event
+  printf 'next|%s|%s\n' "$EV_NAME" "$EV_TEXT"
+}
+
 case "${1:-}" in
   start)  shift; cmd_start "$@" ;;
   stop)   shift; cmd_stop "$@" ;;
   guard)  cmd_guard ;;
   status) cmd_status ;;
-  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] [--dry-run] | stop [--restart] [--dry-run] | guard | status" >&2
+  next)   cmd_next ;;
+  *) echo "Aufruf: $0 start [--first-weekend-only] [--event NAME|NR] [--dry-run] | stop [--restart] [--dry-run] | guard | status | next" >&2
      exit 2 ;;
 esac

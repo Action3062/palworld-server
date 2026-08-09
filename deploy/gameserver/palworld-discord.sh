@@ -7,10 +7,17 @@
 #
 # Warum: Frueher hat jeder Neustart eine NEUE Nachricht in den Kanal gepostet.
 # Damit rutschte die Status-Nachricht von tools/discord-status.py (Spieler,
-# FPS, CPU/RAM) nach und nach nach oben aus dem Blick. Jetzt gibt es EINE
-# dauerhafte Neustart-Nachricht, die bearbeitet wird und immer zeigt:
+# FPS, CPU/RAM) nach und nach nach oben aus dem Blick. Gepflegt wird deshalb
+# ein dauerhafter Zustand, der immer zeigt:
 #   - wann der letzte Neustart war (mit Grund/Version/Spielerzahl)
 #   - wann der naechste geplante Neustart ist
+#
+# Mit DISCORD_COMBINED_MESSAGE=true (Standard) gibt es dafuer KEINE eigene
+# Nachricht mehr: der Zustand landet nur in DISCORD_STATE_FILE, und
+# discord-status.py stellt ihn zusammen mit Spielerzahl, FPS und dem
+# Event-Wochenende in EINER Nachricht pro Server dar. Nach jeder Aenderung
+# wird die Status-Nachricht sofort neu gezeichnet, damit nichts nachhinkt.
+# Auf false gestellt bleibt es beim alten Verhalten mit zwei Nachrichten.
 #
 # Die Zeiten gehen als Discord-Zeitstempel raus (<t:1234567890:R>). Discord
 # rechnet die im Client selbst um ("vor 2 Std", "in 3 Std") - die Nachricht
@@ -21,6 +28,7 @@
 #   DISCORD_SERVER_NAME="Server 1 · PvE 4x"  # Titelzusatz (optional)
 #   RESTART_SCHEDULE="05:05 17:05"           # geplante Neustarts, lokale Zeit
 #   DISCORD_RESTART_MESSAGE=true             # false = altes Verhalten
+#   DISCORD_COMBINED_MESSAGE=true            # false = eigene Neustart-Nachricht
 #   DISCORD_ALERT_NEW_MESSAGE=false          # Fehler zusaetzlich als neue Nachricht
 #   DISCORD_STATE_FILE="/var/lib/palworld/discord-restart.json"
 #
@@ -40,6 +48,12 @@ RESTART_SCHEDULE="${RESTART_SCHEDULE:-}"
 DISCORD_RESTART_MESSAGE="${DISCORD_RESTART_MESSAGE:-true}"
 DISCORD_ALERT_NEW_MESSAGE="${DISCORD_ALERT_NEW_MESSAGE:-false}"
 DISCORD_STATE_FILE="${DISCORD_STATE_FILE:-/var/lib/palworld/discord-restart.json}"
+# true = keine eigene Neustart-Nachricht mehr; der Zustand wird nur noch
+# gespeichert und die Status-Nachricht (discord-status.py) stellt ihn mit dar.
+DISCORD_COMBINED_MESSAGE="${DISCORD_COMBINED_MESSAGE:-true}"
+# Verzeichnis DIESER Datei - die Skripte daneben (palworld-status.sh) werden
+# fuer das sofortige Neuzeichnen gebraucht.
+_PALDC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _PALDC_DIR=""
 # Wird vom aufrufenden Skript gesetzt (--min-gap), damit der naechste Termin
 # nicht angekuendigt wird, wenn er ohnehin uebersprungen wuerde.
 DISCORD_MIN_GAP_HOURS="${DISCORD_MIN_GAP_HOURS:-0}"
@@ -183,10 +197,36 @@ discord_restart_embed() {
       timestamp:$ts}'
 }
 
+# Zusammengelegte Nachricht: die Status-Nachricht sofort neu zeichnen lassen.
+# Ohne das haengt ein Neustart bis zu 5 Minuten hinter der Anzeige zurueck -
+# ausgerechnet in dem Moment, in dem die Leute hinschauen.
+discord_refresh_status() {
+  local s="${_PALDC_DIR}/palworld-status.sh"
+  [ -n "$_PALDC_DIR" ] && [ -x "$s" ] || return 0
+  timeout 60 "$s" >/dev/null 2>&1 || true
+  return 0
+}
+
 # discord_restart_write <state-json> - Nachricht anlegen (POST) oder pflegen (PATCH)
 discord_restart_write() {
   [ -n "$DISCORD_WEBHOOK" ] || return 0
   local st="$1" embed payload id new_id code
+
+  if [ "$DISCORD_COMBINED_MESSAGE" = "true" ]; then
+    local old_id
+    old_id=$(jq -r '.message_id // empty' <<<"$st")
+    if [ -n "$old_id" ]; then
+      # Umstellung von zwei Nachrichten auf eine: die alte Neustart-Nachricht
+      # wird nicht mehr gepflegt und bliebe sonst fuer immer eingefroren stehen.
+      curl -fsS -m 10 -X DELETE "${DISCORD_WEBHOOK}/messages/${old_id}" \
+        >/dev/null 2>&1 || true
+      st=$(jq -c 'del(.message_id)' <<<"$st") || return 0
+      echo "Discord: separate Neustart-Nachricht ${old_id} entfernt - der Inhalt steht jetzt in der Status-Nachricht."
+    fi
+    discord_state_save "$st"
+    discord_refresh_status
+    return 0
+  fi
   embed=$(discord_restart_embed "$st") || return 0
   payload=$(jq -nc --argjson e "$embed" \
     '{embeds:[$e], username:"PalHeim Neustarts", allowed_mentions:{parse:[]}}') || return 0
