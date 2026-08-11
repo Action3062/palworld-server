@@ -1,7 +1,13 @@
 # Discord-Einbettung: „Vote für PalHeim" (MEE6)
 
-Fertige Embed-Vorlage für den Vote-Kanal im PalHeim-Discord, gebaut für den
+Fertige Vorlage für den Vote-Kanal im PalHeim-Discord, gebaut für den
 **MEE6-Bot**. Farbe, Bild und Texte sind an die Webseite angeglichen.
+
+**Es gibt keine Belohnung im Spiel.** Alle Texte hier versprechen deshalb nur
+das, was es wirklich gibt: die 🎖️ **Voter-Rolle** im Discord, die namentliche
+Erwähnung im Kanal und einen sichtbareren Server. Das passt zur Config
+(`votes.reward.mode = "discord"`) – wird dort später auf `rcon` umgestellt,
+müssen die Texte wieder mitwachsen.
 
 **Vorher ausfüllen:** Die top-games.net-Adresse steht unten als
 `https://de.top-games.net/palworld/HIER-DER-EINTRAG` – vor dem Posten durch
@@ -22,10 +28,10 @@ Der Text über dem Embed (MEE6-Feld **Message content**) – der ist das, was in
 der Benachrichtigung aufploppt:
 
 ```
-🔥 **30 Sekunden für PalHeim – und du bekommst was dafür**
-Jede Stimme schiebt uns in den Serverlisten nach oben. Mehr Sichtbarkeit = mehr
-Mitspieler = vollere Basen, mehr Raids, mehr Leben auf der Karte. Und du gehst
-nicht leer aus: Vote-Belohnung im Spiel + die 🎖️ Voter-Rolle hier im Discord.
+🔥 **30 Sekunden, die unserem Server richtig helfen**
+Jede Stimme schiebt PalHeim in den Serverlisten nach oben. Weiter oben heißt:
+mehr Leute finden uns, mehr Mitspieler, vollere Basen, mehr los auf der Karte.
+Kostenlos, ohne Account – und du bekommst dafür die 🎖️ Voter-Rolle hier im Discord.
 ```
 
 Darunter das Embed (JSON für den MEE6-Editor):
@@ -40,7 +46,7 @@ Darunter das Embed (JSON für den MEE6-Editor):
   },
   "title": "🗳️ Vote für PalHeim – dauert 30 Sekunden",
   "url": "https://palheim.de/#voten",
-  "description": "Du kannst **jeden Tag auf jeder Liste einmal** voten. Kein Account nötig, kein Geld, keine Werbung – nur ein Klick, der uns nach oben zieht.\n\n**Was du davon hast**\n🎁 Belohnung im Spiel – für **jede** Liste einzeln\n🎖️ Die **Voter-Rolle** hier im Discord\n🌍 Mehr Leute auf dem Server, mit denen du spielst\n\n**So geht's**\n**1.** Unten auf einer Liste voten – **mit deinem In-Game-Namen**\n**2.** Auf `pve.palheim.de:8211` einloggen\n**3.** Auf [palheim.de](https://palheim.de/#voten) Namen eintragen → Belohnung abholen",
+  "description": "Du kannst **jeden Tag auf jeder Liste einmal** voten. Kein Account nötig, kein Geld, keine Werbung – nur ein Klick, der uns nach oben zieht.\n\n**Warum das was bringt**\n📈 Höherer Listenplatz = neue Spieler finden PalHeim\n🌍 Mehr Mitspieler heißt vollere Basen und mehr los auf der Karte\n🎖️ Du bekommst die **Voter-Rolle** hier im Discord\n\n**So geht's**\n**1.** Unten auf einer Liste voten – **mit deinem In-Game-Namen**\n**2.** Auf [palheim.de](https://palheim.de/#voten) denselben Namen eintragen und Vote bestätigen\n**3.** Fertig – die Voter-Rolle kommt automatisch",
   "fields": [
     {
       "name": "🟠 palserver.de",
@@ -54,12 +60,12 @@ Darunter das Embed (JSON für den MEE6-Editor):
     },
     {
       "name": "🎖️ Voter-Rolle sichern",
-      "value": "Einmal `/verknuepfen` tippen und beim Feld **name** deinen In-Game-Namen eintragen – danach kommt die Rolle bei jeder Belohnung automatisch.",
+      "value": "Einmal `/verknuepfen` tippen und beim Feld **name** deinen In-Game-Namen eintragen – danach bekommst du die Rolle bei jedem bestätigten Vote automatisch.",
       "inline": false
     },
     {
       "name": "⏱️ Nicht vergessen",
-      "value": "Belohnung am besten **direkt nach dem Voten** abholen – auf top-games.net verfällt ein Vote nach 2 Stunden.",
+      "value": "Vote am besten **direkt danach bestätigen** – auf top-games.net verfällt ein Vote nach 2 Stunden. Bis ein Vote ankommt, können ein paar Minuten vergehen.",
       "inline": false
     }
   ],
@@ -80,30 +86,29 @@ unterschiedlichen Texten und leicht versetzten Zeiten anlegen, statt einen Text
 jeden Tag zu wiederholen.
 
 ```
-🗳️ **Tägliches Vote-Fenster ist offen!** Zwei Klicks, zwei Belohnungen:
+🗳️ **Tägliches Vote-Fenster ist offen!** Zwei Klicks, zwei Listen:
 » palserver.de: https://palserver.de/server/palheim-251
 » top-games.net: https://de.top-games.net/palworld/HIER-DER-EINTRAG
-Danach Belohnung abholen: https://palheim.de/#voten
+Danach hier bestätigen: https://palheim.de/#voten
 ```
 
 ```
 ⏰ Schon für PalHeim gevotet heute? Dauert kürzer als ein Ladebildschirm –
-und bringt dir eine Belohnung im Spiel: https://palheim.de/#voten
+und bringt uns einen Platz nach oben: https://palheim.de/#voten
 ```
 
 ```
-💪 Wir wachsen mit jeder Stimme. Wer heute votet, holt sich die Belohnung
-direkt danach ab (und die 🎖️ Voter-Rolle gibt's per `/verknuepfen` dazu):
-https://palheim.de/#voten
+💪 Wir wachsen mit jeder Stimme. Wer heute votet, bestätigt es direkt danach
+auf der Seite – dann gibt's die 🎖️ Voter-Rolle dazu: https://palheim.de/#voten
 ```
 
 ```
-🎁 Erinnerung: Deine Vote-Belohnung von heute wartet noch.
-Voten → einloggen auf `pve.palheim.de:8211` → abholen auf https://palheim.de/#voten
+📈 Serverlisten sind wie Charts: Wer oben steht, wird gefunden.
+Ein Klick von dir zählt einen ganzen Tag: https://palheim.de/#voten
 ```
 
 ```
-🚀 Ein Vote = ein paar Plätze nach oben in der Serverliste = neue Mitspieler.
+🚀 Ein Vote = ein paar Plätze nach oben = neue Mitspieler auf PalHeim.
 Kostet dich 30 Sekunden: https://palheim.de/#voten
 ```
 
@@ -122,13 +127,21 @@ Klammer-Text stehen und niemand kann klicken.
 
 ### Was den Aufruf wirklich zieht
 
+Ohne Item-Belohnung zieht vor allem eins: sichtbarer Fortschritt und
+Anerkennung.
+
 - **Ergebnis zeigen.** Alle paar Wochen posten, auf welchem Platz wir stehen
-  („letzte Woche Platz 14, heute Platz 9 – das wart ihr"). Fortschritt
-  motiviert stärker als jede Belohnung.
+  („letzte Woche Platz 14, heute Platz 9 – das wart ihr"). Sichtbarer
+  Fortschritt motiviert stärker als jedes Versprechen.
 - **Namen nennen.** Die Vote-Meldung der Webseite (`reward.discord.webhookUrl`)
-  in denselben Kanal schicken lassen – dann sieht jeder, dass andere voten.
-- **Vote-Ziel setzen.** „50 Votes diese Woche → Event-Wochenende mit doppelten
-  Raten" wirkt besser als ein Dauer-Appell.
+  in denselben Kanal schicken lassen – dann sieht jeder, wer votet, und wird
+  selbst dafür gesehen.
+- **Voter-Rolle sichtbar machen.** Rolle mit eigener Farbe anlegen und in der
+  Mitgliederliste separat anzeigen lassen – eine Rolle, die niemand sieht,
+  motiviert niemanden.
+- **Gemeinsames Ziel setzen.** „50 Votes diese Woche → Event-Wochenende mit
+  doppelten Raten" wirkt besser als ein Dauer-Appell (Event-Wochenenden macht
+  `palworld-event.sh` ohnehin schon).
 
 ## Embed abtippen (wenn kein JSON-Import da ist)
 
@@ -153,15 +166,15 @@ Feld:
 ```
 Du kannst **jeden Tag auf jeder Liste einmal** voten. Kein Account nötig, kein Geld, keine Werbung – nur ein Klick, der uns nach oben zieht.
 
-**Was du davon hast**
-🎁 Belohnung im Spiel – für **jede** Liste einzeln
-🎖️ Die **Voter-Rolle** hier im Discord
-🌍 Mehr Leute auf dem Server, mit denen du spielst
+**Warum das was bringt**
+📈 Höherer Listenplatz = neue Spieler finden PalHeim
+🌍 Mehr Mitspieler heißt vollere Basen und mehr los auf der Karte
+🎖️ Du bekommst die **Voter-Rolle** hier im Discord
 
 **So geht's**
 **1.** Unten auf einer Liste voten – **mit deinem In-Game-Namen**
-**2.** Auf `pve.palheim.de:8211` einloggen
-**3.** Auf [palheim.de](https://palheim.de/#voten) Namen eintragen → Belohnung abholen
+**2.** Auf [palheim.de](https://palheim.de/#voten) denselben Namen eintragen und Vote bestätigen
+**3.** Fertig – die Voter-Rolle kommt automatisch
 ```
 
 **Feld 1** (inline): Name `🟠 palserver.de`, Wert
@@ -181,13 +194,13 @@ Wieder in 24 Std.
 **Feld 3** (nicht inline): Name `🎖️ Voter-Rolle sichern`, Wert
 
 ```
-Einmal `/verknuepfen` tippen und beim Feld **name** deinen In-Game-Namen eintragen – danach kommt die Rolle bei jeder Belohnung automatisch.
+Einmal `/verknuepfen` tippen und beim Feld **name** deinen In-Game-Namen eintragen – danach bekommst du die Rolle bei jedem bestätigten Vote automatisch.
 ```
 
 **Feld 4** (nicht inline): Name `⏱️ Nicht vergessen`, Wert
 
 ```
-Belohnung am besten **direkt nach dem Voten** abholen – auf top-games.net verfällt ein Vote nach 2 Stunden.
+Vote am besten **direkt danach bestätigen** – auf top-games.net verfällt ein Vote nach 2 Stunden. Bis ein Vote ankommt, können ein paar Minuten vergehen.
 ```
 
 ## Kurzfassung für einen `!vote`-Befehl
@@ -200,7 +213,7 @@ Bild – so bleibt der Chat lesbar:
   "color": 16353819,
   "title": "🗳️ Für PalHeim voten",
   "url": "https://palheim.de/#voten",
-  "description": "**1.** [palserver.de](https://palserver.de/server/palheim-251) · [top-games.net](https://de.top-games.net/palworld/HIER-DER-EINTRAG) – mit deinem **In-Game-Namen** voten\n**2.** Auf `pve.palheim.de:8211` einloggen\n**3.** Belohnung auf [palheim.de](https://palheim.de/#voten) abholen\n\nVoter-Rolle noch nicht? Einmal `/verknuepfen` tippen und den In-Game-Namen eintragen.",
+  "description": "**1.** [palserver.de](https://palserver.de/server/palheim-251) · [top-games.net](https://de.top-games.net/palworld/HIER-DER-EINTRAG) – mit deinem **In-Game-Namen** voten\n**2.** Vote auf [palheim.de](https://palheim.de/#voten) bestätigen\n**3.** 🎖️ Voter-Rolle kassieren\n\nNoch nicht verknüpft? Einmal `/verknuepfen` tippen und den In-Game-Namen eintragen.",
   "footer": {
     "text": "Einmal am Tag pro Liste – jede Liste zählt einzeln."
   }
@@ -219,6 +232,11 @@ Bild – so bleibt der Chat lesbar:
   bearbeiten statt neu zu posten – dann bleibt der Pin bestehen.
 - Discord cached Bilder: Wird nach einem Bildtausch noch das alte angezeigt,
   einmal mit `?v=2` an der Bild-URL posten.
-- Die Belohnungsseite ist die Sektion **Vote & Belohnung** auf palheim.de. Ist
-  `votes.enabled` in der `config.json` aus, ist der Abschnitt ausgeblendet und
-  der Link `#voten` läuft ins Leere – Embed erst posten, wenn Voten aktiv ist.
+- **Schritt 2 (Vote bestätigen) ist kein Selbstzweck**: Über das Formular auf
+  palheim.de erkennt die Webseite den Vote und vergibt erst dann die
+  Voter-Rolle. Steht `votes.requireOnline` in der `config.json` auf `true`,
+  muss der Spieler dabei eingeloggt sein – dann in den Text ein „vorher auf
+  `pve.palheim.de:8211` einloggen" aufnehmen.
+- Ist `votes.enabled` in der `config.json` aus, ist der Abschnitt
+  **Vote & Belohnung** auf palheim.de ausgeblendet und der Link `#voten` läuft
+  ins Leere – Embed erst posten, wenn Voten aktiv ist.
