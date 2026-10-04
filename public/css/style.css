@@ -1764,6 +1764,76 @@ code {
   margin-top: 30px;
 }
 
+/* ---------------- Abschieds-Seite (Server-Schließung) ---------------- */
+
+/* Kein Scroll-Pfeil, kein Vollbild-Zwang: die Seite soll ruhig wirken,
+   nicht wie eine Landingpage */
+.farewell-hero { min-height: auto; padding: 96px 0 150px; }
+
+.farewell-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 22px;
+}
+
+.farewell-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  padding: 28px 26px;
+}
+.farewell-card__icon {
+  display: inline-flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: var(--surface-tint);
+  border: 1px solid var(--border);
+  font-size: 1.5rem;
+  margin-bottom: 14px;
+}
+.farewell-card h3 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin-bottom: 8px;
+}
+.farewell-card p { color: var(--text-muted); font-weight: 600; }
+
+.farewell-saves {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  padding: 28px 30px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+}
+.farewell-saves--ready { border-color: rgba(63, 164, 71, 0.45); }
+.farewell-saves__icon { font-size: 2.2rem; line-height: 1; flex-shrink: 0; }
+.farewell-saves h3 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  margin-bottom: 6px;
+}
+.farewell-saves p { color: var(--text-muted); font-weight: 600; }
+.farewell-saves .btn { margin-top: 16px; }
+
+.farewell-note {
+  margin-top: 22px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+  max-width: 70ch;
+}
+
+@media (max-width: 600px) {
+  .farewell-saves { flex-direction: column; gap: 12px; }
+}
+
 /* ---------------- Spieler-Profil ---------------- */
 
 .profile__back { display: inline-block; margin-bottom: 18px; font-weight: 700; }

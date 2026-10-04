@@ -18,6 +18,11 @@
 
   "visitorCounter": true,
 
+  "shutdown": {
+    "date": "",
+    "savesUrl": ""
+  },
+
   "support": {
     "enabled": false,
     "url": "https://buymeacoffee.com/DEIN-NAME"

@@ -150,9 +150,13 @@
 
     // Funktions-Schalter: Zustand vom Server übernehmen (außer der Nutzer
     // hat das Häkchen gerade in der Hand)
-    const featTeam = $('admFeatTeam');
-    if (featTeam && data.features && document.activeElement !== featTeam) {
-      featTeam.checked = Boolean(data.features.teamView);
+    if (data.features) {
+      for (const box of document.querySelectorAll('input[data-feature]')) {
+        const key = box.dataset.feature;
+        if (key in data.features && document.activeElement !== box) {
+          box.checked = Boolean(data.features[key]);
+        }
+      }
     }
 
     // Banner-Formular nur beim ersten Laden vorbefüllen – nicht bei jedem
@@ -317,25 +321,34 @@
     });
   }
 
-  const featTeamBox = $('admFeatTeam');
-  if (featTeamBox) {
-    featTeamBox.addEventListener('change', async () => {
-      const enabled = featTeamBox.checked;
-      featTeamBox.disabled = true;
+  // Funktions-Schalter: jede Checkbox mit data-feature spricht denselben
+  // Endpunkt an, der Schlüssel steht im Attribut
+  for (const box of document.querySelectorAll('input[data-feature]')) {
+    box.addEventListener('change', async () => {
+      const key = box.dataset.feature;
+      const enabled = box.checked;
+      // Die Abschieds-Seite sperrt sofort die ganze Webseite – ein Versehen
+      // beim Klicken soll nicht gleich alle Spieler aussperren
+      if (key === 'shutdownPage' && enabled &&
+          !window.confirm('Abschieds-Seite aktivieren? Alle Besucher werden ab sofort auf /abschied umgeleitet.')) {
+        box.checked = false;
+        return;
+      }
+      box.disabled = true;
       try {
         const res = await fetch('/api/admin/feature', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'teamView', enabled })
+          body: JSON.stringify({ key, enabled })
         });
         const data = await res.json();
         setMsg($('admFeatMsg'), data.message || (res.ok ? 'Gespeichert.' : 'Fehler.'), res.ok);
-        if (!res.ok) featTeamBox.checked = !enabled; // zurückdrehen
+        if (!res.ok) box.checked = !enabled; // zurückdrehen
       } catch {
         setMsg($('admFeatMsg'), 'Netzwerkfehler – nicht gespeichert.', false);
-        featTeamBox.checked = !enabled;
+        box.checked = !enabled;
       } finally {
-        featTeamBox.disabled = false;
+        box.disabled = false;
       }
     });
   }
