@@ -2011,6 +2011,7 @@ code {
 .adm-check input {
   width: 18px;
   height: 18px;
+  flex-shrink: 0;
   accent-color: var(--accent, #f98a1b);
 }
 .adm-sep {
