@@ -166,8 +166,19 @@
               wirkt sofort, ohne Neustart.
             </p>
             <label class="adm-check">
-              <input type="checkbox" id="admFeatTeam">
+              <input type="checkbox" id="admFeatTeam" data-feature="teamView">
               Team-Anzeige auf Spielerprofilen
+            </label>
+            <label class="adm-check">
+              <input type="checkbox" id="admFeatShutdown" data-feature="shutdownPage">
+              🚪 Abschieds-Seite aktivieren – sperrt die komplette Webseite
+              (Besucher landen auf <a href="/abschied" target="_blank" rel="noopener">/abschied</a>;
+              Impressum, Datenschutz und Admin bleiben erreichbar)
+            </label>
+            <label class="adm-check">
+              <input type="checkbox" id="admFeatShutdownSaves" data-feature="shutdownSaves">
+              💾 Spielstände zum Download bereitstellen
+              (Link kommt aus <code>shutdown.savesUrl</code> in der config.json)
             </label>
             <p class="vote-message" id="admFeatMsg" role="status" hidden></p>
 

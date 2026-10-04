@@ -34,6 +34,10 @@ Dadurch ist das Deployment auf dem eigenen Server in wenigen Minuten erledigt.
 - 📣 **Broadcast-Seite** (`/broadcast.html`): passwortgeschützt eine In-Game-Ansage
   an alle Online-Spieler senden
 - 🚧 **Hinweis-Banner** oben auf der Seite für Wartung/Events (per Config/Admin)
+- 🚪 **Abschieds-Seite** (`/abschied`) für die Server-Schließung: per
+  Admin-Schalter aktivierbar, leitet dann alle öffentlichen Seiten dorthin um
+  (Impressum, Datenschutz, Admin bleiben erreichbar); zweiter Schalter blendet
+  den Spielstand-Download ein (`shutdown.savesUrl` in der Config)
 - ❤️ **Unterstützen-Karte + Ko-fi-Menüpunkt** (nur ein Link, keine externen Skripte)
 - 👀 **Besucher-Zähler** (Aufrufe + eindeutige Besucher) im Footer – ohne Cookies/IP
 - 📋 **Server-Adresse mit Kopier-Button**, 🎮 Beitritts-Anleitung, ⚙️ Raten-Übersicht
@@ -402,6 +406,8 @@ führt die Skripte aus dem geklonten Repo aus (`bash deploy/setup.sh`).
 | `admin.broadcastSecret` | – | Passwort für die Broadcast-Seite; leer = deaktiviert |
 | `admin.password` | – | Passwort für die Admin-Seite `/admin`; leer = deaktiviert |
 | `visitorCounter` | `true` | Besucher-Zähler (Aufrufe + eindeutige Besucher) im Footer |
+| `shutdown.date` | – | Abschalt-Datum als Freitext für die Abschieds-Seite, z. B. `31. Oktober 2026` |
+| `shutdown.savesUrl` | – | Download-Link der Spielstände; erscheint erst nach dem Admin-Schalter „Spielstände bereitstellen" |
 | `support.enabled` | `false` | „Unterstützen"-Karte (z. B. Ko-fi, Buy Me a Coffee) anzeigen? |
 | `support.url` | – | Link zur Spenden-Seite (nur ein Link, keine externen Skripte) |
 | `support.text` | (Vorgabe) | Optionaler eigener Text auf der Karte |

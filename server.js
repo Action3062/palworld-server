@@ -81,6 +81,17 @@ const DEFAULTS = {
     // Beschriftung des Buttons – z. B. '❤️ Auf Ko-fi unterstützen'
     label: '☕ Buy me a coffee'
   },
+  // Abschieds-Seite (/abschied) für die Server-Schließung. Ein- und
+  // ausgeschaltet wird sie über die Admin-Seite (Funktions-Schalter), hier
+  // stehen nur die Inhalte, die sich nicht per Klick ändern sollen.
+  shutdown: {
+    // Freitext für das Datum der Abschaltung, z. B. '31. Oktober 2026';
+    // leer = kein Datum auf der Seite
+    date: '',
+    // Download-Link für die Spielstände (Archiv, Cloud-Ordner, …). Wird erst
+    // sichtbar, wenn der Admin den Schalter „Spielstände bereitstellen" setzt.
+    savesUrl: ''
+  },
   // Live-Karte (Spieler-Positionen aus der REST-API, Basen via Uploader)
   map: {
     enabled: true,
@@ -206,6 +217,7 @@ function loadConfig() {
       cfg.banner = deepMerge(DEFAULTS.banner, loaded.banner);
       cfg.admin = deepMerge(DEFAULTS.admin, loaded.admin);
       cfg.support = deepMerge(DEFAULTS.support, loaded.support);
+      cfg.shutdown = deepMerge(DEFAULTS.shutdown, loaded.shutdown);
     } catch (err) {
       console.error(`[config] config.json konnte nicht gelesen werden: ${err.message}`);
       process.exit(1);
@@ -868,10 +880,14 @@ function cleanTeam(raw) {
 // Schaltbare Funktionen (von der Admin-Seite aus, data/features.json)
 // ---------------------------------------------------------------------------
 const FEATURE_LABELS = {
-  teamView: 'Team-Anzeige auf Spielerprofilen'
+  teamView: 'Team-Anzeige auf Spielerprofilen',
+  shutdownPage: 'Abschieds-Seite (Server-Schließung) – sperrt die Webseite',
+  shutdownSaves: 'Spielstände zum Download bereitstellen'
 };
 const featuresFile = path.join(__dirname, 'data/features.json');
-let features = { teamView: true };
+// Die Abschieds-Schalter sind bewusst aus, bis ein Admin sie setzt – ein
+// versehentlich gesperrte Webseite wäre das schlimmere Versehen.
+let features = { teamView: true, shutdownPage: false, shutdownSaves: false };
 try {
   const rawFeatures = JSON.parse(fs.readFileSync(featuresFile, 'utf8'));
   if (rawFeatures && typeof rawFeatures === 'object') {
@@ -1211,6 +1227,42 @@ const MIME_TYPES = {
   '.txt': 'text/plain; charset=utf-8'
 };
 
+// Freundliche 404-Seite ausliefern (Fallback: Klartext, falls sie fehlt)
+function serveNotFound(res) {
+  fs.readFile(path.join(PUBLIC_DIR, '404.html'), (err404, page) => {
+    if (err404) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 – Nicht gefunden');
+      return;
+    }
+    res.writeHead(404, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache'
+    });
+    res.end(page);
+  });
+}
+
+// Seiten, die auch bei gesperrter Webseite erreichbar bleiben: Pflichtseiten
+// (Impressum/Datenschutz), die Abschieds-Seite selbst und die Admin-Werkzeuge,
+// damit der Schalter auch wieder zurückgedreht werden kann.
+const SHUTDOWN_ALLOWED_PAGES = new Set(['/abschied', '/impressum', '/datenschutz', '/admin', '/broadcast']);
+
+// Liefert true, wenn eine Anfrage bei aktiver Schließung auf /abschied
+// umgeleitet werden soll: nur HTML-Seiten, keine API-Aufrufe und keine
+// Assets (CSS/JS/Bilder braucht die Abschieds-Seite ja selbst).
+function shutdownRedirects(pathname) {
+  if (!features.shutdownPage) return false;
+  if (pathname.startsWith('/api/')) return false;
+  const ext = path.extname(pathname).toLowerCase();
+  if (ext && ext !== '.html') return false;
+  let clean = pathname.replace(/\.html$/, '').replace(/\/+$/, '');
+  if (clean === '' || clean === '/index') clean = '/';
+  // /spieler/<name> ist dieselbe Seite wie /spieler
+  if (clean.startsWith('/spieler/')) clean = '/spieler';
+  return !SHUTDOWN_ALLOWED_PAGES.has(clean);
+}
+
 function serveStatic(req, res) {
   const reqUrl = new URL(req.url, 'http://localhost');
   let urlPath = decodeURIComponent(reqUrl.pathname);
@@ -1237,21 +1289,16 @@ function serveStatic(req, res) {
     return;
   }
 
+  // Die Abschieds-Seite gibt es nur, solange die Schließung aktiv ist –
+  // vorher soll niemand den Text per URL-Raten vorab lesen können.
+  if (urlPath === '/abschied.html' && !features.shutdownPage) {
+    serveNotFound(res);
+    return;
+  }
+
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      // Freundliche 404-Seite ausliefern (Fallback: Klartext, falls sie fehlt)
-      fs.readFile(path.join(PUBLIC_DIR, '404.html'), (err404, page) => {
-        if (err404) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end('404 – Nicht gefunden');
-          return;
-        }
-        res.writeHead(404, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache'
-        });
-        res.end(page);
-      });
+      serveNotFound(res);
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
@@ -1271,6 +1318,15 @@ function serveStatic(req, res) {
 
 const server = http.createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url, 'http://localhost');
+
+  // ---- Server-Schließung: alle öffentlichen Seiten auf /abschied lenken ----
+  // 302 statt 301, damit Browser nach dem Zurückdrehen des Schalters nicht
+  // auf einer gecachten Umleitung hängen bleiben.
+  if (shutdownRedirects(decodeURIComponent(pathname))) {
+    res.writeHead(302, { Location: '/abschied', 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
 
   // ---- Basen-Upload für die Live-Karte (POST) ----
   if (req.method === 'POST' && pathname === '/api/map/bases') {
@@ -2077,6 +2133,14 @@ const server = http.createServer(async (req, res) => {
       banner: b && b.enabled && b.text ? { text: b.text, level: b.level || 'info' } : null,
       support: s && s.enabled && s.url
         ? { url: s.url, text: s.text || '', label: s.label || '' }
+        : null,
+      // Abschieds-Seite: Datum und Spielstand-Link kommen aus der Config,
+      // ob der Download schon freigegeben ist, entscheidet der Admin-Schalter
+      shutdown: features.shutdownPage
+        ? {
+          date: config.shutdown.date || '',
+          savesUrl: features.shutdownSaves && config.shutdown.savesUrl ? config.shutdown.savesUrl : ''
+        }
         : null,
       servers: SERVERS.map(publicServerInfo)
     });
